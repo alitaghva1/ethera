@@ -212,6 +212,10 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # RunState.run_elapsed_seconds(). Stops updating when _alive flips
 # false (hero death finalizes via GameState.finalize_run_time).
 @onready var run_timer_label: Label = $UI/RunTimerLabel
+# Iter 160 — first-run tutorial prompt label. Lifecycle managed by
+# the tutorial state machine below. Hidden (modulate.a = 0) until
+# armed in _ready (only on first-ever run AND room 0).
+@onready var tutorial_label: Label = $UI/TutorialLabel
 @onready var room_label: Label = $UI/RoomLabel
 @onready var boss_bar: VBoxContainer = $UI/BossBar
 @onready var boss_name: Label = $UI/BossBar/Name
@@ -376,6 +380,26 @@ var _last_wave_text: String = ""
 var _wave_fade_tween: Tween = null
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
+
+# Iter 160 — first-run tutorial state machine. Runs only on the very
+# first room of the very first run (GameState.has_completed_tutorial
+# = false). Each step gates on a specific input the player must
+# perform; once detected, advances to the next prompt. Tracking
+# distance traveled instead of a single "first key press" so a stray
+# button mash doesn't skip the MOVE step.
+enum TutorialState {
+	OFF,             # tutorial not active (subsequent rooms / runs)
+	WAIT_MOVE,       # show "MOVE — WASD" until ~200 px traveled
+	WAIT_ATTACK,     # show "ATTACK — LEFT MOUSE" until attack pressed
+	WAIT_DASH,       # show "DASH — SHIFT" until dash strike pressed
+	WAIT_PICKUP,     # show "PICK UP RELIC — Walk to glowing pedestal"
+	DONE,            # short fade-out then OFF + persist completion
+}
+var _tutorial_state: TutorialState = TutorialState.OFF
+var _tutorial_distance_moved: float = 0.0
+const TUTORIAL_MOVE_THRESHOLD: float = 200.0
+const TUTORIAL_FADE_DUR: float = 0.45
+var _tutorial_fade_tween: Tween = null
 # Iter 15 — count of enemies queued by _start_wave that haven't
 # actually spawned yet (timer-deferred). The wave-clear check in
 # _process needs to know about these so the staggered spawn window
@@ -586,6 +610,13 @@ func _ready() -> void:
 		SaveSystem.save_now()
 	else:
 		status_label.text = ""
+	# Iter 160 — first-run tutorial prompts. Activates only on the
+	# very first room of the very first run (has_completed_tutorial
+	# false). Plays out a 4-step sequence: MOVE → ATTACK → DASH →
+	# PICK UP. Sets the flag + saves once DONE so it never appears
+	# again, even across runs / sessions, until the save is wiped.
+	if not GameState.has_completed_tutorial and RunState.current_room_index == 0:
+		_arm_tutorial()
 	wave_label.text = "WAVE 1 / %d  incoming" % max(1, _waves.size())
 	# Iter 33 — special-room dispatch. Combat rooms run the wave timer
 	# as before; treasure / shrine rooms skip waves and route through
@@ -615,6 +646,11 @@ func _process(_delta: float) -> void:
 	# fight the snapping. Stops updating after hero death (_alive flips
 	# false in _on_hero_died) so the last visible time is the death-time.
 	_update_run_timer_label()
+	# Iter 160 — tutorial progression. Cheap branch when state is OFF
+	# (early-out on the first line) so the polling cost is negligible
+	# in the steady state.
+	if _tutorial_state != TutorialState.OFF:
+		_tick_tutorial(get_process_delta_time())
 	if _hit_stop_timer > 0.0:
 		_hit_stop_timer -= 1.0 / 60.0
 		if _hit_stop_timer <= 0.0:
@@ -2695,6 +2731,12 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# matching icon → no tween fires for them, which is correct.
 	_rebuild_relic_strip(_name)
 	_resolve_room_pickup()
+	# Iter 160 — tutorial: WAIT_PICKUP advances when a RELIC pickup
+	# happens (filtered above; shrines pass-through but we want a
+	# RELIC specifically for the tutorial). The advance fades the
+	# prompt out + flags completion in _finalize_tutorial.
+	if _tutorial_state == TutorialState.WAIT_PICKUP and GameState.RELIC_REGISTRY.has(_name):
+		_advance_tutorial(TutorialState.DONE, "")
 
 # iter-118: Portal placement clearance. Doors visually want at least
 # DOOR_CLEARANCE_RADIUS px of free space around their spawn position so
@@ -3459,6 +3501,86 @@ func _update_room_label() -> void:
 # Polling avoids having to wrap all 9 call sites that set
 # status_label.text — they keep working unmodified, and this loop
 # handles state reset automatically.
+# Iter 160 — first-run tutorial. State machine spelled out in the
+# TutorialState enum at the top of the file. Each step is a
+# single-line text prompt with a defined input gate; once detected,
+# advance to the next step. The DONE state runs once on transition
+# in (set GameState flag + persist), then OFF.
+#
+# Design notes:
+#   • Distance-based gate on MOVE (not "first input") so a stray
+#     button press during loading doesn't skip the prompt.
+#   • Input.is_action_just_pressed used for ATTACK and DASH so the
+#     gate fires whether or not the swing/dash actually CONNECTED
+#     with anything — the player learning to dash doesn't have an
+#     enemy nearby to dash through.
+#   • PICK UP gate uses the existing Events.pickup_claimed signal
+#     subscriber (_on_pickup_claimed) — extended to also advance
+#     the tutorial state when in WAIT_PICKUP. Filter on the name
+#     being in RELIC_REGISTRY so chest "gold" pickups don't count.
+func _arm_tutorial() -> void:
+	if tutorial_label == null:
+		return
+	_tutorial_state = TutorialState.WAIT_MOVE
+	_tutorial_distance_moved = 0.0
+	_set_tutorial_text("MOVE  —  W A S D")
+
+func _tick_tutorial(delta: float) -> void:
+	match _tutorial_state:
+		TutorialState.WAIT_MOVE:
+			if hero != null:
+				_tutorial_distance_moved += hero.velocity.length() * delta
+				if _tutorial_distance_moved >= TUTORIAL_MOVE_THRESHOLD:
+					_advance_tutorial(TutorialState.WAIT_ATTACK, "ATTACK  —  LEFT MOUSE")
+		TutorialState.WAIT_ATTACK:
+			if Input.is_action_just_pressed("attack"):
+				_advance_tutorial(TutorialState.WAIT_DASH, "DASH  —  SHIFT")
+		TutorialState.WAIT_DASH:
+			if Input.is_action_just_pressed("dash_strike"):
+				_advance_tutorial(TutorialState.WAIT_PICKUP, "PICK UP  —  Walk to glowing pedestal")
+		TutorialState.WAIT_PICKUP:
+			# Advance hook lives in _on_pickup_claimed extension below.
+			pass
+		TutorialState.DONE:
+			_finalize_tutorial()
+		_:
+			pass
+
+func _advance_tutorial(next: TutorialState, prompt: String) -> void:
+	_tutorial_state = next
+	if next == TutorialState.DONE:
+		# Fade-out flow handled by _finalize_tutorial; don't show new text.
+		_finalize_tutorial()
+		return
+	_set_tutorial_text(prompt)
+
+func _set_tutorial_text(text: String) -> void:
+	if tutorial_label == null:
+		return
+	tutorial_label.text = text
+	# Fade in (kills any in-flight fade so back-to-back advances
+	# always settle at full alpha).
+	if _tutorial_fade_tween != null and _tutorial_fade_tween.is_valid():
+		_tutorial_fade_tween.kill()
+	tutorial_label.modulate.a = 0.0
+	_tutorial_fade_tween = create_tween()
+	_tutorial_fade_tween.tween_property(tutorial_label, "modulate:a", 1.0, TUTORIAL_FADE_DUR)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+func _finalize_tutorial() -> void:
+	# Move to OFF immediately so the tick loop early-outs. Fade the
+	# label out over the same duration. Persist the flag.
+	_tutorial_state = TutorialState.OFF
+	GameState.has_completed_tutorial = true
+	SaveSystem.save_now()
+	if tutorial_label == null:
+		return
+	if _tutorial_fade_tween != null and _tutorial_fade_tween.is_valid():
+		_tutorial_fade_tween.kill()
+	_tutorial_fade_tween = create_tween()
+	_tutorial_fade_tween.tween_property(tutorial_label, "modulate:a", 0.0, TUTORIAL_FADE_DUR)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when
 # not in an active run, so the HUD stays at "0:00" on edge cases).

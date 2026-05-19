@@ -65,6 +65,11 @@ var phoenix_feather_used: bool = false
 # action (not implemented yet — when it lands, just include this
 # field in the reset list).
 var has_seen_controls_hint: bool = false
+# Iter 160 — first-run tutorial. Set true after the player completes
+# the 4-step prompt sequence (MOVE → ATTACK → DASH → PICK UP RELIC)
+# in their very first run's room 0. Persistent, so subsequent runs
+# never see the tutorial again unless the save is wiped.
+var has_completed_tutorial: bool = false
 
 # ── Relic registry ───────────────────────────────────────────────────
 # Modifier keys read by hero.gd:
@@ -925,6 +930,7 @@ func save_to_dict() -> Dictionary:
 		"master_volume": master_volume,
 		"unlocked_achievements": unlocked_achievements,
 		"has_seen_controls_hint": has_seen_controls_hint,
+		"has_completed_tutorial": has_completed_tutorial,
 	}
 
 # Tolerant loader: every field has a default, missing keys are ignored,
@@ -949,6 +955,11 @@ func load_from_dict(d: Dictionary) -> void:
 	# pre-v4 saves → false (player hasn't seen the hint on this profile,
 	# so it shows on next room load — desired behavior on upgrade).
 	has_seen_controls_hint = bool(d.get("has_seen_controls_hint", false))
+	# Iter 160 — tutorial completion flag. Missing on pre-v5 saves → false
+	# (the existing player sees the tutorial on their next first room
+	# load — fine, it's a 30-second beat that auto-completes once they
+	# play).
+	has_completed_tutorial = bool(d.get("has_completed_tutorial", false))
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and
