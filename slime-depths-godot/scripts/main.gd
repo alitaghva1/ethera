@@ -215,6 +215,10 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # Iter 161 — persistent room progress (always-visible "ROOM 3 / 6"
 # under the heart row). Synced with room_label inside _update_room_label.
 @onready var room_progress_label: Label = $UI/RoomProgressLabel
+# Iter 204 — active relic cooldown chip @onready. Hidden by default;
+# _update_active_relic_label toggles visible + text based on hero
+# ownership + cooldown state.
+@onready var active_relic_label: Label = $UI/ActiveRelicLabel
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -676,6 +680,11 @@ func _process(_delta: float) -> void:
 	# fight the snapping. Stops updating after hero death (_alive flips
 	# false in _on_hero_died) so the last visible time is the death-time.
 	_update_run_timer_label()
+	# Iter 204 — active relic cooldown HUD. Reads hero._active_relic_cd
+	# and renders a small chip showing "[R] READY" or "[R] 12s" near
+	# the relic strip. Hidden when the player doesn't own an active
+	# relic (the typical floor 1-3 state).
+	_update_active_relic_label()
 	# Iter 160 — tutorial progression. Cheap branch when state is OFF
 	# (early-out on the first line) so the polling cost is negligible
 	# in the steady state.
@@ -4883,6 +4892,40 @@ func _finalize_tutorial() -> void:
 	_tutorial_fade_tween = create_tween()
 	_tutorial_fade_tween.tween_property(tutorial_label, "modulate:a", 0.0, TUTORIAL_FADE_DUR)\
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+# Iter 204 — active relic cooldown HUD chip. Reads hero._active_relic_cd
+# every frame and renders a small label below the relic strip. Hidden
+# completely when the player doesn't own an active relic (which is the
+# typical floor 1-3 state since SOUL SURGE is mythic-only).
+#
+# Text states:
+#   "[R] READY"   cooldown <= 0 → ability is available
+#   "[R] 12s"     cooldown > 0  → seconds remaining, rounded up
+# Alpha varies: 0.86 ready, 0.42 cooling (the player should be aware
+# but not pulled away from combat by a bright not-ready chip).
+func _update_active_relic_label() -> void:
+	if active_relic_label == null:
+		return
+	if hero == null or not is_instance_valid(hero):
+		active_relic_label.visible = false
+		return
+	if not GameState.has_relic("soul_surge"):
+		active_relic_label.visible = false
+		return
+	active_relic_label.visible = true
+	var cd: float = hero.get("_active_relic_cd") if "_active_relic_cd" in hero else 0.0
+	if cd <= 0.0:
+		active_relic_label.text = "[R] READY"
+		active_relic_label.modulate.a = 1.0
+		active_relic_label.add_theme_color_override(
+			"font_color", Color(0.95, 0.85, 1.0, 0.92)
+		)
+	else:
+		active_relic_label.text = "[R] %ds" % int(ceil(cd))
+		active_relic_label.modulate.a = 1.0
+		active_relic_label.add_theme_color_override(
+			"font_color", Color(0.62, 0.55, 0.75, 0.55)
+		)
 
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when

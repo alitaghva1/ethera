@@ -378,6 +378,25 @@ offset_bottom = 116.0
 theme_override_constants/separation = 4
 mouse_filter = 1
 
+; Iter 204 — Active-relic cooldown chip. Hidden by default; main.gd
+; _update_active_relic_label makes it visible when the hero owns
+; SOUL SURGE (or any future active relic) and renders the cooldown
+; state. Hades cast-charge readability — player knows when R is
+; ready. Position just under the relic strip in the same top-left
+; column.
+[node name="ActiveRelicLabel" type="Label" parent="UI"]
+visible = false
+offset_left = 20.0
+offset_top = 122.0
+offset_right = 240.0
+offset_bottom = 144.0
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.62, 1.0, 0.86)
+theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.05, 0.92)
+theme_override_constants/outline_size = 1
+text = "[R] READY"
+
 ; Iter 17 — boss HP bar. Hidden by default; main.gd makes it visible
 ; when an EnemyType with is_boss=true spawns and binds the bar value
 ; to the live enemy's hp each frame. Container is a VBoxContainer
