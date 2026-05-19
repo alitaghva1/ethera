@@ -35,4 +35,5 @@ cast_range = 480.0
 cast_windup = 0.7
 cast_cooldown = 1.8
 projectile_damage = 1
+projectile_pattern = "spread"
 projectile_tint = Color(0.4, 0.7, 1, 1)

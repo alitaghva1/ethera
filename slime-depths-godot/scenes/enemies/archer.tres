@@ -35,4 +35,5 @@ cast_range = 500.0
 cast_windup = 0.5
 cast_cooldown = 1.4
 projectile_damage = 1
+projectile_pattern = "pierce"
 projectile_tint = Color(1, 0.8, 0.4, 1)

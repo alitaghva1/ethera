@@ -2157,12 +2157,52 @@ func _fire_projectile() -> void:
 	var t: EnemyType = enemy_type
 	if _hero != null and is_instance_valid(_hero):
 		_cast_aim = (_hero.global_position - global_position).normalized()
+	# Iter 200 — per-caster signature pattern. Pre-iter-200 every ranged
+	# enemy fired identical single shots; agent audit flagged the 4
+	# ranged casters as reskin-grade variety. Dispatch on the new
+	# EnemyType.projectile_pattern field.
+	match t.projectile_pattern:
+		"spread":
+			# WIZARD — 3-way fan. Center shot + ±0.20 rad off-shots.
+			# Reads as "the wizard chants a triple-cone spell."
+			_fire_one_projectile(t, _cast_aim, 1.0, 1.0, 0)
+			_fire_one_projectile(t, _cast_aim.rotated( 0.22), 1.0, 1.0, 0)
+			_fire_one_projectile(t, _cast_aim.rotated(-0.22), 1.0, 1.0, 0)
+		"pierce":
+			# ARCHER — single shot with pierce_count = 1. The arrow
+			# passes through the hero once and continues. Reads as
+			# "the archer's bow has bonecutter penetration."
+			_fire_one_projectile(t, _cast_aim, 1.15, 1.0, 1)
+		"heavy":
+			# DREADMAGE — slow but big. 0.6× velocity, 1.4× visual
+			# scale. The slower flight gives the player time to dodge,
+			# but the projectile reads as a heavier threat. Pairs with
+			# dreadmage's 1.0s cast windup — the player has time to
+			# react to both windup AND flight.
+			_fire_one_projectile(t, _cast_aim, 0.6, 1.4, 0)
+		_:
+			# Default — preserve legacy single-shot for un-tagged casters.
+			_fire_one_projectile(t, _cast_aim, 1.0, 1.0, 0)
+
+# Iter 200 — single projectile spawn helper. Extracts the spawn logic
+# from _fire_projectile so the new pattern dispatcher can reuse it.
+# Params:
+#   aim_dir          — normalized direction vector for this shot
+#   speed_scale      — Projectile.SPEED multiplier (0.6 for heavy, etc)
+#   visual_scale     — orb / sprite scale (1.4 for heavy reads bigger)
+#   pierce           — pierce_count value (1 for archer, 0 for others)
+func _fire_one_projectile(t: EnemyType, aim_dir: Vector2, speed_scale: float, visual_scale: float, pierce: int) -> void:
 	var p: Projectile = PROJECTILE_SCENE.instantiate()
 	p.target_group = "hero"
 	p.orb_tint = t.projectile_tint
-	p.global_position = global_position + Vector2(0, -28) + _cast_aim * 22.0
-	p.velocity = _cast_aim * Projectile.SPEED
+	p.global_position = global_position + Vector2(0, -28) + aim_dir * 22.0
+	p.velocity = aim_dir * Projectile.SPEED * speed_scale
 	p.damage = t.projectile_damage
+	p.pierce_count = pierce
+	# Defer the visual_scale apply to _ready of the projectile via the
+	# orb sprite path — projectile spawns its sprite in _ready.
+	if visual_scale != 1.0:
+		p.scale = Vector2(visual_scale, visual_scale)
 	get_parent().add_child(p)
 
 # ── Universal: take_hit + knockback + death ───────────────────────────

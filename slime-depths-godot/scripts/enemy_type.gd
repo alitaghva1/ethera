@@ -142,6 +142,17 @@ extends Resource
 @export var cast_windup: float = 0.70
 @export var cast_cooldown: float = 1.80
 @export var projectile_damage: int = 1
+# Iter 200 — per-caster projectile pattern. Pre-iter-200 archer / wizard /
+# priest / dreadmage all fired identical single-shot projectiles
+# (different windup timing + range, same shot pattern). Per-caster
+# pattern makes each ranged enemy distinct.
+#   ""        — default single shot (current behavior, default for
+#               all non-tagged casters)
+#   "spread"  — 3-way fan at ±0.20 rad (wizard signature)
+#   "pierce"  — single shot with pierce_count = 1 (archer signature)
+#   "heavy"   — slower (0.6×) but bigger (1.4× scale) projectile
+#               (dreadmage signature)
+@export var projectile_pattern: String = ""
 # Cool blue by default = "enemy magic"; archers / priests override.
 @export var projectile_tint: Color = Color(0.4, 0.7, 1, 1)
 
