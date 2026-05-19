@@ -122,6 +122,28 @@ const CONTACT_ATTACK_ANIM_DURATION: float = 0.25
 # enemy resumes its AI.
 var _hurt_anim_time: float = 0.0
 const HURT_ANIM_DURATION: float = 0.18
+# Iter 169 — stuck detection + side-step. Pre-iter-169 chase_contact
+# enemies wedged against walls / pillars / each other just pushed
+# into the obstacle forever (no pathfinding). User read: "Enemy AI
+# seems dumb in general and gets stuck a lot."
+#
+# Heuristic (cheap, no NavigationAgent2D): every STUCK_CHECK_INTERVAL
+# seconds, compare the enemy's position to where it WAS at the last
+# check. If the intended velocity is non-zero (the enemy is trying
+# to move) AND actual movement was less than STUCK_DIST_THRESHOLD,
+# the enemy is wedged. Override velocity with a perpendicular
+# direction for STUCK_DODGE_DURATION so the enemy "side-steps" around
+# the obstacle. After the dodge window the normal AI resumes — if
+# the enemy is STILL stuck, the next check fires another dodge in
+# the OPPOSITE direction (50/50 randomized so a pile of enemies
+# doesn't collectively rubber-band the same way).
+const STUCK_CHECK_INTERVAL: float = 0.55
+const STUCK_DIST_THRESHOLD: float = 14.0
+const STUCK_DODGE_DURATION: float = 0.40
+var _stuck_check_timer: float = 0.0
+var _stuck_check_pos: Vector2 = Vector2.ZERO
+var _stuck_dodge_timer: float = 0.0
+var _stuck_dodge_dir: Vector2 = Vector2.ZERO
 # Iter 152 — idle bob: subtle vertical sin oscillation on the sprite
 # during non-action states so enemies look ALIVE instead of statues
 # pinned to the floor. Each enemy gets a random phase at _ready so a
@@ -734,6 +756,43 @@ func _physics_process(delta: float) -> void:
 # ── Behavior: chase_contact ───────────────────────────────────────────
 # Walk straight at hero. Body-bump deals damage on a timer while in
 # contact range. Used by slime, crypt_spider, orc, ember, werewolf.
+# Iter 169 — stuck-detection helper. Takes the intended velocity (the
+# behavior's desired direction × speed); returns either the same
+# velocity (free path) or a perpendicular override (dodging an
+# obstacle). The caller assigns the result to self.velocity.
+#
+# Self-resetting: when the dodge window expires, the next regular
+# check baselines a fresh _stuck_check_pos. If the enemy is still
+# pinned, the next dodge picks a perpendicular (50/50 randomized)
+# — opposite-direction dodges aren't forced because that would
+# rubber-band a pile of enemies the same way.
+func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
+	# Currently in a dodge window — keep using the perpendicular dir
+	# at the intended speed.
+	if _stuck_dodge_timer > 0.0:
+		_stuck_dodge_timer -= delta
+		return _stuck_dodge_dir * intended.length()
+	# Tick the stuck-check timer; only evaluate when interval elapses.
+	_stuck_check_timer += delta
+	if _stuck_check_timer < STUCK_CHECK_INTERVAL:
+		return intended
+	_stuck_check_timer = 0.0
+	var moved: float = global_position.distance_to(_stuck_check_pos)
+	_stuck_check_pos = global_position
+	# Only count as stuck if we WERE trying to move AND failed to.
+	# A standing-still enemy (intended near zero) isn't stuck, it's
+	# just at idle.
+	if intended.length() < 1.0 or moved >= STUCK_DIST_THRESHOLD:
+		return intended
+	# Stuck. Pick a perpendicular direction. 50/50 left/right.
+	var dir: Vector2 = intended.normalized()
+	var perp: Vector2 = Vector2(-dir.y, dir.x)
+	if randf() < 0.5:
+		perp = -perp
+	_stuck_dodge_dir = perp
+	_stuck_dodge_timer = STUCK_DODGE_DURATION
+	return perp * intended.length()
+
 func _tick_chase_contact(delta: float) -> void:
 	var t: EnemyType = enemy_type
 	_contact_cd = max(0.0, _contact_cd - delta)
@@ -759,7 +818,12 @@ func _tick_chase_contact(delta: float) -> void:
 	var to_hero: Vector2 = _hero.global_position - global_position
 	var dist: float = to_hero.length()
 	if t.can_move() and dist > 1.0:
-		velocity = to_hero.normalized() * _effective_move_speed()
+		# Iter 169 — pipe the intended chase velocity through the
+		# stuck-dodge helper so wedged enemies side-step. When not
+		# stuck this is a no-op identity (returns the intended
+		# vector unchanged).
+		var intended: Vector2 = to_hero.normalized() * _effective_move_speed()
+		velocity = _maybe_stuck_dodge(delta, intended)
 		# iter-106: hold "attack" pose during the post-hit window so
 		# the sprite reads as the bite/lunge that landed damage.
 		# Fall back to walk if the enemy has no attack frames OR the
@@ -1716,7 +1780,12 @@ func _tick_telegraphed_melee(delta: float) -> void:
 		MeleeState.IDLE:
 			if dist > t.melee_reach * 0.85:
 				if t.can_move():
-					velocity = to_hero.normalized() * _effective_move_speed()
+					# Iter 169 — stuck-dodge for telegraphed_melee. Same
+					# helper as chase_contact. Without this, the larger
+					# melee enemies (Iron Revenant, elite orcs, armored
+					# skel) push into corners and never reach the hero.
+					var intended: Vector2 = to_hero.normalized() * _effective_move_speed()
+					velocity = _maybe_stuck_dodge(delta, intended)
 					sprite.play(&"walk")
 					move_and_slide()
 				else:

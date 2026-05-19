@@ -2,8 +2,14 @@
 
 [ext_resource type="Script" path="res://scripts/projectile.gd" id="1_script"]
 
+; Iter 167 — radius 6 → 12. The orb sprite is ~32 px visible; a 6 px
+; collider meant the blast "missed" enemies it visually overlapped
+; (user-reported "blast doesn't feel like it has a proper hitbox").
+; 12 px is half the visible sprite — generous enough that the player
+; reliably hits things they aimed at, small enough that enemy bolts
+; aren't impossible to dodge.
 [sub_resource type="CircleShape2D" id="proj_shape"]
-radius = 6.0
+radius = 12.0
 
 ; Magenta-cored orb — distinct from torch orange + slime/skel red.
 ; Reads as "magic" at a glance in the torchlit dungeon.
