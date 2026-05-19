@@ -28,6 +28,11 @@ func _ready() -> void:
 	_bind_key("shield",      KEY_Q)
 	_bind_key("dash_strike", KEY_SHIFT)
 	_bind_key("interact",    KEY_E)
+	# Iter 201 — active relic key. Triggers SOUL SURGE (and any future
+	# active relic) on press if owned + cooldown ready. Bound to R so
+	# it sits naturally on the WASD home row without conflicting with
+	# shift / Q / E.
+	_bind_key("active_relic", KEY_R)
 	_bind_mouse("attack", MOUSE_BUTTON_LEFT)
 	_bind_mouse("blast",  MOUSE_BUTTON_RIGHT)
 	# Physics-tether prototype (post-iter-157 pivot). Held to yank the

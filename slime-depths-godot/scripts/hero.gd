@@ -328,6 +328,15 @@ var _attack_live := 0.0
 var _attack_aim := Vector2.RIGHT
 var _is_attacking := false
 
+# Iter 201 — active relic cooldown timer. Decrements each frame; while
+# > 0 the active relic input is gated. Reset to ACTIVE_RELIC_COOLDOWN
+# on each successful activation. _active_relic_owned is cached at
+# relic-claim so the input-handler doesn't dict-lookup every frame.
+const ACTIVE_RELIC_COOLDOWN: float = 18.0
+const ACTIVE_RELIC_RADIUS: float = 100.0
+const ACTIVE_RELIC_DAMAGE: int = 3
+var _active_relic_cd: float = 0.0
+
 # Iter 12 — 0..7 bucket (N,NE,E,SE,S,SW,W,NW). Default south so the
 # player sees the hero's face on spawn (not the back).
 var _facing_dir: int = 4
@@ -626,6 +635,10 @@ func _save_persistent_state() -> void:
 
 func _physics_process(delta: float) -> void:
 	_attack_cd        = max(0.0, _attack_cd        - delta)
+	# Iter 201 — active relic cooldown tick. Decrements regardless of
+	# whether the player owns the relic so a re-pickup doesn't get a
+	# free instant cast.
+	_active_relic_cd  = max(0.0, _active_relic_cd  - delta)
 	_attack_live      = max(0.0, _attack_live      - delta)
 	# iter-95: _dodge_cd and _dodge_time timer decrements removed with
 	# the dodge ability.
@@ -911,6 +924,16 @@ func _physics_process(delta: float) -> void:
 		_start_blast()
 	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _shield_time <= 0.0 and _dash_strike_time <= 0.0:
 		_start_attack()
+	# Iter 201 — active relic input. Outside the if/elif chain because
+	# active relic should be triggerable mid-swing / mid-blast (it's
+	# a defensive/burst tool the player uses when surrounded). Only
+	# fires if (a) Soul Surge is owned, (b) cooldown ready, (c) hero
+	# alive. Press-once gate via is_action_just_pressed.
+	if Input.is_action_just_pressed("active_relic") \
+			and _active_relic_cd <= 0.0 \
+			and _alive \
+			and GameState.has_relic("soul_surge"):
+		_trigger_soul_surge()
 
 # Facing picker. Returns the direction bucket the sprite should render
 # THIS tick. Priority: dying = sticky · hurt = sticky · attacking/dashing
@@ -2336,6 +2359,60 @@ func _can_start_dash_strike() -> bool:
 # iter-95: _can_cancel_dodge_into_dash_strike() removed alongside the
 # dodge ability. With no dodge to cancel, the iter-70 dodge-cancel
 # feel-improver is gone too.
+
+# Iter 201 — first active relic: SOUL SURGE. Press R, AoE damage burst
+# around hero, 18 s cooldown. Establishes the active-relic pattern that
+# Isaac's D6 + Blank Card use — once one active relic exists, future
+# active items can reuse this same handler shape.
+#
+# Effect: 3 damage to every enemy within 100 px radius. Spawns a violet-
+# white expanding ring at hero position + trauma shake + audio cue.
+# No directional aim (it's omnidirectional), no projectile travel
+# (instant AoE), no charge time (snap-cast for clutch moments).
+func _trigger_soul_surge() -> void:
+	_active_relic_cd = ACTIVE_RELIC_COOLDOWN
+	# Damage all enemies in radius via group iteration.
+	var radius_sq: float = ACTIVE_RELIC_RADIUS * ACTIVE_RELIC_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		if not (e is Node2D):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - global_position
+		if d.length_squared() <= radius_sq:
+			if e.has_method("take_hit"):
+				e.take_hit(ACTIVE_RELIC_DAMAGE, false)
+	# Visual: expanding violet-white ring at hero position. Built inline
+	# as a Polygon2D so we don't need a new scene file. Tweens scale
+	# 0.15 → 1.0 (matches the 100 px radius constant) over 220 ms +
+	# fades alpha to 0. Similar grammar to the iter-181 impact ring on
+	# hit, but bigger and cooler-toned to read as "your power surged"
+	# rather than "an enemy was hit."
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 28
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * ACTIVE_RELIC_RADIUS)
+	ring.polygon = pts
+	ring.position = global_position
+	ring.color = Color(0.78, 0.62, 1.0, 0.75)
+	ring.scale = Vector2(0.15, 0.15)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2.ONE, 0.22)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.22)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+	# Trauma shake + audio cue.
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.55)
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", global_position)
 
 func _start_dash_strike() -> void:
 	var aim_world := get_global_mouse_position() - global_position

@@ -588,6 +588,23 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["shadow"],
 	},
+	# Iter 201 — SOUL SURGE. First ACTIVE relic in the registry. Every
+	# other relic is passive (constant stat / occasional proc); this one
+	# binds to a key (R) and triggers an explicit AoE burst around the
+	# hero on press, on a 18-second cooldown. Establishes the active-
+	# item pattern Isaac's D6 + Blank Card rely on — once one active
+	# relic exists, future relics can use the same handler hook.
+	# Mods carry an `active` tag the hero reads to wire input + cooldown.
+	"soul_surge": {
+		"name": "SOUL SURGE",
+		"description": "Press [R] to release a violent burst around you, dealing 3 damage to all enemies within 100 px. 18 s cooldown.",
+		"tier": "mythic",
+		"icon_path": "res://assets/icons/relic_nimble_step.png",
+		"mods": {
+			"active_soul_surge": 1,
+		},
+		"themes": ["shadow"],
+	},
 	# Iter 56 — familiar pet relics. Drive familiar_count modifier
 	# which main.gd._sync_familiars reads to spawn / despawn wisps
 	# that orbit the hero and auto-fire at nearby enemies. Pairs
