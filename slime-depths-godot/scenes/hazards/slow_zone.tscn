@@ -1,9 +1,19 @@
-[gd_scene load_steps=5 format=3 uid="uid://b3slowzone0001"]
+[gd_scene load_steps=7 format=3 uid="uid://b3slowzone0001"]
 
 [ext_resource type="Script" path="res://scripts/slow_zone.gd" id="1_script"]
 
 [sub_resource type="CircleShape2D" id="slowzone_area"]
 radius = 36.0
+
+; Iter 190 batch 3 — toxic wisp color ramp. Pre-iter-190 the well had
+; static pool + ripple + bubbles but no vertical motion. User direction:
+; "make the central green hazard feel more embedded, stronger identity."
+; Slow upward-drifting wisps (CPUParticles2D below) give the well a
+; living, breathing presence — the cursed magic is ACTIVE in the room.
+; Toxic green fading to transparent at the top of lifetime.
+[sub_resource type="Gradient" id="wisp_grad"]
+offsets = PackedFloat32Array(0, 0.25, 0.75, 1)
+colors = PackedColorArray(0.45, 0.78, 0.28, 0, 0.55, 0.82, 0.30, 0.40, 0.50, 0.75, 0.28, 0.20, 0.30, 0.45, 0.18, 0)
 
 ; Iter 189 batch 2 — toxic light texture. Soft radial gradient sized
 ; 192×192 so the slow zone's PointLight2D emits a ~120 px green-tinted
@@ -210,6 +220,33 @@ range_z_max = 1024
 texture = SubResource("toxic_light_tex")
 texture_scale = 1.0
 shadow_enabled = false
+
+; Iter 190 batch 3 — toxic wisps. Slow upward drift, sparse (amount=6)
+; so they read as occasional gas emissions, not a constant fountain.
+; Reference: same pattern as torch.tscn's Smoke wisp. Lifetime 2.0s
+; with gradient fade in/out means each wisp appears, rises ~32 px,
+; fades. emission_sphere_radius = 16 covers the entire pool surface
+; so wisps emerge from random points within the basin.
+; preprocess = 1.0 so wisps are already mid-rise when the room loads —
+; player sees an ACTIVE well, not "fountain just started."
+; z_index = 5 puts wisps above the props but below hero/enemies.
+[node name="Wisps" type="CPUParticles2D" parent="."]
+amount = 6
+lifetime = 2.0
+preprocess = 1.0
+emission_shape = 1
+emission_sphere_radius = 16.0
+direction = Vector2(0, -1)
+spread = 20.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 8.0
+initial_velocity_max = 18.0
+damping_min = 0.4
+damping_max = 1.0
+scale_amount_min = 1.8
+scale_amount_max = 3.4
+color_ramp = SubResource("wisp_grad")
+z_index = 5
 
 ; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
 ; Sits at z=1 below the main pool so the player sees a wider danger

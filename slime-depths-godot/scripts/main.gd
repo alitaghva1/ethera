@@ -1213,6 +1213,12 @@ func _spawn_room_chrome() -> void:
 	_spawn_wall_base_trim()
 	_spawn_perimeter_alcove()
 	_spawn_hanging_chain()
+	# Iter 190 batch 3 — broken masonry chunks at perimeter inner edge.
+	# Small irregular polygon chunks sitting ON the floor right against
+	# the wall, looking like pieces that fell from the wall. 2-3 per
+	# room, seeded per room. Reads as "this hall has SEEN AGE" —
+	# environmental storytelling for the Outer Hall crypt theme.
+	_spawn_perimeter_rubble()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -2085,6 +2091,64 @@ func _spawn_hanging_chain() -> void:
 	chain.modulate = Color(1, 1, 1, 0.78)
 	chain.z_index = 2
 	add_child(chain)
+
+# Iter 190 batch 3 — broken masonry rubble at perimeter inner edge.
+# 2-3 small irregular polygon chunks per room, positioned ON the floor
+# right against the wall mass (just inside the playable area).
+# Reads as "pieces of wall that have fallen and lie on the floor" —
+# environmental storytelling matching the iter-188 alcove ("burial
+# niche") + iter-190 batch 2 tilted walls ("fallen slabs").
+# Seeded per-room for stable layout within a run, fresh per run.
+const PERIMETER_RUBBLE_CANDIDATES: Array[Vector2] = [
+	Vector2(120, 130),   # NW corner
+	Vector2(640, 110),   # N center
+	Vector2(1160, 130),  # NE corner
+	Vector2(120, 640),   # SW corner
+	Vector2(640, 660),   # S center
+	Vector2(1160, 640),  # SE corner
+	Vector2(110, 380),   # W center
+	Vector2(1170, 380),  # E center
+]
+
+func _spawn_perimeter_rubble() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 8893 + GameState.dungeon_runs * 17 + 53
+	var num: int = rng.randi_range(2, 3)
+	var pool: Array[Vector2] = PERIMETER_RUBBLE_CANDIDATES.duplicate()
+	for i in range(num):
+		if pool.is_empty():
+			break
+		var idx: int = rng.randi() % pool.size()
+		var pos: Vector2 = pool[idx]
+		pool.remove_at(idx)
+		# Spawn 1-3 chunks tightly clustered at this position so the
+		# rubble reads as a PILE not a single stone.
+		var chunk_count: int = rng.randi_range(1, 3)
+		for j in range(chunk_count):
+			var chunk: Polygon2D = Polygon2D.new()
+			# 5-vertex irregular polygon — pseudo-random rocky chunk.
+			var r1: float = rng.randf_range(5.0, 9.0)
+			var pts: PackedVector2Array = PackedVector2Array()
+			var verts: int = 5
+			for v in range(verts):
+				var t: float = float(v) / verts * TAU
+				var radius: float = r1 * rng.randf_range(0.6, 1.0)
+				pts.append(Vector2(cos(t) * radius, sin(t) * radius))
+			chunk.polygon = pts
+			chunk.position = pos + Vector2(
+				rng.randf_range(-12.0, 12.0),
+				rng.randf_range(-8.0, 8.0)
+			)
+			# Color: slightly lighter than wall mass (chunks caught in
+			# the warm torch light catch more light than the deep wall).
+			chunk.color = Color(
+				_biome_wall_color.r + 0.06,
+				_biome_wall_color.g + 0.05,
+				_biome_wall_color.b + 0.07,
+				1.0
+			)
+			chunk.z_index = 1
+			add_child(chunk)
 
 # Wall overlays — 2-3 random PixelLab decals placed on the perimeter
 # wall mass per room. Sits at z = 1 so it's above the wall mass and the
