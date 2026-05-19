@@ -49,6 +49,18 @@ var _rect: ColorRect = null
 # color and leave residual tint).
 var _flash_tween: Tween = null
 
+# Iter 194 — damage edge vignette. Replaces the iter-? full-viewport red
+# wash (which over-painted the gameplay area red on every hit — user
+# critique "too blunt / too intrusive / drowns the room in red").
+# New design: 4 perimeter wedge Polygon2Ds with vertex-color gradient
+# from solid red at the screen edge to transparent toward center. Hit
+# feedback appears in PERIPHERAL VISION while the central play area
+# stays unobscured — combat readability preserved through the hit.
+# The wedges live in a Node2D wrapper so a single modulate tween
+# controls the whole vignette as one unit.
+var _damage_vignette: Node2D = null
+var _damage_tween: Tween = null
+
 # Iter 19 — sign counter for alternating slash-arc tilt. Bumps each
 # time a slash arc spawns; the arc reads its parity to decide whether
 # to tilt CW or CCW. Living on ScreenFlash (the spawn site) means the
@@ -79,6 +91,11 @@ func _ready() -> void:
 	_rect.color = Color(0.0, 0.0, 0.0, 0.0)
 	add_child(_rect)
 
+	# Iter 194 — build the damage edge vignette. Done once at _ready
+	# so we don't pay the geometry cost on every hit. Sits in its own
+	# Node2D wrapper for unified modulate-alpha control.
+	_build_damage_vignette()
+
 	# Connect to the gameplay event bus. Single _ready on an autoload
 	# means no risk of duplicate connections, but we still defensively
 	# avoid re-connecting if something weird happens.
@@ -94,6 +111,66 @@ func _ready() -> void:
 	# for a layered "you killed the boss" beat that lands BEFORE the
 	# FloorClearBurst gold cascade takes over.
 	Events.boss_died.connect(_on_boss_died)
+
+# Iter 194 — damage edge vignette construction. Built ONCE at _ready,
+# alpha 0 between hits. _on_hero_damaged tweens its modulate alpha
+# 0.85 → 0 over ~0.28 s on each hit. Four wedge Polygon2Ds with
+# vertex-color gradient from red-at-edge → transparent-at-inner so
+# the center of the screen stays clear during the pulse — combat
+# readability preserved through the hit feedback moment.
+#
+# Wedge depth 110 px on each side. The 1280×720 viewport gets red
+# pulses in the outer band only; everything inside the 110-px inset
+# rectangle (x=110..1170, y=110..610) stays unobscured — that's the
+# 1060×500 zone where 95% of combat happens.
+#
+# Pure red (0.86, 0.08, 0.08) — saturated, no green/blue contamination,
+# reads as "blood/danger" not as "ketchup pink."
+const DAMAGE_VIGNETTE_DEPTH: float = 110.0
+const DAMAGE_VIGNETTE_RED: Color = Color(0.86, 0.08, 0.08, 1.0)
+const VIEWPORT_W: float = 1280.0
+const VIEWPORT_H: float = 720.0
+
+func _build_damage_vignette() -> void:
+	_damage_vignette = Node2D.new()
+	_damage_vignette.name = "DamageVignette"
+	_damage_vignette.modulate = Color(1, 1, 1, 0)
+	var d: float = DAMAGE_VIGNETTE_DEPTH
+	var r: Color = DAMAGE_VIGNETTE_RED
+	var clear: Color = Color(r.r, r.g, r.b, 0.0)
+	# TOP wedge — solid red at y=0, transparent at y=d
+	var top: Polygon2D = Polygon2D.new()
+	top.polygon = PackedVector2Array([
+		Vector2(0, 0), Vector2(VIEWPORT_W, 0),
+		Vector2(VIEWPORT_W, d), Vector2(0, d),
+	])
+	top.vertex_colors = PackedColorArray([r, r, clear, clear])
+	_damage_vignette.add_child(top)
+	# BOTTOM wedge — solid red at y=VIEWPORT_H, transparent at y=VIEWPORT_H-d
+	var bot: Polygon2D = Polygon2D.new()
+	bot.polygon = PackedVector2Array([
+		Vector2(0, VIEWPORT_H - d), Vector2(VIEWPORT_W, VIEWPORT_H - d),
+		Vector2(VIEWPORT_W, VIEWPORT_H), Vector2(0, VIEWPORT_H),
+	])
+	bot.vertex_colors = PackedColorArray([clear, clear, r, r])
+	_damage_vignette.add_child(bot)
+	# LEFT wedge — solid red at x=0, transparent at x=d
+	var lf: Polygon2D = Polygon2D.new()
+	lf.polygon = PackedVector2Array([
+		Vector2(0, 0), Vector2(d, 0),
+		Vector2(d, VIEWPORT_H), Vector2(0, VIEWPORT_H),
+	])
+	lf.vertex_colors = PackedColorArray([r, clear, clear, r])
+	_damage_vignette.add_child(lf)
+	# RIGHT wedge — solid red at x=VIEWPORT_W
+	var rt: Polygon2D = Polygon2D.new()
+	rt.polygon = PackedVector2Array([
+		Vector2(VIEWPORT_W - d, 0), Vector2(VIEWPORT_W, 0),
+		Vector2(VIEWPORT_W, VIEWPORT_H), Vector2(VIEWPORT_W - d, VIEWPORT_H),
+	])
+	rt.vertex_colors = PackedColorArray([clear, r, r, clear])
+	_damage_vignette.add_child(rt)
+	add_child(_damage_vignette)
 
 # ── Flash helper ──────────────────────────────────────────────────────
 
@@ -194,8 +271,26 @@ func _spawn_directional(scene: PackedScene, world_pos: Vector2, aim: Vector2) ->
 # ── Signal handlers ───────────────────────────────────────────────────
 
 func _on_hero_damaged(_world_pos: Vector2) -> void:
-	# Red, mid-strength, quick fade — should *feel* like a slap.
-	_flash(Color(0.95, 0.2, 0.2, 0.35), 0.25)
+	# Iter 194 — replaced full-viewport red wash with EDGE vignette pulse.
+	# Pre-iter-194 the damage feedback painted the entire viewport red at
+	# 0.35 alpha for 0.25 s — drowned the gameplay area in red and made
+	# combat hard to read THROUGH the hit. User: "too blunt / too
+	# intrusive / not aesthetically aligned." New approach: pulse the
+	# 4-wedge perimeter red vignette (built in _build_damage_vignette).
+	# Player feels the hit in peripheral vision while the room art and
+	# combat readability stay clean.
+	if _damage_vignette == null:
+		return
+	if _damage_tween != null and _damage_tween.is_valid():
+		_damage_tween.kill()
+	# Snap to peak alpha then ease back to 0. 0.65 peak at the very
+	# edges + vertex-gradient to clear at the inner edge of each wedge
+	# means perceived intensity is high at the screen corners and zero
+	# at center.
+	_damage_vignette.modulate = Color(1, 1, 1, 0.85)
+	_damage_tween = create_tween()
+	_damage_tween.tween_property(_damage_vignette, "modulate:a", 0.0, 0.28)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _on_hero_shielded(_world_pos: Vector2) -> void:
 	# iter-95: was _on_hero_dodged. The dodge ability is gone — this
