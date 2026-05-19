@@ -640,43 +640,51 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -160.0
-offset_top = -30.0
-offset_right = 160.0
-offset_bottom = 240.0
+offset_left = -180.0
+offset_top = -60.0
+offset_right = 180.0
+offset_bottom = 200.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 16
+theme_override_constants/separation = 14
 alignment = 1
 
-; iter-92: BEGIN → AWAKEN to match the JS reference. "Awaken" carries
-; the dark-fantasy revival feel ("you are roused from the slumber...")
-; that "BEGIN" reads as flat-arcade.
+; Iter 164 — clear primary/secondary hierarchy. Pre-iter-164 the three
+; buttons were 58/54/54 with 22pt/18pt/18pt fonts — visually almost
+; identical, so no button read as THE primary action. Now BEGIN is
+; dramatically larger (84 px tall, 32 pt font, warmer gold) and the
+; secondary buttons are uniform 50 px / 17 pt in cool cream so the
+; player's eye goes to BEGIN first.
+;
+; Text also reverted AWAKEN → BEGIN. "Awaken" was a dark-fantasy
+; flavor pick (iter-92) but reads as obscure for a first-time
+; player. "BEGIN" is universal-verb-of-roguelite menus (Hades,
+; Dead Cells, Hollow Knight all use BEGIN/START/PLAY).
 [node name="BeginButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(360, 58)
+custom_minimum_size = Vector2(360, 72)
 focus_mode = 2
 theme_override_fonts/font = SubResource("title_font")
-theme_override_font_sizes/font_size = 22
-theme_override_colors/font_color = Color(0.94, 0.84, 0.58, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
-theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
-theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1.0, 0.86, 0.50, 1)
+theme_override_colors/font_hover_color = Color(1, 0.96, 0.74, 1)
+theme_override_colors/font_focus_color = Color(1, 0.97, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
+theme_override_constants/outline_size = 4
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
 theme_override_styles/pressed = SubResource("button_hover")
 theme_override_styles/focus = SubResource("button_focus")
-text = "AWAKEN"
+text = "BEGIN"
 
 [node name="SettingsButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(360, 54)
+custom_minimum_size = Vector2(360, 50)
 focus_mode = 2
 theme_override_fonts/font = SubResource("title_font")
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.86, 0.76, 0.52, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
-theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.80, 0.72, 0.55, 1)
+theme_override_colors/font_hover_color = Color(1, 0.94, 0.72, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.76, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
 theme_override_constants/outline_size = 3
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
@@ -685,14 +693,14 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "SETTINGS"
 
 [node name="QuitButton" type="Button" parent="CenterStack"]
-custom_minimum_size = Vector2(360, 54)
+custom_minimum_size = Vector2(360, 50)
 focus_mode = 2
 theme_override_fonts/font = SubResource("title_font")
-theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color(0.86, 0.76, 0.52, 1)
-theme_override_colors/font_hover_color = Color(1, 0.95, 0.74, 1)
-theme_override_colors/font_focus_color = Color(1, 0.96, 0.78, 1)
-theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.80, 0.72, 0.55, 1)
+theme_override_colors/font_hover_color = Color(1, 0.94, 0.72, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.76, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
 theme_override_constants/outline_size = 3
 theme_override_styles/normal = SubResource("button_normal")
 theme_override_styles/hover = SubResource("button_hover")
@@ -701,29 +709,25 @@ theme_override_styles/focus = SubResource("button_focus")
 text = "QUIT"
 
 ; ── Records panel (bottom-left, low-key) ──────────────────────────────
-; iter-93: shifted up by 18 px so the "last run" line has clean
-; breathing room from the viewport bottom edge.
-; iter-126: shifted RIGHT-edge of x range from 48 → 116 (16 px past
-; CornerBL's x=100 right edge). Pre-iter-126 the records text ran
-; UNDER the corner-flourish L-hairlines on the bottom-left — the user
-; called this out. Same correction on the right edge: 344 → 412 to
-; preserve the block's 296 px text width.
-; Plus body_font applied to every line so the records read as the
-; same typographic family as the title + tagline.
+; Iter 164 — trimmed from 5 records lines to 3. Pre-iter-164 the
+; block carried RUNS / BEST KILLS / BEST TIME / LIFETIME KILLS /
+; LAST RUN — too dense at 11/10 pt to read at a glance, and
+; LIFETIME KILLS + LAST RUN duplicated information either visible
+; elsewhere (death screen shows last-run kills already) or not
+; meaningful at the menu (lifetime is a vanity stat). Now only the
+; three records the player actually CHASES: RUNS, BEST TIME, BEST
+; KILLS. Block is also narrower (100..360 vs 116..412 — 260 px text
+; width vs 296 — tighter on the page).
 [node name="StatsBlock" type="VBoxContainer" parent="."]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 116.0
-offset_top = -150.0
-offset_right = 412.0
-offset_bottom = -46.0
+offset_left = 100.0
+offset_top = -116.0
+offset_right = 360.0
+offset_bottom = -42.0
 theme_override_constants/separation = 2
 
-; iter-127 records — dimmed further so they read as quiet annotation,
-; not active UI. Header alpha 0.85 → 0.55, body alpha 0.85 → 0.55.
-; Font sizes 14/12 → 11/10. Outlines removed entirely — at this alpha
-; + size, an outline reads as halo noise rather than legibility help.
 [node name="StatsTitle" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 11
@@ -736,32 +740,17 @@ theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
 text = "runs ··············· 0"
 
-[node name="StatsBestRun" type="Label" parent="StatsBlock"]
-theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 10
-theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
-text = "best run kills ······ 0"
-
-; Iter 159 — best run TIME, formatted m:ss. Mirrors the dotted-leader
-; visual of the other records lines. Populated by main_menu.gd from
-; GameState.best_run_time at _ready.
 [node name="StatsBestTime" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
-text = "best run time ······· --"
+text = "best time ··········· --"
 
-[node name="StatsLifetimeKills" type="Label" parent="StatsBlock"]
+[node name="StatsBestRun" type="Label" parent="StatsBlock"]
 theme_override_fonts/font = SubResource("body_font")
 theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.92, 0.86, 0.72, 0.55)
-text = "lifetime kills ······· 0"
-
-[node name="StatsLastRun" type="Label" parent="StatsBlock"]
-theme_override_fonts/font = SubResource("body_font")
-theme_override_font_sizes/font_size = 10
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.45)
-text = ""
+text = "best kills ·········· 0"
 
 ; iter-126: version label moved away from CornerBR. Pre-iter-126
 ; offset_right was -36 (right edge of viewport−36, exactly where CornerBR

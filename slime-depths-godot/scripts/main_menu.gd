@@ -74,11 +74,12 @@ const PARALLAX_LERP_RATE := 6.0
 # SaveSystem already round-trips the underlying fields so a player returning
 # between sessions sees their accumulated runs / kills / best run carry over.
 @onready var stats_runs: Label = $StatsBlock/StatsRuns
-@onready var stats_best: Label = $StatsBlock/StatsBestRun
-# Iter 159 — best run TIME, shown alongside best kills.
+# Iter 164 — order swapped so the player's eye flows top-down RUNS →
+# BEST TIME → BEST KILLS (the three records they actually chase).
+# Lifetime kills + last-run labels dropped — duplicate info / vanity
+# stats that bloated the corner.
 @onready var stats_best_time: Label = $StatsBlock/StatsBestTime
-@onready var stats_lifetime: Label = $StatsBlock/StatsLifetimeKills
-@onready var stats_last: Label = $StatsBlock/StatsLastRun
+@onready var stats_best: Label = $StatsBlock/StatsBestRun
 
 # Per-button tween cache. Storing the active tween lets a follow-up
 # hover_exited correctly kill the in-flight grow-in animation so the
@@ -158,21 +159,15 @@ func _ready() -> void:
 # — same trick the slime-depths JS HUD uses for its records screen.
 # Numeric formatting via "%d" so big numbers don't break the layout.
 func _populate_stats() -> void:
+	# Iter 164 — three records, in the order the player cares about
+	# them top-down: how many runs, what's my fastest, what's my
+	# kill peak. Dotted-leader strings keep the right-edge values
+	# visually aligned (the body_font isn't monospace, so the dots
+	# substitute for tabular numbers).
 	var best: int = max(GameState.best_run_kills, GameState.last_run_kills)
-	stats_runs.text = "runs ··············· %d" % GameState.dungeon_runs
-	stats_best.text = "best run kills ······ %d" % best
-	# Iter 159 — best run time. -1 sentinel for "no run completed yet"
-	# renders as "--" so the player sees a fresh-slate state on launch
-	# rather than "0:00" which would falsely imply they've already run.
-	stats_best_time.text = "best run time ······· %s" % _format_best_time()
-	stats_lifetime.text = "lifetime kills ······· %d" % GameState.session_kills
-	# Only show last-run line after at least one run completed; an empty
-	# line on first launch avoids the "0 kills" lie before the player has
-	# played anything.
-	if GameState.dungeon_runs > 0:
-		stats_last.text = "last run ············ %d kills" % GameState.last_run_kills
-	else:
-		stats_last.text = ""
+	stats_runs.text     = "runs ··············· %d" % GameState.dungeon_runs
+	stats_best_time.text = "best time ··········· %s" % _format_best_time()
+	stats_best.text     = "best kills ·········· %d" % best
 
 # Iter 159 — format GameState.best_run_time as m:ss, or "--" when no
 # run has completed yet. The promotion from last_run_time → best_run_time
