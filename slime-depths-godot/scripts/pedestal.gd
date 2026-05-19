@@ -62,7 +62,11 @@ const DESC_FONT_SHRUNK: int = 13
 
 @export var relic_id: String = "iron_fang"
 
-@onready var plinth: Panel = $Plinth
+# Iter 178 — Plinth is now a Node2D wrapper around 3 Polygon2Ds + 1
+# Line2D (was a single Panel). Same name + path so _claim / _dismiss
+# tweens that target `plinth.modulate:a` still work — Node2D inherits
+# CanvasItem.modulate which propagates to children visually.
+@onready var plinth: Node2D = $Plinth
 @onready var orb: Sprite2D = $Orb
 @onready var name_label: Label = $InfoPanel/NameLabel
 @onready var desc_label: Label = $InfoPanel/DescLabel
@@ -97,18 +101,16 @@ const THEME_COLORS: Dictionary = {
 # plinth that indicates rarity even when the orb is off-screen.
 @onready var info_panel: Panel = $InfoPanel
 @onready var halo_sprite: Sprite2D = $HaloSprite
-# Iter 178 — TierCap changed from ColorRect → Polygon2D (3-piece stone
-# plinth). Same role: tier-colored strip on the plinth top. Polygon2D
-# allows the trapezoidal silhouette of the new plinth.
-@onready var tier_cap: Polygon2D = $TierCap
-# Iter 178 — new framing nodes for the polished relic-choice room.
-# All resolved by NODE NAME so the scene file can be re-laid-out
-# without touching code.
+# Iter 178 — TierCap is now a Polygon2D under the Plinth wrapper.
+# Was a ColorRect at the pedestal root pre-iter-178.
+@onready var tier_cap: Polygon2D = $Plinth/TierCap
+# Iter 178 — new framing nodes. Resolved by node path; the Plinth
+# wrapper holds the 3 stone pieces + outline.
 @onready var active_glow_ring: Polygon2D = $ActiveGlowRing
 @onready var vertical_aura: Sprite2D = $VerticalAura
 @onready var orb_shadow: Polygon2D = $OrbShadow
-@onready var plinth_side: Polygon2D = $PlinthSide
-@onready var plinth_top: Polygon2D = $PlinthTop
+@onready var plinth_side: Polygon2D = $Plinth/PlinthSide
+@onready var plinth_top: Polygon2D = $Plinth/PlinthTop
 # Tracks the active-glow alpha tween so a rapid enter/exit doesn't
 # pile alpha. Same kill-prior pattern as main.gd's pulse helpers.
 var _active_glow_tween: Tween = null
