@@ -961,15 +961,15 @@ func load_from_dict(d: Dictionary) -> void:
 	# iter-123: tolerant load of the controls-hint flag. Missing key on
 	# pre-v4 saves → false (player hasn't seen the hint on this profile,
 	# so it shows on next room load — desired behavior on upgrade).
-	# Iter 191 — fix Godot 4 "Nonexistent 'bool' constructor" crash.
-	# `bool(x)` is not callable in 4.x; cast via `as bool` instead
-	# (Variant → bool, safe for JSON-loaded bool values).
-	has_seen_controls_hint = d.get("has_seen_controls_hint", false) as bool
+	# Iter 196 — fix iter-191 regression. `as bool` returns null on
+	# primitive types in Godot 4; explicit == true comparison gives a
+	# real bool safe for typed assignment.
+	has_seen_controls_hint = d.get("has_seen_controls_hint", false) == true
 	# Iter 160 — tutorial completion flag. Missing on pre-v5 saves → false
 	# (the existing player sees the tutorial on their next first room
 	# load — fine, it's a 30-second beat that auto-completes once they
 	# play).
-	has_completed_tutorial = d.get("has_completed_tutorial", false) as bool
+	has_completed_tutorial = d.get("has_completed_tutorial", false) == true
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and
