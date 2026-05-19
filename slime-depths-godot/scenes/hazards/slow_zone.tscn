@@ -50,23 +50,33 @@ shape = SubResource("slowzone_area")
 ; Sits at z=1 below the main pool so the player sees a wider danger
 ; footprint on the floor (the pool itself is opaque + bounded; the halo
 ; bleeds out further to communicate "you're inside the field").
+; Iter 183 item 3 — palette role separation (ChatGPT critique #5). Pushed
+; green-teal (0.40, 0.78, 0.52) toward yellow-green-toxic (0.58, 0.78,
+; 0.30) so the slow-zone reads as POISON/SWAMP hazard rather than
+; "fresh magical field" — clearer hazard channel against the cool dark
+; stone ambient. Also bumped alpha 0.18 → 0.22 for better edge read.
 [node name="FootprintHalo" type="Polygon2D" parent="."]
 z_index = 1
 polygon = PackedVector2Array(44, 0, 38.2, 22, 22, 38.2, 0, 44, -22, 38.2, -38.2, 22, -44, 0, -38.2, -22, -22, -38.2, 0, -44, 22, -38.2, 38.2, -22)
-color = Color(0.40, 0.78, 0.52, 0.18)
+color = Color(0.58, 0.78, 0.30, 0.22)
 
 ; Pool — 16-vert near-circle, radius 38, murky teal. Slightly larger
 ; than the collision radius so the visual "leaks past" where it
 ; actually catches the hero.
+; Iter 183 item 3 — murky teal (0.18, 0.32, 0.24) → toxic olive
+; (0.22, 0.30, 0.13). Reads as bilious / poisonous rather than
+; clean-magic. Alpha 0.78 → 0.82 — slightly more opaque to crisp up
+; the silhouette against the new dark stone floor.
 [node name="Pool" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(38, 0, 33, 19, 19, 33, 0, 38, -19, 33, -33, 19, -38, 0, -33, -19, -19, -33, 0, -38, 19, -33, 33, -19)
-color = Color(0.18, 0.32, 0.24, 0.78)
+color = Color(0.22, 0.30, 0.13, 0.82)
 
+; Iter 183 item 3 — rim darker yellow-green to match the toxic shift.
 [node name="PoolRim" type="Line2D" parent="."]
 points = PackedVector2Array(38, 0, 33, 19, 19, 33, 0, 38, -19, 33, -33, 19, -38, 0, -33, -19, -19, -33, 0, -38, 19, -33, 33, -19)
 closed = true
 width = 2.0
-default_color = Color(0.10, 0.22, 0.16, 0.85)
+default_color = Color(0.14, 0.20, 0.06, 0.88)
 joint_mode = 2
 antialiased = true
 
@@ -94,18 +104,22 @@ color = Color(0.78, 1.0, 0.85, 0.65)
 
 ; Ripple ring — smaller polygon, brighter teal-green. Script pulses
 ; alpha and scale so the pool breathes.
+; Iter 183 item 3 — shifted from teal-green (0.45, 0.78, 0.55) to
+; yellower toxic green (0.62, 0.82, 0.30). Brighter alpha at peak so
+; the breathing pulse reads more strongly.
 [node name="RippleRing" type="Polygon2D" parent="."]
 polygon = PackedVector2Array(24, 0, 21, 12, 12, 21, 0, 24, -12, 21, -21, 12, -24, 0, -21, -12, -12, -21, 0, -24, 12, -21, 21, -12)
-color = Color(0.45, 0.78, 0.55, 0.55)
+color = Color(0.62, 0.82, 0.30, 0.58)
 
 ; Bubble A — small 4 px wide gas pip offset NW. Script sin-pulses alpha.
+; Iter 183 item 3 — shifted to yellower toxic green for consistency.
 [node name="BubbleA" type="Polygon2D" parent="."]
 position = Vector2(-14, -8)
 polygon = PackedVector2Array(-4, 0, -3, -3, 0, -4, 3, -3, 4, 0, 3, 3, 0, 4, -3, 3)
-color = Color(0.7, 0.95, 0.75, 0.7)
+color = Color(0.78, 0.92, 0.48, 0.72)
 
 ; Bubble B — small gas pip offset SE, slightly larger.
 [node name="BubbleB" type="Polygon2D" parent="."]
 position = Vector2(12, 14)
 polygon = PackedVector2Array(-5, 0, -3.5, -3.5, 0, -5, 3.5, -3.5, 5, 0, 3.5, 3.5, 0, 5, -3.5, 3.5)
-color = Color(0.7, 0.95, 0.75, 0.7)
+color = Color(0.78, 0.92, 0.48, 0.72)

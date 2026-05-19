@@ -958,7 +958,11 @@ const CHROME_WALL_STONE_COLOR: Color = Color(0.10, 0.08, 0.13, 1.0)
 const CHROME_WALL_TOP_HIGHLIGHT: Color = Color(0.48, 0.42, 0.32, 0.85)
 const CHROME_INNER_SHADOW_DARK: Color = Color(0, 0, 0, 0.55)
 const CHROME_INNER_SHADOW_CLEAR: Color = Color(0, 0, 0, 0)
-const CHROME_CORNER_DARK: Color = Color(0, 0, 0, 0.65)
+# Iter 183 item 3 — alpha 0.65 → 0.80 to push the corner darkness as
+# the iter-183 item-1 floor / item-2 brazier lights create proper warm
+# pools. Deeper corner AO = stronger "lit islands surrounded by
+# darkness" composition (ChatGPT critique #4 + Hades pattern).
+const CHROME_CORNER_DARK: Color = Color(0, 0, 0, 0.80)
 # How far the AO shadow strip reaches into the play area from each wall.
 # 32 px is large enough to read as a real shadow but small enough that
 # combat doesn't get visually compressed.
@@ -1448,18 +1452,22 @@ func _spawn_prop_anchor(pos: Vector2, is_pillar: bool) -> void:
 	sprite.z_index = 2
 	add_child(sprite)
 	# Warm brazier light. Flame is near the TOP of the 64×64 sprite, so
-	# the light source sits ~38 px above the position. Energy 0.55 is
-	# similar to torch.gd's baseline so corner braziers don't outshine
-	# centerline torches.
+	# the light source sits ~38 px above the position.
+	# Iter 183 item 3 — bumped energy 0.55 → 0.95 to keep proportion
+	# with the torch boost (energy 1.55 → 1.95) so corner braziers add
+	# real warm pools rather than disappearing under the new deeper
+	# corner AO (0.65 → 0.80 alpha). texture_scale 1.0 → 1.35 widens
+	# the brazier's pool reach so the cluster feels lit, not just
+	# tinted at the centerpoint.
 	var light: PointLight2D = PointLight2D.new()
 	light.color = Color(1.0, 0.62, 0.28, 1.0)
-	light.energy = 0.55
+	light.energy = 0.95
 	light.position = pos + Vector2(0, -38)
 	light.range_z_min = -1024
 	light.range_z_max = 1024
 	light.shadow_enabled = false
 	light.texture = _prop_light_radial_tex(128)
-	light.texture_scale = 1.0
+	light.texture_scale = 1.35
 	light.z_index = 3
 	add_child(light)
 
