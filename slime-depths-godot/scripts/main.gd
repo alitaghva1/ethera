@@ -987,6 +987,13 @@ func _spawn_room_chrome() -> void:
 	# the playable center stays uncluttered (the explicit goal of the
 	# iter-115 center mute).
 	_spawn_wall_atmosphere()
+	# Iter 184 batch 1 — masonry seams on perimeter wall mass + 2-3
+	# wall overlays (chains/blood/cobweb/crack/rune from PixelLab) +
+	# a single subtle central floor anchor sigil. Three small additions
+	# that together break the "perfect rectangle" feel.
+	_spawn_perimeter_masonry_seams()
+	_spawn_wall_overlays()
+	_spawn_floor_focal_anchor()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -1515,6 +1522,177 @@ func _prop_light_radial_tex(size: int) -> Texture2D:
 	tex.fill_from = Vector2(0.5, 0.5)
 	tex.fill_to = Vector2(1.0, 0.5)
 	return tex
+
+# ── Iter 184 Batch 1 — Room composition (break the rectangle) ─────────
+#
+# Three small additions that together fix the "perfect rectangle test
+# arena" feel without making the room busier:
+#
+# 1. Perimeter masonry seams: thin near-black vertical/horizontal Line2D
+#    breaks across the perimeter wall mass every ~160 px. Reads as the
+#    seams between cut stone blocks — the wall is now MASONRY, not a
+#    flat slab.
+#
+# 2. Wall overlays: 2-3 PixelLab decals (chains, blood, cobweb, crack,
+#    rune) placed asymmetrically on the wall mass per room. Authored
+#    detail at the perimeter; very different from procedural decor.
+#
+# 3. Floor focal anchor: a single subtle warm-gold ceremonial circle
+#    drawn into the floor at room center. Reads as "this is a ritual
+#    chamber" rather than "this is an arena." Alpha kept very low so it
+#    doesn't compete with combat — it's a SETTING cue, not a feature.
+
+const WALL_OVERLAY_TEXTURES: Array[Texture2D] = [
+	preload("res://assets/decor/wall_overlay_chains.png"),
+	preload("res://assets/decor/wall_overlay_blood.png"),
+	preload("res://assets/decor/wall_overlay_cobweb.png"),
+	preload("res://assets/decor/wall_overlay_crack_v.png"),
+	preload("res://assets/decor/wall_overlay_rune.png"),
+]
+# Candidate positions on the 4 perimeter wall strips. Top + bottom
+# strips are 96 px tall (PLAY_AREA_MIN.y = 96); left + right are 96 px
+# wide. 48×48 overlays fit comfortably centered. Asymmetric coverage:
+# 4 candidates on top/bottom each, 2 on left/right each = 12 total.
+const WALL_OVERLAY_CANDIDATES: Array[Vector2] = [
+	Vector2(220, 44),    # top, left section
+	Vector2(440, 44),    # top, center-left
+	Vector2(840, 44),    # top, center-right
+	Vector2(1060, 44),   # top, right section
+	Vector2(220, 696),   # bottom, left
+	Vector2(440, 696),   # bottom, center-left
+	Vector2(840, 696),   # bottom, center-right
+	Vector2(1060, 696),  # bottom, right
+	Vector2(48, 220),    # left, top
+	Vector2(48, 520),    # left, bottom
+	Vector2(1232, 220),  # right, top
+	Vector2(1232, 520),  # right, bottom
+]
+const PERIMETER_MASONRY_SPACING: float = 160.0
+const PERIMETER_MASONRY_COLOR: Color = Color(0.03, 0.02, 0.04, 0.85)
+
+# Perimeter wall masonry — thin dark seams every PERIMETER_MASONRY_SPACING
+# px across the top + bottom + left + right wall strips. Sells "this is
+# stone block masonry" rather than "flat dark slab." Z = 1 puts them
+# above the perimeter wall mass (z = 0) but below the wall top-edge
+# highlights (z = 0, tree-later) — no visual stacking conflicts.
+func _spawn_perimeter_masonry_seams() -> void:
+	var screen: Vector2 = SCREEN_SIZE
+	var play_min: Vector2 = PLAY_AREA_MIN
+	var play_max: Vector2 = PLAY_AREA_MAX
+	# Top + bottom strips: vertical seam lines.
+	# Start at PERIMETER_MASONRY_SPACING px in, march across.
+	var x: float = PERIMETER_MASONRY_SPACING
+	while x < screen.x:
+		# Top strip seam — short vertical line in the 0..96 band.
+		_add_line(
+			Vector2(x, 8), Vector2(x, play_min.y - 4),
+			PERIMETER_MASONRY_COLOR, 1.0, 1
+		)
+		# Bottom strip seam — short vertical line in 672..720 band.
+		_add_line(
+			Vector2(x, play_max.y + 4), Vector2(x, screen.y - 8),
+			PERIMETER_MASONRY_COLOR, 1.0, 1
+		)
+		x += PERIMETER_MASONRY_SPACING
+	# Left + right strips: horizontal seam lines in the inner play-height
+	# range. Start at play_min.y + spacing, march down.
+	var y: float = play_min.y + PERIMETER_MASONRY_SPACING * 0.5
+	while y < play_max.y:
+		# Left strip seam — short horizontal line in 0..96 band.
+		_add_line(
+			Vector2(8, y), Vector2(play_min.x - 4, y),
+			PERIMETER_MASONRY_COLOR, 1.0, 1
+		)
+		# Right strip seam.
+		_add_line(
+			Vector2(play_max.x + 4, y), Vector2(screen.x - 8, y),
+			PERIMETER_MASONRY_COLOR, 1.0, 1
+		)
+		y += PERIMETER_MASONRY_SPACING
+
+# Wall overlays — 2-3 random PixelLab decals placed on the perimeter
+# wall mass per room. Sits at z = 1 so it's above the wall mass and the
+# masonry seams (both z = 0..1) but below the prop sprites at z = 2.
+# Tree-order also places it after the perimeter mass spawn so it draws
+# on top.
+func _spawn_wall_overlays() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 4133 + GameState.dungeon_runs * 13 + 71
+	var num_overlays: int = rng.randi_range(2, 3)
+	# Pull-without-replacement so we don't double-stack on the same
+	# candidate position.
+	var pool: Array[Vector2] = WALL_OVERLAY_CANDIDATES.duplicate()
+	for i in range(num_overlays):
+		if pool.is_empty():
+			break
+		var idx: int = rng.randi() % pool.size()
+		var pos: Vector2 = pool[idx]
+		pool.remove_at(idx)
+		var sprite: Sprite2D = Sprite2D.new()
+		sprite.texture = WALL_OVERLAY_TEXTURES[rng.randi() % WALL_OVERLAY_TEXTURES.size()]
+		sprite.position = pos
+		# Optional horizontal flip so the same overlay can look distinct
+		# at left-side vs right-side placements.
+		sprite.flip_h = rng.randf() < 0.5
+		# Alpha variance so overlays read as weathered/aged.
+		sprite.modulate = Color(1, 1, 1, rng.randf_range(0.62, 0.88))
+		sprite.z_index = 1
+		add_child(sprite)
+
+# Floor focal anchor — a single subtle warm-gold ring at room center.
+# This is the "this room is a ritual chamber" cue that breaks the
+# "this room is a test arena" reading. Built from a Line2D outline
+# circle + 4 small cardinal pip Polygon2Ds. Very low alpha (~0.22) so
+# the player notices it as ATMOSPHERE not as gameplay geometry.
+# Centered at (640, 384) — directly under the room center. Hero spawns
+# elsewhere (per _room.hero_spawn) so it doesn't conflict.
+func _spawn_floor_focal_anchor() -> void:
+	var c: Vector2 = Vector2(640, 384)
+	var ring_radius: float = 56.0
+	# Outline ring: 24-vert polyline closing the loop, dim warm gold.
+	var ring: Line2D = Line2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 28
+	for i in range(verts + 1):
+		var t: float = float(i) / verts * TAU
+		pts.append(c + Vector2(cos(t) * ring_radius, sin(t) * ring_radius))
+	ring.points = pts
+	ring.width = 1.5
+	ring.default_color = Color(0.55, 0.42, 0.22, 0.28)
+	ring.antialiased = true
+	ring.z_index = -1
+	add_child(ring)
+	# 4 cardinal pips inset from the ring — tiny diamond polygons that
+	# read as "the cardinal points of a ritual seal."
+	var pip_offset: float = ring_radius - 8.0
+	var pip_positions: Array[Vector2] = [
+		c + Vector2(0, -pip_offset),
+		c + Vector2(pip_offset, 0),
+		c + Vector2(0, pip_offset),
+		c + Vector2(-pip_offset, 0),
+	]
+	for pp in pip_positions:
+		var pip: Polygon2D = Polygon2D.new()
+		pip.polygon = PackedVector2Array([
+			Vector2(0, -3), Vector2(3, 0), Vector2(0, 3), Vector2(-3, 0),
+		])
+		pip.position = pp
+		pip.color = Color(0.62, 0.48, 0.26, 0.32)
+		pip.z_index = -1
+		add_child(pip)
+	# 4 short tick marks between the pips (NE, SE, SW, NW) at 45° angles.
+	# Adds the "carved into stone" detail without crowding the ring.
+	var tick_angles: Array[float] = [PI * 0.25, PI * 0.75, PI * 1.25, PI * 1.75]
+	for angle in tick_angles:
+		var tick_inner: Vector2 = c + Vector2(cos(angle), sin(angle)) * (ring_radius - 7.0)
+		var tick_outer: Vector2 = c + Vector2(cos(angle), sin(angle)) * (ring_radius + 3.0)
+		var tick: Line2D = Line2D.new()
+		tick.points = PackedVector2Array([tick_inner, tick_outer])
+		tick.width = 1.0
+		tick.default_color = Color(0.55, 0.42, 0.22, 0.28)
+		tick.antialiased = true
+		tick.z_index = -1
+		add_child(tick)
 
 # Iter 30 — hazards (legacy single-kind path). For each position in
 # hazard_positions, instantiate the scene matching hazard_kind. Unknown

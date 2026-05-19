@@ -77,6 +77,35 @@ shadow_color = Color(0, 0, 0, 0.55)
 shadow_filter = 1
 shadow_filter_smooth = 2.0
 
+; Iter 184 — visible sconce fixture. Pre-iter-184 the torch's only
+; visible element was the flame sprite (a small orange diamond); on the
+; new dark stone floor the torches read as floating UI dots without any
+; physical fixture (ChatGPT critique #3: "torches feel like floating
+; UI-like fire dots"). Adding a small dark-stone trapezoid + thin warm
+; rim sells "this is a stone sconce holding the flame." Drawn BEFORE
+; the Flame node so tree order puts it underneath the orange pip.
+[node name="SconceShadow" type="Polygon2D" parent="."]
+position = Vector2(0, 10)
+polygon = PackedVector2Array(-7, -2, 7, -2, 5, 2, -5, 2)
+color = Color(0, 0, 0, 0.55)
+z_index = -1
+
+[node name="SconceBase" type="Polygon2D" parent="."]
+position = Vector2(0, 6)
+polygon = PackedVector2Array(-6, -3, 6, -3, 4, 6, -4, 6)
+color = Color(0.18, 0.16, 0.13, 1.0)
+z_index = 0
+
+; Thin warm-gold rim along the top edge of the sconce so it catches a
+; reflection from the flame above it. Reads as "the bowl glows from the
+; fire it holds."
+[node name="SconceRim" type="Line2D" parent="."]
+points = PackedVector2Array(-6, 3, 6, 3)
+width = 1.0
+default_color = Color(0.62, 0.45, 0.22, 0.85)
+antialiased = true
+z_index = 0
+
 [node name="Flame" type="Sprite2D" parent="."]
 texture = SubResource("flame_grad_tex")
 modulate = Color(1, 0.8, 0.45, 1)
