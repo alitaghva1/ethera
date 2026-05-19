@@ -1140,6 +1140,13 @@ func _spawn_room_chrome() -> void:
 	_spawn_wall_overlays()
 	_spawn_floor_focal_anchor()
 	_spawn_torch_scorch_marks()
+	# Iter 188 batch 1 — crypt-hall dressing per user direction
+	# ("Outer Hall of an ancient crypt"). Three deliberate additions:
+	# wall base trim, 1 shallow alcove per room, optional hanging
+	# chain inside the play area top.
+	_spawn_wall_base_trim()
+	_spawn_perimeter_alcove()
+	_spawn_hanging_chain()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -1887,6 +1894,131 @@ func _spawn_torch_scorch_marks() -> void:
 		scorch.color = Color(0.03, 0.03, 0.04, 0.62)
 		scorch.z_index = 1
 		add_child(scorch)
+
+# Iter 188 batch 1 — wall base trim. A thin slightly-darker strip along
+# the INNER edge of each perimeter wall mass (the seam where wall meets
+# floor). Reads as "skirting trim / structural base" — wall feels like
+# a constructed boundary, not a painted band. 3-px tall + slight inset.
+# Matches the same architectural grammar as interior wall contact
+# shadows but for the perimeter mass.
+func _spawn_wall_base_trim() -> void:
+	var play_min: Vector2 = PLAY_AREA_MIN
+	var play_max: Vector2 = PLAY_AREA_MAX
+	# Trim color = wall stone -0.04 (slightly darker than the wall face).
+	var trim_color: Color = Color(
+		maxf(0.0, _biome_wall_color.r - 0.04),
+		maxf(0.0, _biome_wall_color.g - 0.04),
+		maxf(0.0, _biome_wall_color.b - 0.04),
+		1.0
+	)
+	# TOP trim — just above the play area inner edge, in the wall strip.
+	_add_rect_polygon(
+		Rect2(play_min.x, play_min.y - 4, play_max.x - play_min.x, 3),
+		trim_color, 1
+	)
+	# BOTTOM trim — just below the play area inner bottom edge.
+	_add_rect_polygon(
+		Rect2(play_min.x, play_max.y + 1, play_max.x - play_min.x, 3),
+		trim_color, 1
+	)
+	# LEFT trim.
+	_add_rect_polygon(
+		Rect2(play_min.x - 4, play_min.y, 3, play_max.y - play_min.y),
+		trim_color, 1
+	)
+	# RIGHT trim.
+	_add_rect_polygon(
+		Rect2(play_max.x + 1, play_min.y, 3, play_max.y - play_min.y),
+		trim_color, 1
+	)
+
+# Iter 188 batch 1 — single shallow alcove per room. Dark recessed
+# rectangle drawn into the perimeter wall mass at one of 6 candidate
+# positions (3 top + 3 bottom — left/right walls too thin for alcoves
+# without disrupting torch placement). Reads as "sealed entrance" or
+# "burial niche carved into the crypt wall." Per-room seeded RNG so
+# position varies between rooms.
+const ALCOVE_CANDIDATE_POSITIONS: Array[Vector2] = [
+	Vector2(190, 44),   # top wall, left section
+	Vector2(490, 44),   # top wall, center-left
+	Vector2(790, 44),   # top wall, center-right
+	Vector2(1090, 44),  # top wall, right section
+	Vector2(490, 696),  # bottom wall, center-left
+	Vector2(790, 696),  # bottom wall, center-right
+]
+const ALCOVE_SIZE: Vector2 = Vector2(56, 64)
+
+func _spawn_perimeter_alcove() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 6691 + GameState.dungeon_runs * 11 + 19
+	var idx: int = rng.randi() % ALCOVE_CANDIDATE_POSITIONS.size()
+	var pos: Vector2 = ALCOVE_CANDIDATE_POSITIONS[idx]
+	# Recessed alcove — much darker than wall mass (the depth of the
+	# recess swallows light). Use a near-black color so the alcove reads
+	# as a hole into darkness.
+	var alcove: Polygon2D = Polygon2D.new()
+	var hw: float = ALCOVE_SIZE.x * 0.5
+	var hh: float = ALCOVE_SIZE.y * 0.5
+	alcove.polygon = PackedVector2Array([
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, hh), Vector2(-hw, hh),
+	])
+	alcove.position = pos
+	alcove.color = Color(0.02, 0.02, 0.03, 1.0)
+	alcove.z_index = 1
+	add_child(alcove)
+	# Thin top + bottom rims of the alcove in slightly lighter stone —
+	# suggests carved frame around the recess.
+	var rim_color: Color = Color(
+		_biome_wall_color.r + 0.08,
+		_biome_wall_color.g + 0.07,
+		_biome_wall_color.b + 0.09,
+		1.0
+	)
+	# Top rim of alcove — like a header lintel.
+	_add_rect_polygon(
+		Rect2(pos.x - hw - 2, pos.y - hh - 2, ALCOVE_SIZE.x + 4, 3),
+		rim_color, 2
+	)
+	# Bottom rim — threshold.
+	_add_rect_polygon(
+		Rect2(pos.x - hw - 2, pos.y + hh - 1, ALCOVE_SIZE.x + 4, 3),
+		rim_color, 2
+	)
+
+# Iter 188 batch 1 — hanging chain inside the play area. 50% chance per
+# room. Reads as "old chain hanging from the unseen ceiling" —
+# environmental storytelling at zero gameplay cost. Uses the existing
+# wall_overlay_chains.png asset stretched vertically. Positioned
+# inside the play area top so it hangs INTO the visible space, not on
+# the wall like the wall-overlay chains do.
+const HANGING_CHAIN_TEX: Texture2D = preload("res://assets/decor/wall_overlay_chains.png")
+
+func _spawn_hanging_chain() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 4951 + GameState.dungeon_runs * 13 + 41
+	# 50% of rooms get a hanging chain. Variation between rooms; not
+	# every Outer Hall is a torture chamber.
+	if rng.randf() < 0.5:
+		return
+	# Random x in the play area, avoiding the center 40% (player + combat
+	# space). Avoid edges (would clip with wall overlays). Range:
+	# 180..1100 with a 480..800 carve-out.
+	var x: float
+	if rng.randf() < 0.5:
+		x = rng.randf_range(180.0, 480.0)
+	else:
+		x = rng.randf_range(800.0, 1100.0)
+	var chain: Sprite2D = Sprite2D.new()
+	chain.texture = HANGING_CHAIN_TEX
+	# Hang from y=96 (top wall inner edge) downward. Sprite is 48 tall,
+	# stretched ×1.8 vertically = ~86 tall. Top edge at y=96, bottom at
+	# y=182. Center y = 139.
+	chain.position = Vector2(x, 139)
+	chain.scale = Vector2(0.95, 1.8)
+	chain.modulate = Color(1, 1, 1, 0.78)
+	chain.z_index = 2
+	add_child(chain)
 
 # Wall overlays — 2-3 random PixelLab decals placed on the perimeter
 # wall mass per room. Sits at z = 1 so it's above the wall mass and the
