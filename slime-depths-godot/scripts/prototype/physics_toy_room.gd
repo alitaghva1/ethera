@@ -204,17 +204,36 @@ func _process(_delta: float) -> void:
 	_update_tether_line()
 	_update_debug_panel()
 
-# Redraw the tether between hero and gravestone every frame. Two-point
-# Line2D — straight cord, no slack physics. Cheap (just sets the
-# points array); the Line2D renders behind both entities via the
-# scene's z_index = -1.
+# Redraw the tether between hero and gravestone every frame. 5-point
+# Line2D forming a quadratic-Bezier-style catenary: the midpoint sags
+# DOWN (screen +Y) when the gravestone is closer than the rope's
+# rest length (slack), straightens when stretched (taut). Reads as a
+# physical rope, not a laser line.
+#
+# Mirror of CursedGravestone.TETHER_REST_LENGTH — duplicated to avoid
+# a cross-file class_name dependency.
+const TETHER_REST_LENGTH_DISPLAY: float = 100.0
+const TETHER_SAG_FACTOR: float = 0.40
+const TETHER_SAG_MIN_DIST: float = 30.0
+
 func _update_tether_line() -> void:
 	if tether_line == null or hero == null or gravestone == null:
 		return
-	tether_line.points = PackedVector2Array([
-		hero.global_position,
-		gravestone.global_position,
-	])
+	var p0: Vector2 = hero.global_position
+	var p2: Vector2 = gravestone.global_position
+	var dist: float = p0.distance_to(p2)
+	# Sag only when the rope is slacker than its rest length AND the
+	# gravestone isn't piled on top of the hero (avoids weird draws
+	# when pull-input mashes them together).
+	var sag_y: float = 0.0
+	if dist > TETHER_SAG_MIN_DIST:
+		sag_y = max(0.0, TETHER_REST_LENGTH_DISPLAY - dist) * TETHER_SAG_FACTOR
+	var midpoint: Vector2 = (p0 + p2) * 0.5 + Vector2(0.0, sag_y)
+	# Quarter and three-quarter points smooth the bend into a curve
+	# instead of a hard V.
+	var q1: Vector2 = (p0 + midpoint) * 0.5
+	var q2: Vector2 = (midpoint + p2) * 0.5
+	tether_line.points = PackedVector2Array([p0, q1, midpoint, q2, p2])
 
 func _update_debug_panel() -> void:
 	if debug_panel == null:
@@ -385,6 +404,28 @@ func on_gravestone_impact(world_pos: Vector2, impact_vel: float) -> void:
 	# Fires audio.gd's enemy_hit beep AND fx.gd's HIT_SPARK particle
 	# burst — both already subscribed to Events.enemy_hit.
 	Events.enemy_hit.emit(world_pos)
+
+# Called by CursedGravestone._on_body_entered for hard wall/pillar
+# impacts (above MIN_DAMAGE_VEL but on a static body, not an enemy).
+# Smaller feedback than the enemy slam — light shake, hit-spark spawn,
+# NO hit-stop, NO audio sting. The player should learn:
+#   • Wall hit  = stone is solid, costs momentum
+#   • Enemy hit = stone is dangerous, kills things
+# Different feels for different outcomes.
+const WALL_SLAM_SHAKE_PER_VEL: float = 0.022
+const WALL_SLAM_SHAKE_MAX: float = 7.0
+const WALL_SLAM_SHAKE_DUR: float = 0.10
+
+func on_gravestone_wall_slam(world_pos: Vector2, impact_vel: float) -> void:
+	FX.shake(min(impact_vel * WALL_SLAM_SHAKE_PER_VEL, WALL_SLAM_SHAKE_MAX), WALL_SLAM_SHAKE_DUR)
+	# Spawn the HIT_SPARK directly (not via Events.enemy_hit emit) so
+	# we get the visual without firing the audio sting that says
+	# "you damaged an enemy." Audio would lie about what happened.
+	if FX.HIT_SPARK_SCENE != null:
+		var s: Node2D = FX.HIT_SPARK_SCENE.instantiate() as Node2D
+		if s != null:
+			s.global_position = world_pos
+			add_child(s)
 
 # Called by BlobChaser._die. Schedules a fresh wave if this kill
 # emptied the room.

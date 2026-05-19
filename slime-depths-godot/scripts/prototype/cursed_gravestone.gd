@@ -134,17 +134,29 @@ func _update_danger_glow() -> void:
 	_danger_glow.color = c
 
 func _on_body_entered(body: Node) -> void:
-	if not body.is_in_group("toy_enemies"):
-		return
 	var impact_vel: float = linear_velocity.length()
+	if body.is_in_group("toy_enemies"):
+		# Enemy slam path — apply damage + knockback if above threshold.
+		if impact_vel < MIN_DAMAGE_VEL:
+			return
+		if not body.has_method("take_hit"):
+			return
+		# Knockback direction = away from the gravestone (NOT along
+		# its velocity vector). For a glancing blow this matters:
+		# the player wants the enemy shoved off the gravestone, not
+		# punted along its trajectory (which could pull the enemy
+		# AHEAD of the gravestone and re-hit it on the next frame).
+		var knockback_dir: Vector2 = (body.global_position - global_position).normalized()
+		body.take_hit(impact_vel, knockback_dir * impact_vel * ENEMY_KNOCKBACK_MULT)
+		return
+	# Wall / pillar / chokepoint slab — anything on the world layer
+	# (1) that isn't an enemy. Below threshold = silent (the stone is
+	# just being repositioned). At/above = fire a small wall-slam
+	# feedback (light shake + spark, no hit-stop, no audio sting).
+	# Tells the player "the stone is dangerous AND solid" without
+	# pretending a wall hit is a kill.
 	if impact_vel < MIN_DAMAGE_VEL:
 		return
-	if not body.has_method("take_hit"):
-		return
-	# Knockback direction = away from the gravestone (NOT along its
-	# velocity vector). For a glancing blow this matters: the player
-	# wants the enemy shoved off the gravestone, not punted along its
-	# trajectory (which could pull the enemy AHEAD of the gravestone
-	# and re-hit it on the next frame).
-	var knockback_dir: Vector2 = (body.global_position - global_position).normalized()
-	body.take_hit(impact_vel, knockback_dir * impact_vel * ENEMY_KNOCKBACK_MULT)
+	var room: Node = get_tree().current_scene
+	if room != null and room.has_method("on_gravestone_wall_slam"):
+		room.on_gravestone_wall_slam(global_position, impact_vel)
