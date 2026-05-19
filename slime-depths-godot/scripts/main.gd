@@ -802,58 +802,105 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 	var w: float = r.size.x * 0.5
 	var h: float = r.size.y * 0.5
 	# Iter 51 — drop shadow polygon. Soft dark ellipse footprint extending
-	# 8 px past the wall's outer edge in all directions, with vertex-color
-	# fade from solid-center to transparent-edge. Reads as "the wall casts
-	# a shadow on the floor" and grounds the wall to the room — previously
-	# the wall polygon looked like it was floating on the tile grid.
-	# Added BEFORE the wall body so it draws underneath.
-	var shadow_extra: float = 8.0
+	# past the wall's outer edge with vertex-color fade so the wall feels
+	# grounded vs floating.
+	# Iter 179 — extended the bottom shadow significantly + softened the
+	# top-side fade so the wall reads as a STONE BLOCK with a real cast
+	# shadow on the floor below it (light from above-front).
+	var shadow_top_extra: float = 6.0
+	var shadow_side_extra: float = 8.0
+	var shadow_bot_extra: float = 14.0
 	var shadow: Polygon2D = Polygon2D.new()
 	shadow.polygon = PackedVector2Array([
-		Vector2(-w - shadow_extra, -h - shadow_extra),
-		Vector2(w + shadow_extra, -h - shadow_extra),
-		Vector2(w + shadow_extra, h + shadow_extra),
-		Vector2(-w - shadow_extra, h + shadow_extra),
+		Vector2(-w - shadow_side_extra, -h - shadow_top_extra),
+		Vector2(w + shadow_side_extra, -h - shadow_top_extra),
+		Vector2(w + shadow_side_extra, h + shadow_bot_extra),
+		Vector2(-w - shadow_side_extra, h + shadow_bot_extra),
 	])
 	var sh_edge: Color = Color(0, 0, 0, 0.0)
-	var sh_core: Color = Color(0, 0, 0, 0.55)
-	# Per-vertex colors: corners transparent, would-ideally be a circle
-	# but quad-with-edge-fade reads acceptably as ambient occlusion at
-	# this scale. Top corners slightly less dark (light angle assumes
-	# overhead-ish), bottom corners full so the bottom shadow lip wins.
+	var sh_core: Color = Color(0, 0, 0, 0.60)
+	# Per-vertex colors: top corners feather out (light catches top of
+	# block, no shadow up there), bottom corners deep dark (long cast
+	# shadow on the floor below). Sells "block casts shadow forward."
 	shadow.vertex_colors = PackedColorArray([sh_edge, sh_edge, sh_core, sh_core])
 	shadow.z_index = -1
 	body.add_child(shadow)
-	# Visible body — dark stone polygon at the same position as the
-	# collider. Rounded corners via Line2D outline since Polygon2D
-	# doesn't natively support corner radii.
-	var poly: Polygon2D = Polygon2D.new()
-	poly.polygon = PackedVector2Array([
-		Vector2(-w, -h), Vector2(w, -h), Vector2(w, h), Vector2(-w, h),
+	# Iter 179 — proper 3D-stone depth recipe (was iter-30 flat polygon
+	# + 3 px top bevel + 4 px bottom line, which read as a grey planks
+	# in the user's iter-178 playtest). Now stacked as:
+	#   SIDE FACE  (dark stone, fills the body below the top face)
+	#   TOP FACE   (lighter stone, top 4 px — the surface light hits)
+	#   SEAM       (1 px black, top-face/side-face junction shadow)
+	#   HIGHLIGHT  (sub-pixel warm cream line, very top edge)
+	#   CONTACT    (gradient polygon below the wall, replaces the 4 px
+	#               line shadow — feels like the block sits on the floor)
+	# Top-face depth scales with wall height: 3 px for thin walls, up to
+	# 6 px for tall walls. Min 2 so it always reads.
+	var top_face_h: float = clamp(h * 0.22, 2.0, 6.0)
+	# SIDE FACE — dark stone, occupies everything below top_face_h.
+	var side_face: Polygon2D = Polygon2D.new()
+	side_face.polygon = PackedVector2Array([
+		Vector2(-w, -h + top_face_h),
+		Vector2(w, -h + top_face_h),
+		Vector2(w, h),
+		Vector2(-w, h),
 	])
-	poly.color = Color(0.18, 0.16, 0.22, 1)
-	body.add_child(poly)
-	# Lighter top-edge bevel — a 4-px Line2D across the top of the
-	# wall, slightly warm grey. Sells "this is a stone block with
-	# light catching its top edge."
+	# Slight vertical gradient (lighter at top, darker at bottom) so
+	# the slab doesn't read as a single flat color. vertex_colors
+	# expects clockwise from top-left.
+	var side_top: Color = Color(0.22, 0.20, 0.26, 1.0)
+	var side_bot: Color = Color(0.13, 0.12, 0.16, 1.0)
+	side_face.vertex_colors = PackedColorArray([side_top, side_top, side_bot, side_bot])
+	body.add_child(side_face)
+	# TOP FACE — lighter stone, catches the overhead light.
+	var top_face: Polygon2D = Polygon2D.new()
+	top_face.polygon = PackedVector2Array([
+		Vector2(-w, -h),
+		Vector2(w, -h),
+		Vector2(w, -h + top_face_h),
+		Vector2(-w, -h + top_face_h),
+	])
+	top_face.color = Color(0.38, 0.34, 0.40, 1.0)
+	body.add_child(top_face)
+	# HIGHLIGHT — thin warm-cream pinstripe along the very top edge.
+	# Sub-px width via antialias so it reads as a beveled rim, not a
+	# painted stripe.
 	var top_edge: Line2D = Line2D.new()
 	top_edge.points = PackedVector2Array([
-		Vector2(-w + 2, -h), Vector2(w - 2, -h),
+		Vector2(-w + 2, -h + 0.5), Vector2(w - 2, -h + 0.5),
 	])
-	top_edge.width = 3.0
-	top_edge.default_color = Color(0.42, 0.36, 0.30, 1)
+	top_edge.width = 1.5
+	top_edge.default_color = Color(0.58, 0.50, 0.40, 0.85)
 	top_edge.antialiased = true
 	body.add_child(top_edge)
-	# Bottom shadow strip — dark band along the wall's bottom edge,
-	# offset down 2 px so it reads as a contact shadow on the floor.
-	var bot_shadow: Line2D = Line2D.new()
-	bot_shadow.points = PackedVector2Array([
-		Vector2(-w + 4, h + 2), Vector2(w - 4, h + 2),
+	# SEAM — 1 px dark line at the top-face/side-face junction. This
+	# is the single edit that most sells "two faces meeting at an
+	# angle" vs "one slab painted two colors."
+	var seam: Line2D = Line2D.new()
+	seam.points = PackedVector2Array([
+		Vector2(-w, -h + top_face_h),
+		Vector2(w, -h + top_face_h),
 	])
-	bot_shadow.width = 4.0
-	bot_shadow.default_color = Color(0, 0, 0, 0.45)
-	bot_shadow.antialiased = true
-	body.add_child(bot_shadow)
+	seam.width = 1.0
+	seam.default_color = Color(0.04, 0.03, 0.05, 0.85)
+	seam.antialiased = true
+	body.add_child(seam)
+	# CONTACT — soft gradient strip just below the wall's bottom edge.
+	# Quad polygon with vertex-color fade: solid black at top (where
+	# it meets the wall) → transparent at bottom (12 px below). Adds
+	# the contact-shadow that grounds the wall — Hades + Isaac both
+	# do this under every prop.
+	var contact: Polygon2D = Polygon2D.new()
+	contact.polygon = PackedVector2Array([
+		Vector2(-w + 3, h),
+		Vector2(w - 3, h),
+		Vector2(w - 9, h + 10),
+		Vector2(-w + 9, h + 10),
+	])
+	var contact_solid: Color = Color(0, 0, 0, 0.55)
+	var contact_fade: Color = Color(0, 0, 0, 0.0)
+	contact.vertex_colors = PackedColorArray([contact_solid, contact_solid, contact_fade, contact_fade])
+	body.add_child(contact)
 	return body
 
 # ── iter-115: Room readability chrome ───────────────────────────────────
@@ -3586,10 +3633,11 @@ func _update_room_label() -> void:
 		return
 	var total: int = RunState.FLOOR_ROOMS.size()
 	var idx: int = RunState.current_room_index + 1
-	room_label.text = "%s  ·  ROOM %d / %d" % [_room.display_name, idx, total]
-	# Iter 161 — also feed the persistent indicator. Same idx/total so
-	# the player can reference it any time mid-combat (the banner
-	# above fades on a timer).
+	# Iter 179 — split: the dramatic banner is just the room NAME (it
+	# fades after a beat anyway). The persistent top-left chip carries
+	# the X/Y progress. Before this they BOTH carried "ROOM X/Y" so for
+	# the first 2-3s of every room you saw the same number twice.
+	room_label.text = _room.display_name
 	if room_progress_label != null:
 		room_progress_label.text = "ROOM %d / %d" % [idx, total]
 

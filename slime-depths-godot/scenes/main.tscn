@@ -271,23 +271,28 @@ vertical_alignment = 1
 ;   • Color cream (1.0, 0.92, 0.72) at full alpha → dimmer cream
 ;     (0.78, 0.72, 0.58) at 0.80 alpha — quiet annotation
 ;   • Outline 4 → 2 (subtle definition vs heavy block-outline)
-;   • Anchored TOP-center instead of bottom-center so the cue sits
-;     under the room name banner rather than over combat space.
+; Iter 179 — back to BOTTOM-center. The top-center position from
+; iter-171 placed the label at y=96..124 — INSIDE the playfield
+; (room inner starts at y~60). On a fresh boot you saw "MOVE - WASD"
+; floating over the floor mid-action. Bottom dead-strip (y=688..708,
+; 6 px above viewport bottom, the space below the room frame) is the
+; canonical "control hint" zone Hades/Isaac both use. Subtle by
+; alpha + font size, but out of the play area.
 [node name="TutorialLabel" type="Label" parent="UI"]
-anchors_preset = 7
+anchors_preset = 0
 anchor_left = 0.5
 anchor_right = 0.5
-anchor_top = 0.0
-anchor_bottom = 0.0
+anchor_top = 1.0
+anchor_bottom = 1.0
 offset_left = -200.0
-offset_top = 96.0
+offset_top = -32.0
 offset_right = 200.0
-offset_bottom = 124.0
+offset_bottom = -6.0
 grow_horizontal = 2
 grow_vertical = 0
 modulate = Color(1, 1, 1, 0)
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.78, 0.72, 0.58, 0.80)
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.74, 0.68, 0.55, 0.78)
 theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.0, 0.85)
 theme_override_constants/outline_size = 2
 text = ""
