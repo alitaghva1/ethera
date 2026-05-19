@@ -1,6 +1,18 @@
-[gd_scene load_steps=9 format=3 uid="uid://b3death123456"]
+[gd_scene load_steps=11 format=3 uid="uid://b3death123456"]
 
 [ext_resource type="Script" path="res://scripts/death_screen.gd" id="1_script"]
+
+; Iter 188 batch 3 — match menu / HUD typography. Pre-iter-188 the death
+; screen used Godot default Noto Sans → "arcade/mobile UI" reading (user
+; critique). Cinzel/Cormorant Garamond pulls the death screen into the
+; same dark-fantasy typography family as the menu + HUD.
+[sub_resource type="SystemFont" id="death_title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+[sub_resource type="SystemFont" id="death_body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
 
 ; Death-screen overlay. CanvasLayer at layer = 200 so it sits above all
 ; in-game HUDs (the dialogue autoload is layer 100). Initially hidden;
@@ -188,15 +200,23 @@ mouse_filter = 2
 ; (18 px wide vs the foreground's 5 px) so the bloom reads as a halo
 ; on the SAME letterforms, not a second letterform behind. Same fix
 ; pattern iter-93 used on the main menu title.
+; Iter 188 batch 3 — palette shift to blood/ember. Pre-iter-188 the
+; YOU DIED title was (0.96, 0.42, 0.36) — a bright PINK-red with high
+; green+blue that read as arcade-mobile UI. New: (0.82, 0.20, 0.18) —
+; dried-blood crimson with low green+blue for pure red. The halo
+; outline shifts from (0.95, 0.45, 0.30) salmon-ember toward
+; (0.85, 0.32, 0.16) deeper amber-ember, harmonizing with the panel
+; shadow's warm ember tone.
 [node name="TitleGlow" type="Label" parent="Panel/Stack/TitleBlock"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_fonts/font = SubResource("death_title_font")
 theme_override_font_sizes/font_size = 96
 theme_override_colors/font_color = Color(0.92, 0.30, 0.30, 0)
-theme_override_colors/font_outline_color = Color(0.95, 0.45, 0.30, 0.55)
+theme_override_colors/font_outline_color = Color(0.85, 0.32, 0.16, 0.60)
 theme_override_constants/outline_size = 18
 text = "YOU DIED"
 horizontal_alignment = 1
@@ -209,9 +229,10 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_fonts/font = SubResource("death_title_font")
 theme_override_font_sizes/font_size = 96
-theme_override_colors/font_color = Color(0.96, 0.42, 0.36, 1)
-theme_override_colors/font_outline_color = Color(0.18, 0.04, 0.04, 1)
+theme_override_colors/font_color = Color(0.82, 0.20, 0.18, 1)
+theme_override_colors/font_outline_color = Color(0.14, 0.03, 0.03, 1)
 theme_override_constants/outline_size = 6
 text = "YOU DIED"
 horizontal_alignment = 1

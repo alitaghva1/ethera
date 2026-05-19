@@ -111,6 +111,70 @@ polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
 color = Color(0.62, 0.78, 0.32, 0.50)
 z_index = 0
 
+; ── Iter 188 batch 3 — cursed ritual well details ────────────────────
+; User direction: "Rework central hazard into a cursed ritual font/well
+; with stone rim, cracks, subtle green seepage." The iter-186 batch 2
+; rim + runes gave the basin architectural identity; this commit adds
+; the AGE + CORRUPTION reading:
+;
+;   1. RimCrackNE/SE/SW/NW — 4 short Line2D fractures radiating outward
+;      from the rim at 45° intervals (between the cardinal runes).
+;      Suggests stone aging — the carved basin has fractured under
+;      centuries of cursed magic.
+;   2. SeepA/B/C — 3 small dark green Polygon2D stains OUTSIDE the
+;      basin perimeter. Reads as toxic liquid leaching past the rim,
+;      contaminating the surrounding floor. Asymmetric placement so
+;      it feels organic, not symmetric.
+
+[node name="RimCrackNE" type="Line2D" parent="."]
+points = PackedVector2Array(30, -30, 56, -56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackSE" type="Line2D" parent="."]
+points = PackedVector2Array(30, 30, 56, 56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackSW" type="Line2D" parent="."]
+points = PackedVector2Array(-30, 30, -56, 56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackNW" type="Line2D" parent="."]
+points = PackedVector2Array(-30, -30, -56, -56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+; Asymmetric seep stains — 3 placements at irregular distances from
+; rim. Dark toxic yellow-green (matches pool but darker / less alpha)
+; so they read as residue from the cursed pool, not freshly painted.
+[node name="SeepA" type="Polygon2D" parent="."]
+position = Vector2(-48, 22)
+polygon = PackedVector2Array(8, 0, 6, 5, 0, 7, -7, 4, -8, 0, -7, -4, 0, -7, 6, -5)
+color = Color(0.18, 0.24, 0.08, 0.65)
+z_index = 0
+
+[node name="SeepB" type="Polygon2D" parent="."]
+position = Vector2(34, -42)
+polygon = PackedVector2Array(6, 0, 5, 4, 0, 5, -5, 3, -6, 0, -5, -3, 0, -5, 5, -4)
+color = Color(0.18, 0.24, 0.08, 0.62)
+z_index = 0
+
+[node name="SeepC" type="Polygon2D" parent="."]
+position = Vector2(52, 14)
+polygon = PackedVector2Array(7, 0, 6, 4, 0, 6, -6, 4, -7, 0, -6, -4, 0, -6, 6, -4)
+color = Color(0.18, 0.24, 0.08, 0.60)
+z_index = 0
+
 ; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
 ; Sits at z=1 below the main pool so the player sees a wider danger
 ; footprint on the floor (the pool itself is opaque + bounded; the halo
