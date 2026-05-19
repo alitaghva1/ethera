@@ -4014,7 +4014,56 @@ func _spawn_door() -> void:
 	_validate_door_placement([DOOR_POSITION])
 	var door: Door = DOOR_SCENE.instantiate()
 	door.global_position = DOOR_POSITION
+	# Iter 199 — Hades-style reward preview. Single-door rooms now
+	# carry a label hinting what's beyond so the player can plan one
+	# room ahead instead of stepping into the unknown. Agent ranked
+	# this as their #2 highest-leverage Hades transplant.
+	# Branch doors already preview (iter-32 per-branch tints + label);
+	# this just brings the linear single-door case to parity.
+	# Resolves next room kind by reading the FLOOR_ROOMS sequence.
+	var next_kind: String = _resolve_next_room_kind()
+	match next_kind:
+		"boss":
+			door.branch_label = "DESCENT"
+			door.branch_subtitle = "the floor's keeper waits"
+			# Tint warm rust to telegraph danger ahead, matches the
+			# ember biome that bosses tend to inhabit.
+			door.branch_kind = "risk"
+		"treasure":
+			door.branch_label = "VAULT"
+			door.branch_subtitle = "an offering remains"
+			door.branch_kind = "treasure"
+		"shrine":
+			door.branch_label = "ALTAR"
+			door.branch_subtitle = "a vow may be made"
+			door.branch_kind = "shrine"
+		_:
+			# Default forward — combat or unknown. Use the iter-32
+			# "standard" tint (pale cyan-white).
+			door.branch_label = "ONWARD"
+			door.branch_subtitle = ""
+			door.branch_kind = "standard"
 	add_child(door)
+
+# Iter 199 — peek the next room's kind so the linear-door reward
+# preview can label appropriately. Returns one of: "boss" (next room
+# is_last_room), "treasure" / "shrine" (next room's display_name
+# contains keyword), else "" (default forward combat).
+func _resolve_next_room_kind() -> String:
+	var next_idx: int = RunState.current_room_index + 1
+	if next_idx >= RunState.FLOOR_ROOMS.size():
+		return ""
+	var path: String = str(RunState.FLOOR_ROOMS[next_idx])
+	if "treasure" in path.to_lower():
+		return "treasure"
+	if "shrine" in path.to_lower():
+		return "shrine"
+	# Probe the resource for is_last_room. Cheap load; the path is
+	# already a known res:// reference, Godot caches.
+	var rc: Resource = load(path)
+	if rc != null and "is_last_room" in rc and rc.is_last_room:
+		return "boss"
+	return ""
 
 # Iter 32 — multi-door fork. Place N doors along the east edge,
 # vertically spaced so each is reachable as a distinct destination.
