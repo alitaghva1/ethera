@@ -252,13 +252,20 @@ texture_scale = 1.0
 
 ; ── InfoPanel (the card) ────────────────────────────────────────────
 ; Iter 178 — 168×76 (was 196×120 — 33% smaller). Tighter typography,
-; soft border, more opaque backdrop for contrast. Sits anchored above
-; the pedestal with consistent spacing.
+; soft border, more opaque backdrop for contrast.
+; Iter 192 batch 2 — pulled card DOWN 68 px so it anchors to its own
+; pedestal rather than floating disconnected at the top of the screen.
+; Pre-iter-192 the panel was at y_offset -196..-120 = ~158 px above
+; the pedestal center; user feedback: "feels like floating debug
+; cards." Now -128..-52 = ~90 px above pedestal center, just above
+; the orb at y_offset -42. The card + orb + pedestal now read as a
+; single vertical "offering" cluster (ritual / altar reading) instead
+; of "card at top, pedestal at bottom, gap between."
 [node name="InfoPanel" type="Panel" parent="."]
 offset_left = -84.0
-offset_top = -196.0
+offset_top = -128.0
 offset_right = 84.0
-offset_bottom = -120.0
+offset_bottom = -52.0
 theme_override_styles/panel = SubResource("info_panel_style")
 mouse_filter = 2
 
@@ -308,11 +315,15 @@ clip_text = true
 mouse_filter = 2
 
 ; ── Iter 163 — theme synergy chip (kept; just repositioned). ────────
+; Iter 192 batch 2 — moved above the tightened InfoPanel (was -110..-90,
+; which is now occupied by the panel after its iter-192 shift down).
+; Theme tag sits as a small header line above the card. Same horizontal
+; centering, same 20-px height.
 [node name="SynergyLabel" type="Label" parent="."]
 offset_left = -100.0
-offset_top = -110.0
+offset_top = -148.0
 offset_right = 100.0
-offset_bottom = -90.0
+offset_bottom = -130.0
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.85, 0.85, 0.95, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
