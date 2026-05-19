@@ -756,16 +756,34 @@ func _physics_process(delta: float) -> void:
 # ── Behavior: chase_contact ───────────────────────────────────────────
 # Walk straight at hero. Body-bump deals damage on a timer while in
 # contact range. Used by slime, crypt_spider, orc, ember, werewolf.
-# Iter 169 — stuck-detection helper. Takes the intended velocity (the
-# behavior's desired direction × speed); returns either the same
-# velocity (free path) or a perpendicular override (dodging an
-# obstacle). The caller assigns the result to self.velocity.
+# Iter 169 / 172 — stuck-detection + wall-slide. Two-layer logic:
 #
-# Self-resetting: when the dodge window expires, the next regular
-# check baselines a fresh _stuck_check_pos. If the enemy is still
-# pinned, the next dodge picks a perpendicular (50/50 randomized)
-# — opposite-direction dodges aren't forced because that would
-# rubber-band a pile of enemies the same way.
+#   1) WALL-SLIDE (iter-172) — primary fix. After move_and_slide
+#      reports a collision with a static body, recompute velocity to
+#      run TANGENT to the wall (projected onto the wall plane,
+#      preferring the tangent direction that's still pointing toward
+#      the hero). This is what move_and_slide ALMOST does internally,
+#      but when the input velocity is near-perpendicular to the wall
+#      the slide extracts only the residual tangential component
+#      which is too small to extricate — so we replace velocity with
+#      the FULL-SPEED tangent.
+#
+#   2) RANDOM-PERPENDICULAR DODGE (iter-169) — fallback. If after
+#      STUCK_CHECK_INTERVAL the enemy moved less than STUCK_DIST_THRESHOLD
+#      despite a non-zero intended velocity, force a 50/50 perpendicular
+#      direction for STUCK_DODGE_DURATION. Handles the rare case where
+#      wall-slide picks the wrong side of an L-shaped wedge.
+#
+# Caller pattern (chase_contact / telegraphed_melee IDLE chase):
+#   var intended := dir_to_hero * speed
+#   velocity = _maybe_stuck_dodge(delta, intended)
+#   move_and_slide()
+#   velocity = _apply_wall_slide(intended)     # ← iter-172 post-hoc
+#
+# Why post-hoc: we need get_slide_collision_count() which only has
+# meaningful values AFTER move_and_slide(). The slide-adjusted
+# velocity takes effect on the NEXT frame's move_and_slide(), which
+# is fine — that's how Godot's CharacterBody2D propagates anyway.
 func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
 	# Currently in a dodge window — keep using the perpendicular dir
 	# at the intended speed.
@@ -779,9 +797,6 @@ func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
 	_stuck_check_timer = 0.0
 	var moved: float = global_position.distance_to(_stuck_check_pos)
 	_stuck_check_pos = global_position
-	# Only count as stuck if we WERE trying to move AND failed to.
-	# A standing-still enemy (intended near zero) isn't stuck, it's
-	# just at idle.
 	if intended.length() < 1.0 or moved >= STUCK_DIST_THRESHOLD:
 		return intended
 	# Stuck. Pick a perpendicular direction. 50/50 left/right.
@@ -792,6 +807,41 @@ func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
 	_stuck_dodge_dir = perp
 	_stuck_dodge_timer = STUCK_DODGE_DURATION
 	return perp * intended.length()
+
+# Iter 172 — wall-slide. Call AFTER move_and_slide(). When the enemy
+# hit a static body this frame, project the INTENDED velocity (the
+# chase direction × speed) onto the wall tangent — the direction
+# along the wall surface. This is what move_and_slide's residual
+# slide does naturally, but only with the SHRUNK tangential component;
+# we want the FULL-SPEED tangent so the enemy keeps moving along
+# the wall instead of grinding to a halt.
+#
+# Picks the tangent that's still pointing toward the hero (a wall
+# has TWO tangent directions, we want the one that progresses
+# toward our chase target).
+func _apply_wall_slide(intended: Vector2) -> void:
+	if intended.length() < 1.0:
+		return
+	if get_slide_collision_count() == 0:
+		return
+	if _hero == null or not is_instance_valid(_hero):
+		return
+	# Use the FIRST collision normal. If multiple, average them?
+	# For our scale (one enemy hitting one wall) the first is enough.
+	var col: KinematicCollision2D = get_slide_collision(0)
+	if col == null:
+		return
+	var normal: Vector2 = col.get_normal()
+	# Two tangent directions perpendicular to the wall normal.
+	var tan_a: Vector2 = Vector2(-normal.y, normal.x)
+	var tan_b: Vector2 = Vector2(normal.y, -normal.x)
+	# Pick the tangent that's closer to "toward hero" direction.
+	var to_hero: Vector2 = (_hero.global_position - global_position)
+	if to_hero.length_squared() < 0.01:
+		return
+	var aim: Vector2 = to_hero.normalized()
+	var chosen: Vector2 = tan_a if tan_a.dot(aim) > tan_b.dot(aim) else tan_b
+	velocity = chosen * intended.length()
 
 func _tick_chase_contact(delta: float) -> void:
 	var t: EnemyType = enemy_type
@@ -817,12 +867,14 @@ func _tick_chase_contact(delta: float) -> void:
 		return
 	var to_hero: Vector2 = _hero.global_position - global_position
 	var dist: float = to_hero.length()
+	# Save the intended velocity outside the if so we can wall-slide
+	# after move_and_slide regardless of which branch we took.
+	var intended: Vector2 = Vector2.ZERO
 	if t.can_move() and dist > 1.0:
-		# Iter 169 — pipe the intended chase velocity through the
-		# stuck-dodge helper so wedged enemies side-step. When not
-		# stuck this is a no-op identity (returns the intended
-		# vector unchanged).
-		var intended: Vector2 = to_hero.normalized() * _effective_move_speed()
+		# Iter 169 — stuck-dodge fallback (random perpendicular for
+		# long-stuck cases). Iter 172 — wall-slide post-move below
+		# handles the COMMON "I'm hitting a wall right now" case.
+		intended = to_hero.normalized() * _effective_move_speed()
 		velocity = _maybe_stuck_dodge(delta, intended)
 		# iter-106: hold "attack" pose during the post-hit window so
 		# the sprite reads as the bite/lunge that landed damage.
@@ -840,6 +892,10 @@ func _tick_chase_contact(delta: float) -> void:
 			sprite.play(&"idle")
 	sprite.flip_h = to_hero.x < 0
 	move_and_slide()
+	# Iter 172 — if we hit a wall this frame, re-aim velocity along
+	# the wall tangent toward the hero. Takes effect next frame.
+	# No-op when we didn't collide or weren't trying to move.
+	_apply_wall_slide(intended)
 	if dist < t.contact_range and _contact_cd <= 0.0:
 		_contact_cd = t.contact_cooldown
 		# iter-106: arm the attack-anim hold so the next ~250 ms plays
@@ -1780,14 +1836,17 @@ func _tick_telegraphed_melee(delta: float) -> void:
 		MeleeState.IDLE:
 			if dist > t.melee_reach * 0.85:
 				if t.can_move():
-					# Iter 169 — stuck-dodge for telegraphed_melee. Same
-					# helper as chase_contact. Without this, the larger
-					# melee enemies (Iron Revenant, elite orcs, armored
-					# skel) push into corners and never reach the hero.
+					# Iter 169 — stuck-dodge fallback for long-pinned cases.
+					# Iter 172 — wall-slide post-move below handles the
+					# common "I'm grinding against this wall right now" case.
+					# Without these together, large melee enemies (Iron
+					# Revenant, elite orcs, armored skel) push into corners
+					# and never reach the hero.
 					var intended: Vector2 = to_hero.normalized() * _effective_move_speed()
 					velocity = _maybe_stuck_dodge(delta, intended)
 					sprite.play(&"walk")
 					move_and_slide()
+					_apply_wall_slide(intended)
 				else:
 					velocity = Vector2.ZERO
 					sprite.play(&"idle")

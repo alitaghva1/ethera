@@ -3235,10 +3235,22 @@ func _heart_verts_polygon() -> PackedVector2Array:
 		])
 	return _heart_verts_cache
 const HEART_PIP_SIZE: float = 30.0
-const HEART_FILL_COLOR: Color = Color(1.0, 0.34, 0.36, 1.0)
-const HEART_EMPTY_COLOR: Color = Color(0.18, 0.18, 0.20, 0.85)
-const HEART_OUTLINE_COLOR: Color = Color(0.06, 0.02, 0.02, 1.0)
-const HEART_SHADOW_COLOR: Color = Color(0.0, 0.0, 0.0, 0.55)
+# Iter 170 — pip colors brightened. Pre-iter-170 the hearts read as
+# dim-red-on-dark and merged with the dungeon's warm-brown floor in
+# screenshots (user-reported "hearts almost gone behind tints"). Now:
+#   • FILL is HDR-saturated (1.25 red, slight pink) — pops on any
+#     floor color via the >1 modulate.
+#   • EMPTY is mauve-grey (0.42, 0.32, 0.34) instead of near-black
+#     so missing-HP slots remain LEGIBLE (was "lost a heart? what
+#     heart?" on dark backgrounds).
+#   • OUTLINE pure-black + thicker via the iter-125 Line2D so the
+#     pip silhouette holds against any backdrop.
+#   • SHADOW alpha bumped 0.55 → 0.70 so the drop-shadow visibly
+#     anchors each pip on the floor.
+const HEART_FILL_COLOR: Color = Color(1.25, 0.36, 0.40, 1.0)
+const HEART_EMPTY_COLOR: Color = Color(0.42, 0.32, 0.34, 0.90)
+const HEART_OUTLINE_COLOR: Color = Color(0.0, 0.0, 0.0, 1.0)
+const HEART_SHADOW_COLOR: Color = Color(0.0, 0.0, 0.0, 0.70)
 const HEART_HIGHLIGHT_COLOR: Color = Color(1.0, 0.72, 0.62, 0.85)
 
 func _update_hp(v: int) -> void:
@@ -3393,7 +3405,10 @@ func _make_heart_pip() -> Control:
 		outline_pts.append(vert * HEART_SCALE)
 	outline_pts.append(template[0] * HEART_SCALE)
 	outline.points = outline_pts
-	outline.width = 1.5
+	# Iter 170 — outline width 1.5 → 2.5 for stronger silhouette
+	# definition on dark dungeon backdrops. The hearts are small
+	# (~24 px wide); a 1.5 px outline got eaten by the floor texture.
+	outline.width = 2.5
 	outline.default_color = HEART_OUTLINE_COLOR
 	outline.antialiased = true
 	outline.position = center
