@@ -866,7 +866,13 @@ func _compute_separation_vector() -> Vector2:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if e == self or not is_instance_valid(e):
 			continue
-		if bool(e.get("_dying")):
+		# Iter 191 — fix Godot 4 runtime crash. `bool(x)` constructor is
+		# not callable in 4.x; the cast throws "Nonexistent 'bool'
+		# constructor." e.get("_dying") returns the bool value (or null
+		# if the property is missing); GDScript truthiness handles both
+		# null → false and bool → its own value, so the wrap is
+		# unnecessary AND broken.
+		if e.get("_dying"):
 			continue
 		var d: Vector2 = global_position - (e as Node2D).global_position
 		var dist: float = d.length()

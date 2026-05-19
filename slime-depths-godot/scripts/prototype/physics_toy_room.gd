@@ -263,7 +263,8 @@ func _room_type_label(rt: RoomType) -> String:
 func _alive_enemy_count() -> int:
 	var n: int = 0
 	for child in enemy_layer.get_children():
-		if child.is_in_group("toy_enemies") and not bool(child.get("_dying")):
+		# Iter 191 — Godot 4 bool() constructor fix.
+		if child.is_in_group("toy_enemies") and not child.get("_dying"):
 			n += 1
 	return n
 

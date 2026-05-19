@@ -107,7 +107,8 @@ func _physics_process(_delta: float) -> void:
 	# TETHER_REST_LENGTH so the gravestone trails behind at a
 	# comfortable distance instead of glued to the player.
 	# Duck-typed read: ToyHero exposes `pulling` as a public var.
-	var pulling: bool = bool(_player.get("pulling"))
+	# Iter 191 — `bool(x)` Godot 4 fix; cast via `as bool`.
+	var pulling: bool = _player.get("pulling") as bool
 	var rest_length: float = 0.0 if pulling else TETHER_REST_LENGTH
 	var extension: float = dist - rest_length
 	var stiffness: float = PULL_STIFFNESS_ACTIVE if pulling else PULL_STIFFNESS_IDLE

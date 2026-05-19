@@ -86,8 +86,14 @@ static func _mix(a: Color, b: Color, ratio: float) -> Color:
 #   swing_index  int   — 0 / 1 / 2 in the chain (style varies per index)
 #   swing_sign   int   — passed through to opts.swing_sign
 static func compose_slash_opts(hero, ctx: Dictionary = {}) -> Dictionary:
-	var is_charged: bool = bool(ctx.get("is_charged", false))
-	var is_finisher: bool = bool(ctx.get("is_finisher", false))
+	# Iter 191 — fix Godot 4 "Nonexistent 'bool' constructor" crash.
+	# Dictionary.get(key, default) returns the stored value when present
+	# or the default when absent. Both are reliable booleans here (the
+	# caller stores bool or omits), so we can assign directly with
+	# truthiness coercion handling any Variant edge cases. `as bool`
+	# casts safely for the type annotation.
+	var is_charged: bool = ctx.get("is_charged", false) as bool
+	var is_finisher: bool = ctx.get("is_finisher", false) as bool
 	var swing_index: int = int(ctx.get("swing_index", 0))
 	var swing_sign: int = int(ctx.get("swing_sign", 1))
 	# Iter 149 — combo amplification. Defaults to 0 when caller doesn't
@@ -187,7 +193,8 @@ static func compose_slash_opts(hero, ctx: Dictionary = {}) -> Dictionary:
 # via FX._on_enemy_hit's existing path — this function ADDS extra sparks
 # on top for heavy/crushing tiers via the hit_spark.tscn preload.
 static func apply_hit_feedback_tier(target, damage: int, opts: Dictionary = {}) -> String:
-	var is_crit: bool = bool(opts.get("is_crit", false))
+	# Iter 191 — see comment on compose_slash_opts above.
+	var is_crit: bool = opts.get("is_crit", false) as bool
 	var max_hp: int = 1
 	if target != null and "enemy_type" in target and target.enemy_type != null \
 			and "max_hp" in target.enemy_type:
