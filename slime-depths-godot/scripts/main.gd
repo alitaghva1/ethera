@@ -868,6 +868,21 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 	body.collision_layer = 1
 	body.collision_mask = 0
 	body.position = r.position + r.size * 0.5
+	# Iter 190 batch 2 — 55% chance to tilt the wall slightly off-axis
+	# (±0.085 rad = ±4.9°) per user direction "fallen stone slabs,
+	# broken crypt walls, or sarcophagus fragments." Reads as "this
+	# slab fell and now rests at a slight angle" — pushes the wall
+	# from "gameplay block" toward "broken architectural fragment."
+	# Seed derived from position so each wall has a CONSISTENT rotation
+	# across visits — without this, walls would jitter between room
+	# entries which feels broken.
+	# Collision rotates with the body so gameplay honors the visible
+	# footprint (the rectangle shape transforms with the StaticBody2D
+	# node's rotation).
+	var rot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rot_rng.seed = int(body.position.x * 13.0 + body.position.y * 7.0 + 41.0)
+	if rot_rng.randf() < 0.55:
+		body.rotation = rot_rng.randf_range(-0.085, 0.085)
 	var shape: CollisionShape2D = CollisionShape2D.new()
 	var rect_shape: RectangleShape2D = RectangleShape2D.new()
 	rect_shape.size = r.size
