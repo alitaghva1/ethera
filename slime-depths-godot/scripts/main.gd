@@ -4186,6 +4186,41 @@ func _resolve_room_pickup() -> void:
 	# (or the offer otherwise resolved). The room returns to its normal
 	# brightness for the walk-to-door beat.
 	_dismiss_offer_vignette()
+	# Iter 219 / Beta M1.0 — award Ether Shards on room resolution. The
+	# award fires HERE (after the pickup) rather than on wave-clear so a
+	# player who skips the relic pedestal (rare but possible) still gets
+	# the currency. Boss rooms get the boss bonus; the final-room bonus
+	# stacks via _show_run_complete below.
+	if _room != null:
+		var was_boss_room: bool = false
+		# Walk the cleared room's _spawned_enemies looking for is_boss.
+		for child in get_children():
+			if child.is_in_group("enemies") and child.has_method("get") \
+					and child.get("enemy_type") != null \
+					and child.get("enemy_type").get("is_boss"):
+				was_boss_room = true
+				break
+		# Boss check via room being the last (Tyrant) OR by spawn list
+		# is brittle; safer: read RoomConfig's _is_boss_room flag if
+		# present, fallback to is_last_room.
+		if not was_boss_room:
+			# Detect from waves[]: any enemy id flagged is_boss in ENEMY_TYPES.
+			if _room != null and _room.waves.size() > 0:
+				for wave in _room.waves:
+					for entry in wave:
+						if entry.size() >= 1:
+							var et_id: String = str(entry[0])
+							if ENEMY_TYPES.has(et_id):
+								var et: Resource = ENEMY_TYPES[et_id]
+								if et != null and et.get("is_boss"):
+									was_boss_room = true
+									break
+					if was_boss_room:
+						break
+		if was_boss_room:
+			GameState.award_shards_for_boss_kill()
+		else:
+			GameState.award_shards_for_room_clear()
 	if _room != null and _room.is_last_room:
 		_show_run_complete()
 	else:
@@ -5847,6 +5882,13 @@ func _show_run_complete() -> void:
 	# Without this, GameState.last_run_time would still hold the
 	# previous run's value when victory screen reads it.
 	GameState.finalize_run_time()
+	# Iter 219 / Beta M1.0 — Ether Shard run-complete bonus on top of
+	# the boss-kill award already granted in _resolve_room_pickup.
+	GameState.award_shards_for_run_complete()
+	# Save NOW so the currency persists even if the player crashes /
+	# alt-F4s before reaching the victory screen menu return.
+	if SaveSystem != null and SaveSystem.has_method("save_now"):
+		SaveSystem.save_now()
 	# Big floating banner so the moment registers even if the player's
 	# eyes are still tracking the hero, not the HUD corner.
 	var banner: DamageNumber = DamageNumber.spawn(

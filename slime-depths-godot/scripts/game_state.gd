@@ -70,6 +70,25 @@ var has_seen_controls_hint: bool = false
 # in their very first run's room 0. Persistent, so subsequent runs
 # never see the tutorial again unless the save is wiped.
 var has_completed_tutorial: bool = false
+
+# Iter 219 / Beta M1.0 — Persistent meta-progression currency. Ether
+# Shards accumulate across runs and (in a future M1.1) spend in the hub
+# on upgrade tree nodes (Resilience / Quick Step / etc., see
+# BETA_M1_META_DESIGN.md). Per the audit findings, this is the #1
+# beta-readiness gap — every death needs to produce SOME permanent
+# progress for the loop to retain players.
+#
+# Drop sources (wired in main.gd):
+#   Room cleared (non-boss):     +5
+#   Boss kill (any boss):        +15
+#   Run completion (Tyrant):     +30 (one-time bonus on top of clear)
+#
+# Persists through save_to_dict / load_from_dict. Migration path covers
+# pre-iter-219 saves (will load as 0 shards, which is correct).
+var ether_shards: int = 0
+# Lifetime accumulator — does NOT decrement on spending. Surface for
+# "total earned" stats / future achievements.
+var ether_lifetime_earned: int = 0
 # Iter 166 — first-encounter banner. Tracks which enemy display_names
 # have already been intro'd THIS SESSION (cleared on game launch by
 # nature of being an in-memory autoload field). Each new enemy type
@@ -1076,13 +1095,15 @@ func save_to_dict() -> Dictionary:
 		"unlocked_achievements": unlocked_achievements,
 		"has_seen_controls_hint": has_seen_controls_hint,
 		"has_completed_tutorial": has_completed_tutorial,
+		"ether_shards": ether_shards,
+		"ether_lifetime_earned": ether_lifetime_earned,
 	}
 
 # Current save schema version. Bump when fields are added/removed in a
 # breaking way; add a corresponding migration step in _migrate_save_dict.
 # Iter 218 / Beta M0.F — extracted as a constant so `_migrate_save_dict`
 # can target it explicitly and tests can introspect.
-const SAVE_VERSION_CURRENT: int = 5
+const SAVE_VERSION_CURRENT: int = 6
 
 # Iter 218 / Beta M0.F — Save migration foundation. The audit found
 # save_version was written but never read on load — any future schema
@@ -1131,6 +1152,14 @@ func _migrate_save_dict(d: Dictionary) -> Dictionary:
 		if not d.has("has_completed_tutorial"):
 			d["has_completed_tutorial"] = false
 		from_version = 5
+	# v5 → v6: introduced ether_shards + ether_lifetime_earned
+	# (Beta M1.0 persistent currency).
+	if from_version < 6:
+		if not d.has("ether_shards"):
+			d["ether_shards"] = 0
+		if not d.has("ether_lifetime_earned"):
+			d["ether_lifetime_earned"] = 0
+		from_version = 6
 	# Future versions: add `if from_version < N:` block here.
 	d["save_version"] = SAVE_VERSION_CURRENT
 	return d
@@ -1170,6 +1199,11 @@ func load_from_dict(d: Dictionary) -> void:
 	# load — fine, it's a 30-second beat that auto-completes once they
 	# play).
 	has_completed_tutorial = d.get("has_completed_tutorial", false) == true
+	# Iter 219 / Beta M1.0 — persistent Ether Shard currency. Migration
+	# defaults pre-v6 saves to 0 shards (player starts the meta loop
+	# from scratch on first launch with the new currency).
+	ether_shards = int(d.get("ether_shards", 0))
+	ether_lifetime_earned = int(d.get("ether_lifetime_earned", 0))
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and
@@ -1290,6 +1324,46 @@ func get_owned_active_id() -> String:
 		if id in owned_relics:
 			return id
 	return ""
+
+# ── Beta M1.0 — Ether Shard API ──────────────────────────────────────
+# Iter 219 — persistent currency awarded at gameplay events. The
+# accumulator persists ACROSS RUNS via save_to_dict. Spending happens in
+# a future M1.1 hub scene against the 5-node upgrade tree.
+const SHARDS_PER_ROOM_CLEAR: int = 5
+const SHARDS_PER_BOSS_KILL: int = 15
+const SHARDS_PER_RUN_COMPLETE: int = 30  # bonus on top of clear / boss
+
+# Awards `amount` ether shards. Updates lifetime counter too. Saves
+# IMPLICITLY — caller is responsible for invoking SaveSystem.save() at
+# the right moment (typically on death/clear/transition, not per-room
+# event, to avoid disk churn).
+func award_ether_shards(amount: int) -> void:
+	if amount <= 0:
+		return
+	ether_shards += amount
+	ether_lifetime_earned += amount
+
+# Convenience: ether shard drop for clearing a (non-boss) room.
+func award_shards_for_room_clear() -> void:
+	award_ether_shards(SHARDS_PER_ROOM_CLEAR)
+
+# Convenience: ether shard drop for killing a boss.
+func award_shards_for_boss_kill() -> void:
+	award_ether_shards(SHARDS_PER_BOSS_KILL)
+
+# Convenience: bonus on top of the final boss kill for a full clear.
+func award_shards_for_run_complete() -> void:
+	award_ether_shards(SHARDS_PER_RUN_COMPLETE)
+
+# Future M1.1 — spend API. Returns true if spent, false if insufficient.
+# Stub returning false for now so the hub can plumb it without crashing.
+func spend_ether_shards(amount: int) -> bool:
+	if amount <= 0:
+		return false
+	if ether_shards < amount:
+		return false
+	ether_shards -= amount
+	return true
 
 # ── Relic API ────────────────────────────────────────────────────────
 func has_relic(id: String) -> bool:

@@ -165,7 +165,14 @@ func _populate_stats() -> void:
 	# visually aligned (the body_font isn't monospace, so the dots
 	# substitute for tabular numbers).
 	var best: int = max(GameState.best_run_kills, GameState.last_run_kills)
-	stats_runs.text     = "runs ··············· %d" % GameState.dungeon_runs
+	# Iter 219 / Beta M1.0 — surface persistent ether shard balance
+	# alongside the run records so the player can see the meta currency
+	# accumulate even before the upgrade hub (M1.1) lands. Stamping it
+	# into stats_runs's text (which already has the most room) so we
+	# don't need a new HUD node yet.
+	stats_runs.text     = "runs ··············· %d   ◇ %d" % [
+		GameState.dungeon_runs, GameState.ether_shards
+	]
 	stats_best_time.text = "best time ··········· %s" % _format_best_time()
 	stats_best.text     = "best kills ·········· %d" % best
 
