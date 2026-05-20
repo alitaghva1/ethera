@@ -32,6 +32,13 @@ const FLOOR_ROOMS: Array[String] = [
 	"res://scenes/rooms/room_04.tres",
 	"res://scenes/rooms/room_05.tres",
 	"res://scenes/rooms/room_06.tres",
+	# Iter 207 — added room_07 (TYRANT'S HEARTH) as the new final boss
+	# room. Pre-iter-207 the run ended at room_06 (BROOD CHAMBER /
+	# Broodmother boss). The Ember Tyrant boss .tres (iter-205) was
+	# unwired until this commit. To make Tyrant the LITERAL end of run,
+	# room_06.tres has is_last_room flipped from true → false in a
+	# companion edit; room_07.tres carries is_last_room = true now.
+	"res://scenes/rooms/room_07.tres",
 ]
 
 # Current room index (0-based). -1 = not in a floor (hamlet / menus).
