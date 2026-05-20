@@ -356,8 +356,13 @@ func apply_slow(duration: float, multiplier: float = SLOW_DEFAULT_MULTIPLIER) ->
 # Iter 202 — status combo dispatcher. Noita's signature design move:
 # two compatible statuses combining into a third effect that's bigger
 # than either alone. Combos wired so far:
-#   BURN + SLOW → SHATTER       (thermal shock damage burst — iter 202)
-#   BURN + DEATH → KINDLE_SPREAD (flames jump to neighbors — iter 212)
+#   BURN + SLOW   → SHATTER       (thermal shock damage burst — iter 202)
+#   BURN + DEATH  → KINDLE_SPREAD (flames jump to neighbors — iter 212)
+#   SLOW + CRIT   → PETRIFY       (brief stun on crit-against-slowed — iter 215)
+#   BURN + PUSH   → SCATTER_FLAMES (knockback burning enemy → embers — iter 215)
+# Hero-side combos (BACKDRAFT, RIME_TRAIL) live in hero.gd because they
+# fire on hero actions (parry, dash-through) rather than enemy state
+# transitions.
 # Cooldown prevents loop-firing when multiple sources stack the trigger
 # status in the same frame.
 const SHATTER_COMBO_COOLDOWN: float = 0.45
@@ -370,6 +375,26 @@ var _shatter_cd: float = 0.0
 # initial burn that killed the enemy, so chain dies out naturally).
 const KINDLE_RADIUS: float = 96.0
 const KINDLE_BURN_DURATION: float = 1.5
+
+# Iter 215 — PETRIFY combo (Phase 4 / SLOW + CRIT). When a slowed enemy
+# is hit with a CRIT, they're briefly stunned — can't move, can't
+# attack, can't cast. Strong CONTROL payoff for the player. Cooldown
+# is per-enemy so back-to-back crits on a slowed target don't infinite-
+# stun them. The stun TIMER is read by behavior ticks (chase/shoot/
+# telegraphed_melee) to short-circuit AI and freeze velocity.
+const PETRIFY_DURATION: float = 0.6
+const PETRIFY_COOLDOWN: float = 1.2
+var _petrify_remaining: float = 0.0
+var _petrify_cd: float = 0.0
+
+# Iter 215 — SCATTER_FLAMES combo (Phase 4 / BURN + KNOCKBACK). When a
+# burning enemy is knocked back, embers scatter from its body — nearby
+# enemies catch a short burn. Reinforces positioning: knocking burning
+# foes into clusters punishes positioning even more.
+const SCATTER_FLAMES_RADIUS: float = 64.0
+const SCATTER_FLAMES_BURN_DURATION: float = 0.8
+const SCATTER_FLAMES_COOLDOWN: float = 0.5
+var _scatter_flames_cd: float = 0.0
 
 func _trigger_shatter_combo() -> void:
 	_shatter_cd = SHATTER_COMBO_COOLDOWN
@@ -473,6 +498,106 @@ func _trigger_kindle_spread() -> void:
 	var parent_for_dn: Node = get_parent()
 	if parent_for_dn != null:
 		parent_for_dn.add_child(dn)
+
+# Iter 215 — PETRIFY combo dispatcher (Phase 4 / SLOW + CRIT). Called
+# from take_hit() when is_crit AND _slow_remaining > 0. Stuns the
+# enemy for PETRIFY_DURATION seconds (read by behavior ticks to skip
+# AI). Cooldown prevents stun-locking a slowed target with consecutive
+# crits.
+func _trigger_petrify() -> void:
+	_petrify_cd = PETRIFY_COOLDOWN
+	_petrify_remaining = PETRIFY_DURATION
+	velocity = Vector2.ZERO
+	# Visual: ice-blue ring + crackle pattern. Reads as the enemy
+	# locked in place by sudden cold-shock force.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 14
+	var r: float = (enemy_type.collision_radius if enemy_type != null else 16.0) * 1.6
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * r, sin(ang) * r * 0.9))
+	ring.polygon = pts
+	ring.color = Color(0.62, 0.85, 1.0, 0.78)
+	ring.scale = Vector2(0.3, 0.3)
+	ring.z_index = 3
+	add_child(ring)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.22)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, PETRIFY_DURATION + 0.1)\
+		.set_trans(Tween.TRANS_LINEAR)
+	tw.chain().tween_callback(ring.queue_free)
+	# Floater. Cool blue tone — control payoff, not damage payoff.
+	var dn_pos: Vector2 = global_position + Vector2(0, -40)
+	var dn: DamageNumber = DamageNumber.spawn(
+		dn_pos, "PETRIFY!", Color(0.65, 0.88, 1.0)
+	)
+	var parent_for_dn: Node = get_parent()
+	if parent_for_dn != null:
+		parent_for_dn.add_child(dn)
+
+# Iter 215 — SCATTER_FLAMES combo dispatcher (Phase 4 / BURN + KNOCKBACK).
+# Called from apply_knockback() when this enemy is burning. Spawns a
+# small ember pulse at the enemy's CURRENT position (BEFORE the
+# knockback moves them) and applies a short burn to neighbors within
+# SCATTER_FLAMES_RADIUS. Reinforces positioning play.
+func _trigger_scatter_flames() -> void:
+	_scatter_flames_cd = SCATTER_FLAMES_COOLDOWN
+	# Apply short burn to nearby enemies (NOT including self — self is
+	# already burning, and the chain shouldn't double-amplify the
+	# already-burning enemy who triggered this).
+	var r2: float = SCATTER_FLAMES_RADIUS * SCATTER_FLAMES_RADIUS
+	var hit_count: int = 0
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node == self or not is_instance_valid(node):
+			continue
+		if node.get("_dying"):
+			continue
+		if not (node is Node2D):
+			continue
+		var d: Vector2 = (node as Node2D).global_position - global_position
+		if d.length_squared() <= r2 and node.has_method("apply_burn"):
+			node.call("apply_burn", SCATTER_FLAMES_BURN_DURATION)
+			hit_count += 1
+	# Visual: small warm burst at the enemy's CURRENT position (the
+	# burst stays where the scatter happened even when the enemy gets
+	# knocked away). Parent to scene root so it persists past this
+	# enemy's potential death.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 12
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * SCATTER_FLAMES_RADIUS * 0.9, sin(ang) * SCATTER_FLAMES_RADIUS * 0.7))
+	ring.polygon = pts
+	ring.color = Color(1.0, 0.58, 0.20, 0.58)
+	ring.scale = Vector2(0.2, 0.2)
+	ring.z_index = 2
+	var sroot: Node = get_parent()
+	if sroot == null:
+		sroot = get_tree().current_scene
+	if sroot != null:
+		sroot.add_child(ring)
+		ring.global_position = global_position
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.28)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.28)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+	# Floater only fires if at least one neighbor caught fire — silent
+	# scatter on an isolated burning enemy still LOOKS right (the
+	# burst still plays), but the SCATTER! word is reserved for the
+	# moment that actually spread.
+	if hit_count > 0:
+		var dn_pos: Vector2 = global_position + Vector2(0, -40)
+		var dn: DamageNumber = DamageNumber.spawn(
+			dn_pos, "SCATTER!", Color(1.0, 0.62, 0.25)
+		)
+		var parent_for_dn: Node = get_parent()
+		if parent_for_dn != null:
+			parent_for_dn.add_child(dn)
 
 # Iter 46 — slow-aware speed read. Used by all behavior ticks instead
 # of direct enemy_type.move_speed accesses so slow applies uniformly
@@ -802,6 +927,11 @@ func _physics_process(delta: float) -> void:
 	# states. Empty cooldown = next status application can trigger
 	# the SHATTER combo again.
 	_shatter_cd = maxf(0.0, _shatter_cd - delta)
+	# Iter 215 — Phase 4 combo cooldown ticks. Same always-on
+	# decrement pattern.
+	_petrify_cd = maxf(0.0, _petrify_cd - delta)
+	_petrify_remaining = maxf(0.0, _petrify_remaining - delta)
+	_scatter_flames_cd = maxf(0.0, _scatter_flames_cd - delta)
 	# Death drain → free. Skip all gameplay logic so corpses don't keep
 	# chasing the hero.
 	if _dying:
@@ -900,6 +1030,16 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 	if enemy_type == null:
+		return
+	# Iter 215 — PETRIFY combo gate (Phase 4). While petrified, the
+	# enemy is frozen: no AI, no movement, no attack. Velocity zeroed
+	# so any in-flight movement doesn't carry over. Placed AFTER the
+	# knockback block so a knockback in progress still resolves (the
+	# enemy can't "use petrify as iframes from knockback") but BEFORE
+	# behavior dispatch so AI ticks are skipped entirely.
+	if _petrify_remaining > 0.0:
+		velocity = Vector2.ZERO
+		move_and_slide()
 		return
 	# Behavior dispatch — one branch per supported tag. Unknown tags fall
 	# through to chase_contact (the most forgiving default).
@@ -2372,6 +2512,13 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		if original_damage > 1:
 			_spawn_affix_floater("WARDED", ELITE_AFFIX_TINTS["warded"], global_position)
 	hp -= damage
+	# Iter 215 — PETRIFY combo (Phase 4). Crit hits on a slowed enemy
+	# briefly stun them. Fires BEFORE the death-check below so an
+	# enemy that survives the crit is petrified; an enemy that dies
+	# from the crit just dies (no need to petrify the dying frame).
+	# Per-enemy cooldown prevents back-to-back crits from chain-stunning.
+	if is_crit and _slow_remaining > 0.0 and _petrify_cd <= 0.0 and hp > 0:
+		_trigger_petrify()
 	# iter-110: arm the hurt-anim hold IF the enemy ships a hurt_sheet.
 	# Behavior ticks check _hurt_anim_time > 0 + frames_hurt > 0 and
 	# play the "hurt" animation for the hold window before resuming
@@ -2557,6 +2704,12 @@ func apply_knockback(dir: Vector2, force: float, duration: float) -> void:
 	_knockback_velocity = dir.normalized() * force
 	_knockback_time = duration
 	_knockback_total = duration
+	# Iter 215 — SCATTER_FLAMES combo (Phase 4). Burning enemy taking a
+	# knockback sheds embers at its current position before the push
+	# moves it. Cooldown prevents back-to-back knocks from double-
+	# firing on the same enemy.
+	if _burn_remaining > 0.0 and _scatter_flames_cd <= 0.0:
+		_trigger_scatter_flames()
 
 func _die() -> void:
 	_dying = true

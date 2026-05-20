@@ -2443,6 +2443,13 @@ func _on_shield_block() -> void:
 		# arcs to one target) — these are 5 straight ivory bolts in a
 		# fan from the parry catch point.
 		_spawn_shield_reflect_fan()
+	# Iter 215 — BACKDRAFT combo (Phase 4 / BURN + PARRY). If ANY enemy
+	# within BACKDRAFT_RADIUS of the hero is currently burning when the
+	# parry lands, the parry triggers an outward flame burst. Reads as
+	# "the heat from the burning attacker recoils back as you deflect."
+	# Doesn't need elaborate per-attack tracking — a parry while a
+	# burning enemy is in range is sufficient.
+	_try_trigger_backdraft()
 
 # Iter 63 — parry reflect fan. 5 small projectiles in a 90° cone
 # centered on the parry's stored aim direction (_shield_aim is set
@@ -2474,6 +2481,134 @@ func _spawn_shield_reflect_fan() -> void:
 		# Ivory tint matching the VOW theme palette (iter-39 chip color).
 		p.orb_tint = Color(0.92, 0.92, 0.78, 1.0)
 		host.add_child(p)
+
+# ── Iter 215 / Phase 4 — Hero-side status combos ─────────────────────
+# BACKDRAFT (BURN + PARRY) and RIME_TRAIL (SLOW + DASH-THROUGH) live
+# here because they fire on HERO actions, not enemy state transitions.
+# Enemy-side combos (SHATTER, KINDLE_SPREAD, PETRIFY, SCATTER_FLAMES)
+# stay in enemy.gd.
+
+# BACKDRAFT — if a burning enemy is within BACKDRAFT_RADIUS when the
+# parry catches, a flame burst radiates outward, applying 1 damage +
+# 1 s burn to all enemies in BACKDRAFT_RADIUS. Verb: "the heat of the
+# parried attacker recoils." Cooldown comes for free from the parry
+# system — you can't parry every 0.4 s.
+const BACKDRAFT_RADIUS: float = 96.0
+const BACKDRAFT_DAMAGE: int = 1
+const BACKDRAFT_BURN_DURATION: float = 1.0
+
+func _try_trigger_backdraft() -> void:
+	# Scan for any burning enemy within range. If none, skip silently.
+	var rsq: float = BACKDRAFT_RADIUS * BACKDRAFT_RADIUS
+	var any_burning: bool = false
+	var targets: Array = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - global_position
+		if d.length_squared() > rsq:
+			continue
+		targets.append(e)
+		var burn_rem: float = e.get("_burn_remaining")
+		if burn_rem > 0.0:
+			any_burning = true
+	if not any_burning:
+		return
+	# Apply damage + burn to EVERY enemy in range (including non-burning
+	# ones — the burst doesn't care which ignited it).
+	for e in targets:
+		if e.has_method("take_hit"):
+			e.take_hit(BACKDRAFT_DAMAGE, false)
+		if e.has_method("apply_burn"):
+			e.apply_burn(BACKDRAFT_BURN_DURATION)
+	# Visual: orange ring outward from hero.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 20
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * BACKDRAFT_RADIUS, sin(ang) * BACKDRAFT_RADIUS * 0.85))
+	ring.polygon = pts
+	ring.color = Color(1.0, 0.52, 0.18, 0.62)
+	ring.scale = Vector2(0.2, 0.2)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		ring.global_position = global_position
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.30)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.30)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+		# Floater
+		var dn: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -72),
+			"BACKDRAFT!",
+			Color(1.0, 0.65, 0.30),
+		)
+		parent.add_child(dn)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.35)
+
+# RIME_TRAIL — when the dash-strike hits a slowed enemy, leave a frost
+# pulse at that enemy's position that slows other enemies within
+# RIME_TRAIL_RADIUS for RIME_TRAIL_SLOW_DURATION. One pulse per dash
+# (regardless of how many slowed enemies are hit) so a multi-target
+# dash doesn't fan five pulses.
+const RIME_TRAIL_RADIUS: float = 84.0
+const RIME_TRAIL_SLOW_DURATION: float = 1.2
+const RIME_TRAIL_SLOW_MUL: float = 0.55
+# Per-dash flag set true on the dash-strike start and consumed by the
+# first slowed-enemy hit. Cleared by _start_dash_strike for each new
+# dash.
+var _rime_trail_armed_this_dash: bool = false
+
+func _try_trigger_rime_trail(at_pos: Vector2) -> void:
+	if not _rime_trail_armed_this_dash:
+		return
+	_rime_trail_armed_this_dash = false
+	# Apply slow to enemies in radius (skip self via take-hit-style
+	# enemy-only scan — hero isn't in "enemies" group anyway).
+	var rsq: float = RIME_TRAIL_RADIUS * RIME_TRAIL_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - at_pos
+		if d.length_squared() <= rsq and e.has_method("apply_slow"):
+			e.apply_slow(RIME_TRAIL_SLOW_DURATION, RIME_TRAIL_SLOW_MUL)
+	# Visual: cyan-white expanding ring centered on hit position.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 18
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * RIME_TRAIL_RADIUS, sin(ang) * RIME_TRAIL_RADIUS * 0.78))
+	ring.polygon = pts
+	ring.color = Color(0.70, 0.92, 1.0, 0.65)
+	ring.scale = Vector2(0.2, 0.2)
+	ring.z_index = 3
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		ring.global_position = at_pos
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.34)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.34)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+		var dn: DamageNumber = DamageNumber.spawn(
+			at_pos + Vector2(0, -40),
+			"RIME!",
+			Color(0.78, 0.92, 1.0),
+		)
+		parent.add_child(dn)
 
 # Iter 25 — dash pass-through damage tick. Called from _physics_process
 # while _dash_strike_time > 0. Scans enemies near the hero this frame
@@ -2816,6 +2951,10 @@ func _start_dash_strike() -> void:
 		aim_world = _dir_to_vector(_facing_dir)
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
+	# Iter 215 — RIME_TRAIL combo arming (Phase 4 / SLOW + DASH-THROUGH).
+	# Re-armed each dash so the trail can fire at most once per dash
+	# regardless of how many enemies are sliced.
+	_rime_trail_armed_this_dash = true
 	# Iter 197 — dash whoosh audio. Pre-iter-197 dash_strike was visually
 	# distinctive (golden afterimages) but audibly silent. Adding a
 	# 400→1200 Hz sine sweep over 200 ms gives the move the iconic
@@ -2939,7 +3078,17 @@ func _resolve_dash_strike_hit() -> void:
 			var is_crit_ds: bool = _roll_crit()
 			if is_crit_ds:
 				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+			# Iter 215 — RIME_TRAIL combo (Phase 4 / SLOW + DASH-THROUGH).
+			# Check the SLOW status on the enemy BEFORE take_hit (which
+			# might kill it and clear status). If this slowed enemy is
+			# the first slowed target of this dash, fire the frost pulse
+			# at THEIR position. _try_trigger_rime_trail consumes the
+			# arming flag so only ONE pulse per dash even if the dash
+			# slices multiple slowed enemies.
+			var enemy_slow: float = enemy.get("_slow_remaining")
 			enemy.take_hit(dmg_for_this, is_crit_ds)
+			if enemy_slow > 0.0 and _rime_trail_armed_this_dash:
+				_try_trigger_rime_trail(enemy.global_position)
 			hit_count += 1
 			_bump_combo()   # iter 54 — dash final-AoE hits count
 		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
