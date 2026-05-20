@@ -931,7 +931,7 @@ func _physics_process(delta: float) -> void:
 	# alive. Press-once gate via is_action_just_pressed.
 	if Input.is_action_just_pressed("active_relic") \
 			and _active_relic_cd <= 0.0 \
-			and _alive \
+			and not _is_dying \
 			and GameState.has_relic("soul_surge"):
 		_trigger_soul_surge()
 
@@ -1631,9 +1631,9 @@ func _start_blast() -> void:
 # count as the original cast) from the hero's CURRENT position with
 # fresh cursor aim. Skipped if hero died between the original cast
 # and this firing (cleanly handles the "blast then die in 0.16 s"
-# edge case via _alive check).
+# edge case via _is_dying check).
 func _fire_echo_blast(echo_resonance: bool) -> void:
-	if not _alive:
+	if _is_dying:
 		return
 	# Re-resolve aim at echo time so it tracks the moving cursor.
 	var aim_world: Vector2 = get_global_mouse_position() - global_position

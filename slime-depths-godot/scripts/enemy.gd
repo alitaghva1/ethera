@@ -1080,7 +1080,13 @@ func _apply_contact_signature(kind: String) -> void:
 			# direction AWAY from the hero.
 			if _hero != null and is_instance_valid(_hero):
 				var away: Vector2 = (global_position - _hero.global_position).normalized()
-				apply_knockback(away * 420.0, 0.18)
+				# Iter 206 — fix iter-198 regression. apply_knockback
+				# signature is (dir, force, duration) — 3 args. The
+				# original call passed (vec * scalar, scalar) which is
+				# only 2 args. Parser caught it on cold-load (smoke
+				# test didn't trigger the path because no enemies spawn
+				# at scene-load).
+				apply_knockback(away, 420.0, 0.18)
 		"leap":
 			# WEREWOLF LEAP — short forward velocity burst as the
 			# werewolf "pounces" through the hero. Sets velocity in the
