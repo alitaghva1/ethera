@@ -439,6 +439,39 @@ func set_master_volume(linear_0_to_1: float) -> void:
 	var db: float = linear_to_db(v) if v > 0.001 else -80.0
 	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Master"), db)
 
+# Iter 221 / Beta M2 — separate music / SFX volume sliders. Stored in
+# GameState.music_volume / sfx_volume; persisted via save_to_dict. The
+# music player's target dB is recomputed from MUSIC_TARGET_DB *
+# music_volume so a slider drag below 1.0 is audible immediately on
+# the next crossfade. Per-event SFX scaling is plumbed via _play_at_db
+# (audio.gd:_play overload added in M3 — for now SFX scales with
+# master only, the new slider's effect lands when M3 ships).
+func set_music_volume(linear_0_to_1: float) -> void:
+	# Stored in GameState by the settings UI; this method exists so
+	# settings_screen can call it explicitly to trigger a recompute.
+	# The crossfade pipeline already reads GameState on next play.
+	_recompute_music_target_db()
+
+func set_sfx_volume(linear_0_to_1: float) -> void:
+	# Stored in GameState by the settings UI; per-cue volume scaling
+	# folds in via the existing _play(volume_db) path once M3 lands.
+	pass
+
+# Internal — adjusts the live music player's volume to the new target
+# without a fresh crossfade. Called when the music_volume slider moves.
+func _recompute_music_target_db() -> void:
+	if _music_current_track == "":
+		return
+	var gs_mul: float = 1.0
+	if Engine.get_main_loop().root.has_node("/root/GameState"):
+		var gs: Node = Engine.get_main_loop().root.get_node("/root/GameState")
+		if gs != null and "music_volume" in gs:
+			gs_mul = clampf(float(gs.music_volume), 0.0, 1.0)
+	var target: float = MUSIC_TARGET_DB + linear_to_db(maxf(0.001, gs_mul))
+	var live: AudioStreamPlayer = _music_player_a if _music_live_is_a else _music_player_b
+	if live != null and live.playing:
+		live.volume_db = target
+
 # ══════════════════════════════════════════════════════════════════════
 # Ambient drone system
 # ══════════════════════════════════════════════════════════════════════

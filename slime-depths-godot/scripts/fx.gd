@@ -124,7 +124,17 @@ func _get_camera() -> Camera2D:
 # maximum violent shake). Most existing callers go through `shake`
 # (amp/dur back-compat path) which converts amp → trauma internally.
 func add_trauma(amount: float) -> void:
-	_trauma = clampf(_trauma + amount, 0.0, 1.0)
+	# Iter 221 / Beta M2 — accessibility intensity gate. The settings
+	# screen-shake slider (0.0 → 1.0) scales every incoming trauma. A
+	# player who is shake-sensitive can drop it to 0.0 and the camera
+	# never shakes. Default 1.0 preserves the existing feel exactly.
+	# Read at call time so changes apply immediately on slider drag.
+	var scale: float = 1.0
+	if Engine.has_singleton("GameState") or Engine.get_main_loop().root.has_node("/root/GameState"):
+		var gs: Node = Engine.get_main_loop().root.get_node("/root/GameState")
+		if gs != null and "screen_shake_intensity" in gs:
+			scale = clampf(float(gs.screen_shake_intensity), 0.0, 1.0)
+	_trauma = clampf(_trauma + amount * scale, 0.0, 1.0)
 
 # Back-compat shake API. The amp/dur arguments are legacy from the
 # iter-30 tween-based shake; we now convert amp to a trauma value and

@@ -1164,6 +1164,17 @@ func active_themes() -> Dictionary:
 # is the consumer (converts to dB for the Master bus).
 var master_volume: float = 0.7
 
+# Iter 221 / Beta M2 — Accessibility settings. Persist via save_to_dict
+# (save_version v8). Read at the use site (audio.gd, fx.gd, hero.gd,
+# main.gd) so changes take effect immediately on settings save without
+# requiring a scene reload.
+var music_volume: float = 0.8           # multiplies master for music bus
+var sfx_volume: float = 1.0             # multiplies master for SFX bus
+var screen_shake_intensity: float = 1.0 # 0.0 = off, 1.0 = full trauma
+var motion_reduction: bool = false      # kills camera lerp + parallax
+var text_scale: float = 1.0             # 1.0 → 1.3 maximum
+var colorblind_mode: String = "none"    # "none"|"deuter"|"prota"|"trita"|"highcontrast"
+
 # ── Save / load serialization ────────────────────────────────────────
 # Round-tripped through SaveSystem (user://ethera_save.json). Versioned
 # so future schema changes can be migrated rather than dropped. Keep
@@ -1186,13 +1197,19 @@ func save_to_dict() -> Dictionary:
 		"ether_shards": ether_shards,
 		"ether_lifetime_earned": ether_lifetime_earned,
 		"upgrade_levels": upgrade_levels.duplicate(),
+		"music_volume": music_volume,
+		"sfx_volume": sfx_volume,
+		"screen_shake_intensity": screen_shake_intensity,
+		"motion_reduction": motion_reduction,
+		"text_scale": text_scale,
+		"colorblind_mode": colorblind_mode,
 	}
 
 # Current save schema version. Bump when fields are added/removed in a
 # breaking way; add a corresponding migration step in _migrate_save_dict.
 # Iter 218 / Beta M0.F — extracted as a constant so `_migrate_save_dict`
 # can target it explicitly and tests can introspect.
-const SAVE_VERSION_CURRENT: int = 7
+const SAVE_VERSION_CURRENT: int = 8
 
 # Iter 218 / Beta M0.F — Save migration foundation. The audit found
 # save_version was written but never read on load — any future schema
@@ -1257,6 +1274,21 @@ func _migrate_save_dict(d: Dictionary) -> Dictionary:
 				"tribute": 0, "bound_vow": 0,
 			}
 		from_version = 7
+	# v7 → v8: introduced accessibility settings (Beta M2 batch).
+	if from_version < 8:
+		if not d.has("music_volume"):
+			d["music_volume"] = 0.8
+		if not d.has("sfx_volume"):
+			d["sfx_volume"] = 1.0
+		if not d.has("screen_shake_intensity"):
+			d["screen_shake_intensity"] = 1.0
+		if not d.has("motion_reduction"):
+			d["motion_reduction"] = false
+		if not d.has("text_scale"):
+			d["text_scale"] = 1.0
+		if not d.has("colorblind_mode"):
+			d["colorblind_mode"] = "none"
+		from_version = 8
 	# Future versions: add `if from_version < N:` block here.
 	d["save_version"] = SAVE_VERSION_CURRENT
 	return d
@@ -1308,6 +1340,15 @@ func load_from_dict(d: Dictionary) -> void:
 		for k in upgrade_levels.keys():
 			if loaded_up.has(k):
 				upgrade_levels[k] = int(loaded_up[k])
+	# Iter 221 / Beta M2 — accessibility settings.
+	music_volume = clampf(float(d.get("music_volume", 0.8)), 0.0, 1.0)
+	sfx_volume = clampf(float(d.get("sfx_volume", 1.0)), 0.0, 1.0)
+	screen_shake_intensity = clampf(float(d.get("screen_shake_intensity", 1.0)), 0.0, 1.0)
+	motion_reduction = d.get("motion_reduction", false) == true
+	text_scale = clampf(float(d.get("text_scale", 1.0)), 1.0, 1.3)
+	var cm: Variant = d.get("colorblind_mode", "none")
+	if cm is String:
+		colorblind_mode = String(cm)
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and

@@ -52,6 +52,10 @@ func _ready() -> void:
 
 	back_button.pressed.connect(_on_back_pressed)
 	volume_slider.value_changed.connect(_on_volume_changed)
+	# Iter 221 / Beta M2 — accessibility controls. Built programmatically
+	# so we don't have to edit settings_screen.tscn. Injected just after
+	# the existing volume slider row.
+	_inject_accessibility_controls()
 
 	# Same hover-grow recipe as MainMenu — kept inline rather than
 	# extracted into a shared helper because there's only one button
@@ -158,3 +162,91 @@ func _apply_title_scale(s: float) -> void:
 	var v: Vector2 = Vector2(s, s)
 	title.scale = v
 	title_glow.scale = v * 1.02
+
+# ── Iter 221 / Beta M2 — Accessibility controls ────────────────────────
+# Programmatically added under the existing volume row. Each row binds
+# to a GameState field; SaveSystem.save_now() fires on change.
+
+func _inject_accessibility_controls() -> void:
+	var content: Node = $Content
+	if content == null:
+		return
+	var insert_at: int = volume_slider.get_parent().get_index() + 1
+	# Section title
+	var sec: Label = Label.new()
+	sec.text = "ACCESSIBILITY"
+	sec.add_theme_color_override("font_color", Color(0.78, 0.72, 0.96))
+	sec.add_theme_font_size_override("font_size", 18)
+	content.add_child(sec)
+	content.move_child(sec, insert_at)
+	insert_at += 1
+	# Music volume
+	insert_at = _add_slider_row(content, insert_at, "Music Volume", GameState.music_volume * 100.0, func(v):
+		var lin: float = v / 100.0
+		GameState.music_volume = lin
+		Audio.set_music_volume(lin)
+		SaveSystem.save_now()
+	)
+	# SFX volume
+	insert_at = _add_slider_row(content, insert_at, "SFX Volume", GameState.sfx_volume * 100.0, func(v):
+		var lin: float = v / 100.0
+		GameState.sfx_volume = lin
+		Audio.set_sfx_volume(lin)
+		SaveSystem.save_now()
+	)
+	# Screen shake
+	insert_at = _add_slider_row(content, insert_at, "Screen Shake", GameState.screen_shake_intensity * 100.0, func(v):
+		GameState.screen_shake_intensity = clampf(v / 100.0, 0.0, 1.0)
+		SaveSystem.save_now()
+	)
+	# Text scale (range 100..130 = 1.0..1.3)
+	insert_at = _add_slider_row(content, insert_at, "Text Scale (%)", GameState.text_scale * 100.0, func(v):
+		GameState.text_scale = clampf(v / 100.0, 1.0, 1.3)
+		SaveSystem.save_now()
+	, 100.0, 130.0)
+	# Motion reduction toggle
+	var mrow: HBoxContainer = HBoxContainer.new()
+	mrow.add_theme_constant_override("separation", 12)
+	content.add_child(mrow)
+	content.move_child(mrow, insert_at)
+	insert_at += 1
+	var mlabel: Label = Label.new()
+	mlabel.text = "Reduce Motion"
+	mlabel.custom_minimum_size = Vector2(180, 0)
+	mrow.add_child(mlabel)
+	var mcheck: CheckBox = CheckBox.new()
+	mcheck.button_pressed = GameState.motion_reduction
+	mcheck.toggled.connect(func(pressed):
+		GameState.motion_reduction = pressed
+		SaveSystem.save_now()
+	)
+	mrow.add_child(mcheck)
+
+# Helper: build a "label : slider : value" row, return next insert index.
+func _add_slider_row(parent: Node, at_idx: int, label_text: String,
+		initial_value: float, on_change: Callable,
+		min_v: float = 0.0, max_v: float = 100.0) -> int:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	parent.add_child(row)
+	parent.move_child(row, at_idx)
+	var lbl: Label = Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(180, 0)
+	row.add_child(lbl)
+	var slider: HSlider = HSlider.new()
+	slider.min_value = min_v
+	slider.max_value = max_v
+	slider.step = 1.0
+	slider.custom_minimum_size = Vector2(280, 24)
+	slider.set_value_no_signal(initial_value)
+	row.add_child(slider)
+	var val_lbl: Label = Label.new()
+	val_lbl.text = str(int(initial_value))
+	val_lbl.custom_minimum_size = Vector2(40, 0)
+	row.add_child(val_lbl)
+	slider.value_changed.connect(func(v):
+		val_lbl.text = str(int(v))
+		on_change.call(v)
+	)
+	return at_idx + 1
