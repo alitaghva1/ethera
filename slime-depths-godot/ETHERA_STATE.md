@@ -4,8 +4,25 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-231 = 4-team sprint Round 2 complete)
-Branch: `claude/wizard-kit-sprint-3` @ commit `04f47b6` (45 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-235 = 4-team sprint Round 3 complete)
+Branch: `claude/wizard-kit-sprint-3` @ commit `6b57ff9` (50 commits ahead of `main`)
+
+**Round 3 (iter-232..235)**:
+  • Bug Team R3 (iter-232): 3 coverage tests — migration v6/v7/v8,
+    upgrade tree spend math, achievement unlock flow. Surfaced one
+    typed-array gotcha (Array[String] vs Array literal). Tests +3.
+  • Polish Team R3 (iter-233): hero-side status chips (FROST/SLOW +
+    VENOM with duration labels) following the hero in world space.
+    Closes "no in-game evidence of active statuses" UX gap. Tests +1.
+  • Expansion Team R3 (iter-234): MOTH flying enemy — first airborne
+    archetype. flying_orbit behavior (180 px radius orbit + occasional
+    dive). is_flying field on EnemyType. Wired into room_05 OSSUARY
+    waves 1 + 3. Tests +1.
+  • Fun Ideas R3 (iter-235): CURSED PICKUP variant. 10% chance any
+    non-mythic pedestal offer is cursed; accepting grants the relic
+    PLUS a permanent run modifier (HUNGRY VEINS / STAGGERED STEP /
+    DARK HUNGER / VEILED SIGHT). Cursed pedestals show violet aura +
+    badge. Routes through shrine_bonuses → modifier_total. Tests +1.
 
 **Round 2 (iter-228..231)**:
   • Bug Team R2 (iter-228): boss-phase regression test + relic-stacking
