@@ -272,6 +272,34 @@ var _affix_tooltip_desc_label: Label = null
 var _affix_tooltip_target: Node = null  # currently tracked enemy
 const AFFIX_TOOLTIP_PROXIMITY: float = 96.0  # px hero→enemy to surface
 
+# Iter 233 / Polish Team R3 — HERO STATUS CHIPS. Programmatic Control
+# strip parented to the $UI CanvasLayer that follows the hero in screen
+# space (camera transform world→screen each frame). Surfaces persistent
+# elite-affix DoTs / debuffs currently active on the hero so the player
+# can SEE they're slowed / poisoned (and FOR HOW LONG), instead of only
+# the one-shot floater on apply.
+#
+# Hero status fields polled (READ-ONLY — hero.gd untouched, Polish-team
+# rule):
+#   _hero_slow_remaining   frost-elite slow timer (set in apply_slow)
+#   _hero_venom_remaining  venom-elite DoT timer (set in apply_venom)
+#
+# Each chip = a small Panel with a colored ColorRect "icon" and a tiny
+# duration label ("1.2s"). Stacked horizontally above the hero with
+# CHIP_VERTICAL_OFFSET so they don't overlap the head sprite. Chips
+# hide when their countdown reaches 0.0 → resting state is invisible
+# (a happy unharmed hero shows nothing at all).
+#
+# Pattern follows _update_affix_tooltip's world→screen conversion +
+# _update_ability_cooldown_chips' polling cadence. No new hero fields,
+# no .tscn edits, no RELIC_REGISTRY touch.
+var _hero_status_strip: Control = null
+var _hero_status_chips: Dictionary = {}  # status_id (String) → Control
+const HERO_STATUS_CHIP_OFFSET: Vector2 = Vector2(0.0, -50.0)
+const HERO_STATUS_CHIP_W: float = 18.0
+const HERO_STATUS_CHIP_H: float = 18.0
+const HERO_STATUS_CHIP_GAP: float = 4.0
+
 # Iter 231 / Fun Ideas Team R2 — REACTION WEB combo chip strip.
 # A read-only HUD sensor that surfaces, for each of the 6 status combos
 # (SHATTER / KINDLE_SPREAD / PETRIFY / SCATTER_FLAMES / BACKDRAFT /
@@ -740,6 +768,11 @@ func _ready() -> void:
 	# only changes on pickup so per-frame polling would be wasted work).
 	_build_reaction_web_chips()
 	_update_reaction_web()
+	# iter-233 / Polish Team R3 — hero status chips. Tiny world-space
+	# panels above the hero showing active slow / venom timers. Built
+	# once in _ready, follows the hero via screen-space conversion each
+	# _process tick. Hidden when no statuses are active.
+	_build_hero_status_chips()
 	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
 	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
 	#
@@ -807,6 +840,11 @@ func _process(_delta: float) -> void:
 	# the hero, surface its name + affix line. Empty when no elite is
 	# close (the common case in early floors and during boss fights).
 	_update_affix_tooltip()
+	# iter-233 / Polish Team R3 — hero status chips. Polled every frame:
+	# read _hero_slow_remaining + _hero_venom_remaining, show one chip
+	# per active status above the hero, hide chips whose timers hit 0.
+	# Cheap (2 hero field reads + 2 modulate writes/frame).
+	_update_hero_status_chips()
 	# iter-231 / Fun Ideas Team R2 — REACTION WEB combo chip strip.
 	# Accumulates _delta until the refresh period elapses, then runs
 	# one pass over the 6 combos. 1 Hz is cheap (6 dict lookups + 6
@@ -5826,6 +5864,169 @@ func _update_affix_tooltip() -> void:
 		_affix_tooltip_panel.position.y, 8.0, vp_size.y - panel_size.y - 8.0
 	)
 	_affix_tooltip_panel.visible = true
+
+# ── iter-233 / Polish Team R3 — HERO STATUS CHIPS ─────────────────────
+# Tiny world-space status icons that hover above the hero, one per
+# active elite-affix DoT. Solves the UX audit gap: prior to this iter
+# the player saw a one-shot "SLOW" / "VENOM" floater on apply and then
+# nothing — no way to know if the effect was still active or about to
+# expire. With persistent chips, the player can read at a glance:
+# "I'm slowed for ~1.4s more, dash NOW or wait it out."
+#
+# Why world-space (Control parented to $UI but positioned each frame)
+# instead of attaching to hero as Node2D children:
+#   1. Camera transform stays the same; chips don't fight the hero's
+#      sprite scale or rotation.
+#   2. Pattern reuses _update_affix_tooltip's screen-space conversion
+#      verbatim, which is already battle-tested in iter-229.
+#   3. Hero sprite shifts during attacks (8-directional flip) — chips
+#      stay rock-steady above the position, not the sprite center.
+#
+# Two chips for now (the two hero-side affix DoTs that actually exist
+# in hero.gd): FROST (slow) + VENOM (DoT). Adding more later is a
+# one-line spec edit + a new color entry.
+func _build_hero_status_chips() -> void:
+	if _hero_status_strip != null and is_instance_valid(_hero_status_strip):
+		return
+	var ui_root: CanvasLayer = $UI
+	if ui_root == null:
+		return
+	# Plain Control container — we do manual horizontal layout in the
+	# updater so the strip can shrink/grow based on how many chips are
+	# currently visible (HBoxContainer wouldn't recompute when chips
+	# toggle visible inside a single frame as cleanly).
+	_hero_status_strip = Control.new()
+	_hero_status_strip.name = "HeroStatusStrip"
+	_hero_status_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hero_status_strip.visible = false  # hidden until at least one chip arms
+	ui_root.add_child(_hero_status_strip)
+	# Spec per chip: [status_id, hero_field_name, fill_color, border_color]
+	# - status_id   — also used as the chip Node name + dict key
+	# - hero_field  — float field on hero.gd polled each frame (read-only)
+	# - fill_color  — pale themed fill for the icon ColorRect (alpha-blended)
+	# - border_color — darker outline so the icon reads on bright floor tints
+	var specs: Array = [
+		# Frost slow — pale blue, matches the frost elite affix tint family.
+		["slow",  "_hero_slow_remaining",
+			Color(0.68, 0.84, 1.00, 0.92),
+			Color(0.18, 0.32, 0.58, 0.96)],
+		# Venom DoT — sickly green, matches venom elite tint family.
+		["venom", "_hero_venom_remaining",
+			Color(0.62, 0.92, 0.46, 0.92),
+			Color(0.20, 0.42, 0.16, 0.96)],
+	]
+	for spec in specs:
+		var chip: Control = Control.new()
+		chip.name = "StatusChip_" + str(spec[0])
+		chip.custom_minimum_size = Vector2(HERO_STATUS_CHIP_W, HERO_STATUS_CHIP_H + 12.0)
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.visible = false
+		chip.set_meta("status_id", str(spec[0]))
+		chip.set_meta("hero_field", str(spec[1]))
+		chip.set_meta("fill_color", spec[2])
+		chip.set_meta("border_color", spec[3])
+		# Border (darker rect, full chip size; drawn first so the fill sits on top).
+		var border: ColorRect = ColorRect.new()
+		border.name = "Border"
+		border.color = spec[3] as Color
+		border.size = Vector2(HERO_STATUS_CHIP_W, HERO_STATUS_CHIP_H)
+		border.position = Vector2.ZERO
+		border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_child(border)
+		# Fill (inner colored rect, slightly inset).
+		var fill: ColorRect = ColorRect.new()
+		fill.name = "Fill"
+		fill.color = spec[2] as Color
+		fill.size = Vector2(HERO_STATUS_CHIP_W - 4.0, HERO_STATUS_CHIP_H - 4.0)
+		fill.position = Vector2(2.0, 2.0)
+		fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_child(fill)
+		# Duration label below the icon ("1.2s" / "3s").
+		var dur: Label = Label.new()
+		dur.name = "Duration"
+		dur.text = ""
+		dur.add_theme_font_size_override("font_size", 9)
+		dur.add_theme_color_override("font_color", Color(0.98, 0.96, 0.92, 0.96))
+		dur.add_theme_color_override(
+			"font_outline_color", Color(0.04, 0.02, 0.05, 0.96)
+		)
+		dur.add_theme_constant_override("outline_size", 1)
+		dur.size = Vector2(HERO_STATUS_CHIP_W + 6.0, 11.0)
+		dur.position = Vector2(-3.0, HERO_STATUS_CHIP_H + 1.0)
+		dur.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		dur.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_child(dur)
+		_hero_status_strip.add_child(chip)
+		_hero_status_chips[str(spec[0])] = chip
+
+# iter-233 — per-frame chip refresh. Reads two float fields off hero.gd
+# READ-ONLY (Polish-team rule), hides chips at 0.0, lays out the visible
+# ones in a row centered above the hero in screen space. Cheap: 2 dict
+# lookups + a screen-space conversion + 2 modulate writes per frame.
+#
+# Returns early if the strip wasn't built (defensive — _ready may not
+# have run on a freshly-loaded scene during a transition).
+func _update_hero_status_chips() -> void:
+	if _hero_status_strip == null or not is_instance_valid(_hero_status_strip):
+		return
+	if hero == null or not is_instance_valid(hero):
+		_hero_status_strip.visible = false
+		return
+	# First pass — decide which chips are visible + collect timings.
+	var visible_chips: Array = []
+	for chip_v in _hero_status_chips.values():
+		var chip: Control = chip_v as Control
+		if chip == null:
+			continue
+		var field: String = str(chip.get_meta("hero_field", ""))
+		if field == "" or not (field in hero):
+			chip.visible = false
+			continue
+		var rem_v: Variant = hero.get(field)
+		var rem: float = 0.0
+		if rem_v is float or rem_v is int:
+			rem = float(rem_v)
+		if rem <= 0.05:  # tiny epsilon so we don't flicker on the last frame
+			chip.visible = false
+			continue
+		chip.visible = true
+		var dur_label: Label = chip.get_node_or_null("Duration") as Label
+		if dur_label != null:
+			# Two formats — match the cooldown chip style:
+			# < 1s shows decimal ("0.3s"); ≥ 1s rounds up ("3s").
+			if rem < 1.0:
+				dur_label.text = "%.1fs" % rem
+			else:
+				dur_label.text = "%ds" % int(ceil(rem))
+		visible_chips.append(chip)
+	# If nothing is active, hide the whole strip + bail (no transform math).
+	if visible_chips.is_empty():
+		_hero_status_strip.visible = false
+		return
+	# Lay out the visible chips left-to-right with a small gap. The strip
+	# itself is positioned so the chip row is CENTERED on the hero.
+	var n: int = visible_chips.size()
+	var total_w: float = (
+		float(n) * HERO_STATUS_CHIP_W + float(max(0, n - 1)) * HERO_STATUS_CHIP_GAP
+	)
+	var x: float = 0.0
+	for c_v in visible_chips:
+		var c: Control = c_v as Control
+		c.position = Vector2(x, 0.0)
+		x += HERO_STATUS_CHIP_W + HERO_STATUS_CHIP_GAP
+	# World → screen conversion (same shape as _update_affix_tooltip).
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	var screen_pos: Vector2 = hero.global_position
+	if cam != null:
+		screen_pos = (hero.global_position - cam.global_position) \
+			+ get_viewport().get_visible_rect().size * 0.5
+	# Strip position = hero head, less half-width so the chips center on
+	# the hero. HERO_STATUS_CHIP_OFFSET lifts the row above the sprite.
+	_hero_status_strip.position = Vector2(
+		screen_pos.x - total_w * 0.5 + HERO_STATUS_CHIP_OFFSET.x,
+		screen_pos.y + HERO_STATUS_CHIP_OFFSET.y
+	)
+	_hero_status_strip.visible = true
 
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when
