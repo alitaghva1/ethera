@@ -4,8 +4,27 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-227 = 4-team parallel sprint complete)
-Branch: `claude/wizard-kit-sprint-3` @ commit `ecd774a` (41 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-231 = 4-team sprint Round 2 complete)
+Branch: `claude/wizard-kit-sprint-3` @ commit `04f47b6` (45 commits ahead of `main`)
+
+**Round 2 (iter-228..231)**:
+  • Bug Team R2 (iter-228): boss-phase regression test + relic-stacking
+    sanity test (6 fold cases). Per-frame O(n²) snapshot deferred for
+    a quiet sprint. Tests +2.
+  • Polish Team R2 (iter-229): elite-affix tooltip card surfacing at
+    96 px proximity (FROST/EMBER/VENOM/WARDED rules text), death-screen
+    "FELLED BY <enemy>" cause line, BIGGEST HIT counter, SHATTER×N ·
+    KINDLE×N combo tallies. New ELITE_AFFIX_DESCRIPTIONS dict. Tests +1.
+  • Expansion Team R2 (iter-230): BULWARK shield enemy archetype.
+    New shield_walker behavior — 90° front cone reduces damage 75%;
+    flank/rear hits break shield for 1.5 s, full damage during the
+    window. HP 4, steel-blue tinted skeleton sprites. Wired into
+    room_05 OSSUARY wave 3. Tests +1.
+  • Fun Ideas R2 (iter-231): REACTION WEB HUD chip strip. 6 small
+    labels (one per status combo) that surface ARMED / PARTIAL /
+    hidden based on owned relics + theme tiers + base hero
+    capability. Educates the chemistry system. New reaction_web.gd
+    sensor layer. Tests +1.
 
 **Recent**: 4-team parallel sprint (Bug / Polish / Expansion / Fun Ideas):
   • Iter-224 (Bug Team): 5 defensive `as Node2D` + `is_instance_valid`
