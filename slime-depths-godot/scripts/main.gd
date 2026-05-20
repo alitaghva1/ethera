@@ -87,6 +87,12 @@ const ENEMY_TYPES := {
 	# _process. Wave-clear detection treats it like any other enemy.
 	"iron_revenant":     preload("res://scenes/enemies/iron_revenant.tres"),
 	"broodmother":       preload("res://scenes/enemies/broodmother.tres"),
+	# Iter 208 — Ember Tyrant (floor 3 boss, iter-205). Added to ENEMY_TYPES
+	# so room_07.tres's wave entries can resolve "ember_tyrant" → the
+	# preloaded resource at spawn time. Was missing from the registry,
+	# which would have prevented Tyrant from spawning if the player
+	# reached room_07.
+	"ember_tyrant":      preload("res://scenes/enemies/ember_tyrant.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05
