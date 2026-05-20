@@ -1,0 +1,50 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/armored_skeleton_death.png" id="5_death"]
+
+; Iter 230 / Expansion Team R2 — Bulwark shield enemy archetype.
+;
+; Behavior `shield_walker`: walks toward hero like chase_contact but
+; FACES the hero (rotation always points at hero direction). A 90°
+; front cone reduces damage taken from sources within it by 75%. When
+; damage IS taken from behind or sides, the shield "breaks" for 1.5 s
+; — full damage during that window, plus a flash VFX. After 1.5 s the
+; shield restores. HP 4 (between skel and armored_skeleton — survives
+; via the shield, not raw HP).
+;
+; Visually distinguished from armored_skeleton via a steel-blue
+; sprite_modulate so the player reads "this isn't the standard armored
+; mob — it has a directional shield." The shield arc itself is drawn
+; by enemy.gd as a Polygon2D child node faded when the break flag is
+; active.
+[resource]
+script = ExtResource("1_script")
+display_name = "Bulwark"
+behavior = "shield_walker"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.3
+sprite_y_offset = -17.5
+collision_radius = 18.0
+sprite_modulate = Color(0.55, 0.78, 1.15, 1)
+frames_idle = 6
+frames_walk = 8
+frames_attack = 8
+frames_death = 4
+fps_idle = 6.0
+fps_walk = 8.0
+fps_attack = 14.0
+fps_death = 8.0
+max_hp = 4
+move_speed = 72.0
+death_duration = 1.0
+contact_damage = 1
+contact_cooldown = 0.9
+contact_range = 38.0

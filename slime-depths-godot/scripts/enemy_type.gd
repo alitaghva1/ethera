@@ -30,6 +30,8 @@ extends Resource
 #   "telegraphed_melee"  approach → windup-tint → swing in cone
 #   "shoot"              kite + cast projectile in range
 #   "stationary_shoot"   never move, fire when hero in range
+#   "shield_walker"      iter-230, faces hero; 90° front cone reduces
+#                        damage 75%; flank breaks shield 1.5 s
 @export var behavior: String = "chase_contact"
 
 # ── Sprite sheets ─────────────────────────────────────────────────────

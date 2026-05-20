@@ -102,6 +102,16 @@ const ENEMY_TYPES := {
 	# which would have prevented Tyrant from spawning if the player
 	# reached room_07.
 	"ember_tyrant":      preload("res://scenes/enemies/ember_tyrant.tres"),
+	# Iter 230 / Expansion Team R2 — Bulwark shield enemy. Uses the new
+	# "shield_walker" behavior in enemy.gd. Walks like chase_contact, but
+	# rotates to FACE the hero so a 90° front cone reads as "this side is
+	# guarded." Damage from within the cone is reduced 75%; flank or back
+	# hits BREAK the shield for 1.5 s (full damage + flash VFX) before it
+	# restores. HP 4 — between skel and armored_skeleton — relying on the
+	# shield, not raw HP. Reuses armored_skeleton sprites with a steel-blue
+	# sprite_modulate so the silhouette reads distinct from a vanilla armor
+	# mob even from across the room.
+	"bulwark":           preload("res://scenes/enemies/bulwark.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05

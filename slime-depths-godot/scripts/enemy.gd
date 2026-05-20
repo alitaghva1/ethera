@@ -196,6 +196,41 @@ var _cast_state: CastState = CastState.IDLE
 var _cast_timer := 0.0
 var _cast_aim := Vector2.RIGHT
 
+# Iter 230 / Expansion Team R2 — shield_walker (Bulwark) state.
+#
+# `_shield_facing` is updated every tick toward the hero so the 90°
+# front cone (±SHIELD_CONE_HALF rad of this vector) is always pointing
+# at the most current threat direction. take_hit reads this together
+# with `source_pos` (3rd optional arg) to decide whether incoming
+# damage is FRONT (reduce 75%) or REAR/FLANK (full damage + break
+# shield).
+#
+# `_shield_broken_time` is the remaining duration of the "shield is
+# down" window — set to SHIELD_BREAK_DURATION when a flank lands. While
+# > 0, ALL damage applies at full value (front hits no longer reduced)
+# AND the shield arc Polygon2D fades to alpha 0.18 to communicate the
+# vulnerable window. Player can punish for 1.5 s before the shield
+# restores.
+#
+# `_shield_arc` is the Polygon2D rendered as a child of the enemy node,
+# pointing in `_shield_facing`. Built once in _ready when the enemy is
+# of behavior == "shield_walker"; rotation updated every tick.
+const SHIELD_CONE_HALF: float = PI * 0.25      # 45° each side = 90° cone
+const SHIELD_REDUCTION: float = 0.25           # 1 - 0.75 — pass 25% through
+const SHIELD_BREAK_DURATION: float = 1.5       # window of full damage after flank
+const SHIELD_ARC_RADIUS: float = 36.0
+const SHIELD_ARC_COLOR: Color = Color(0.55, 0.78, 1.20, 0.55)
+const SHIELD_ARC_BROKEN_ALPHA: float = 0.18
+var _shield_facing: Vector2 = Vector2.RIGHT
+var _shield_broken_time: float = 0.0
+var _shield_arc: Polygon2D = null
+# Iter 230 — last-known damage source position. Set transiently by
+# take_hit's 3rd optional arg so the shield damage-direction check can
+# decide FRONT vs FLANK. Fallback (no source given) keeps the legacy
+# "always full damage" path so non-shield enemies behave unchanged.
+var _last_damage_source_pos: Vector2 = Vector2.ZERO
+var _last_damage_source_valid: bool = false
+
 signal died_at(world_pos: Vector2)
 # Iter 37 — boss phase machine. Emitted by take_hit the first time hp
 # drops below enemy_type.phase2_hp_threshold * max_hp. main.gd connects
@@ -723,6 +758,13 @@ func _ready() -> void:
 	# Helps players learn the 20-enemy roster — Hades canonical. Bosses
 	# skipped (they have their own iter-148 intro cinematic).
 	_maybe_show_first_encounter_banner()
+	# Iter 230 / Expansion Team R2 — shield_walker (Bulwark) shield arc.
+	# Built as a Polygon2D child node so the visual lives next to the
+	# enemy automatically (rotates / moves with it, despawns on death).
+	# Only spawn the arc for enemies whose behavior tag is "shield_walker"
+	# so non-shield enemies pay zero overhead.
+	if enemy_type.behavior == "shield_walker":
+		_ensure_shield_arc()
 
 # Iter 177 — outline shader applied at runtime so every enemy gets
 # the same silhouette definition the hero has had since iter-117.
@@ -1104,6 +1146,8 @@ func _physics_process(delta: float) -> void:
 			_tick_wraith(delta)
 		"glyph_warden":
 			_tick_glyph_warden(delta)
+		"shield_walker":
+			_tick_shield_walker(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -2546,12 +2590,23 @@ func _fire_one_projectile(t: EnemyType, aim_dir: Vector2, speed_scale: float, vi
 
 # ── Universal: take_hit + knockback + death ───────────────────────────
 
-func take_hit(damage: int, is_crit: bool = false) -> void:
+func take_hit(damage: int, is_crit: bool = false, source_pos: Variant = null) -> void:
 	# Iter 15: ignore hits during the spawn-in fade so the player can't
 	# pre-kill an enemy that's still materializing. Mirrors the AI lock —
 	# the enemy isn't "present" yet.
 	if _dying or _spawn_in_time > 0.0:
 		return
+	# Iter 230 / Expansion Team R2 — record the optional damage source
+	# position so `_apply_shield_damage_filter` (called below) can
+	# decide FRONT vs FLANK on shield_walker enemies. Cleared at the
+	# end of this function so subsequent hits don't reuse a stale value.
+	# Defensive: accept Vector2 OR null/anything-else; only the Vector2
+	# branch sets the "valid" flag.
+	if source_pos is Vector2:
+		_last_damage_source_pos = source_pos
+		_last_damage_source_valid = true
+	else:
+		_last_damage_source_valid = false
 	# iter-103: WARDED elite affix clamps incoming damage by -1, min 1.
 	# Floor of 1 so a player with all 1-damage attacks isn't fully shut
 	# out (would invalidate the entire common-tier slash). Clamp BEFORE
@@ -2565,6 +2620,13 @@ func take_hit(damage: int, is_crit: bool = false) -> void:
 		damage = maxi(1, damage - ELITE_WARDED_DR)
 		if original_damage > 1:
 			_spawn_affix_floater("WARDED", ELITE_AFFIX_TINTS["warded"], global_position)
+	# Iter 230 — shield_walker directional reduction. No-op for any
+	# other behavior tag (returns damage unchanged). For Bulwark:
+	#   FRONT hit + intact → 75% reduction
+	#   FRONT hit + broken → full damage (already paying for being open)
+	#   FLANK / REAR + intact → full damage AND shield breaks 1.5 s
+	# See `_apply_shield_damage_filter` for the math.
+	damage = _apply_shield_damage_filter(damage)
 	hp -= damage
 	# Iter 215 — PETRIFY combo (Phase 4). Crit hits on a slowed enemy
 	# briefly stun them. Fires BEFORE the death-check below so an
@@ -3082,3 +3144,204 @@ func _spin_inscription_mark(delta: float, wt: float) -> void:
 # Production AI always goes through IDLE → WINDUP → PLACE → COOLDOWN.
 func _force_glyph_place_for_test() -> void:
 	_apply_glyph_place()
+
+# ── Behavior: shield_walker (Bulwark) ─────────────────────────────────
+# Iter 230 / Expansion Team R2 — directional-armor archetype.
+#
+# Walks like chase_contact toward the hero, but tracks `_shield_facing`
+# (always pointing at the hero) so a 90° front cone reads as "this
+# side is guarded." The cone is rendered as a Polygon2D child whose
+# rotation matches `_shield_facing`. Damage taken from sources within
+# the cone is reduced 75% by `_shield_damage_multiplier` (called from
+# take_hit). Damage from outside the cone BREAKS the shield for 1.5 s
+# — during the break the arc fades to alpha 0.18 and all damage
+# applies at full value.
+#
+# This is the first enemy where flanking matters mechanically. Player
+# learns to position around it (dash through, attack from behind) vs
+# just bumping it head-on.
+func _tick_shield_walker(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	_contact_cd = max(0.0, _contact_cd - delta)
+	_shield_broken_time = max(0.0, _shield_broken_time - delta)
+	_hurt_anim_time = max(0.0, _hurt_anim_time - delta)
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		_update_shield_arc_visual()
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	# Keep the facing vector hot — always pointing at the hero so the
+	# shield naturally tracks. Skip when too close (would normalize zero
+	# vector); preserve last facing in that case.
+	if dist > 0.5:
+		_shield_facing = to_hero.normalized()
+	# Movement — chase the hero with the same separation + wall-slide
+	# pattern as chase_contact so multiple bulwarks don't stack and
+	# they navigate walls naturally.
+	var intended: Vector2 = Vector2.ZERO
+	if t.can_move() and dist > t.contact_range * 0.85:
+		var to_dir: Vector2 = to_hero.normalized()
+		var speed: float = _effective_move_speed()
+		var sep: Vector2 = _compute_separation_vector()
+		intended = (to_dir + sep * SEPARATION_FORCE).normalized() * speed
+		velocity = _maybe_stuck_dodge(delta, intended)
+		sprite.play(&"walk")
+	else:
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+	sprite.flip_h = _shield_facing.x < 0
+	move_and_slide()
+	_apply_wall_slide(intended)
+	# Contact damage on touch (same shape as chase_contact). Bulwark
+	# doesn't have a signature contact_attack — its differentiator is
+	# the directional shield, not the bump.
+	if dist < t.contact_range and _contact_cd <= 0.0:
+		_contact_cd = t.contact_cooldown
+		if _hero.has_method("take_damage"):
+			_hero.take_damage(t.contact_damage, global_position, _affix_aware_source_name())
+			_apply_contact_affix()
+	# Refresh the visual arc every tick — rotation tracks the facing
+	# and alpha reflects the broken/intact state.
+	_update_shield_arc_visual()
+
+# Iter 230 — build the shield arc Polygon2D as a child of the enemy.
+# Called once when a shield_walker enters _ready. We approximate the
+# 90° cone with a triangle fan rooted at the enemy center, fanning
+# out to SHIELD_ARC_RADIUS at the cone boundaries. The polygon's
+# rotation is updated every tick to match `_shield_facing`.
+func _ensure_shield_arc() -> void:
+	if _shield_arc != null and is_instance_valid(_shield_arc):
+		return
+	var arc: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	pts.append(Vector2.ZERO)
+	# Sample 9 edge points across the cone span so the boundary curves
+	# smoothly rather than reading as a flat-edged triangle.
+	var steps: int = 9
+	for i in range(steps):
+		var t: float = float(i) / float(steps - 1)
+		var ang: float = lerp(-SHIELD_CONE_HALF, SHIELD_CONE_HALF, t)
+		pts.append(Vector2(cos(ang), sin(ang)) * SHIELD_ARC_RADIUS)
+	arc.polygon = pts
+	arc.color = SHIELD_ARC_COLOR
+	# Sit just under the sprite so it READS as "in front of the enemy"
+	# without occluding the sprite itself. z_index -1 stacks below the
+	# AnimatedSprite2D (z_index 0 by default) but above the ground
+	# shadow (z_index -2 in iter-153).
+	arc.z_index = -1
+	# Lift slightly so the arc projects from the enemy's mid-body, not
+	# its feet — matches the visual height of a held shield.
+	arc.position = Vector2(0, -8)
+	add_child(arc)
+	_shield_arc = arc
+
+# Iter 230 — rotate the shield arc to match `_shield_facing` and tint
+# its alpha based on the broken/intact state. Called every tick by
+# `_tick_shield_walker`. No-op when the arc doesn't exist (e.g. a
+# shield enemy that was queued for delete mid-frame).
+func _update_shield_arc_visual() -> void:
+	if _shield_arc == null or not is_instance_valid(_shield_arc):
+		return
+	# Rotate so the arc's local +X (the cone's bisector at angle 0)
+	# points along _shield_facing.
+	_shield_arc.rotation = _shield_facing.angle()
+	# Broken → faded, intact → full color.
+	var target_alpha: float = SHIELD_ARC_BROKEN_ALPHA if _shield_broken_time > 0.0 else SHIELD_ARC_COLOR.a
+	# Use modulate (preserves color when restored) so cleanup is one
+	# property reset, not a per-vertex repaint.
+	_shield_arc.modulate.a = target_alpha / max(0.001, SHIELD_ARC_COLOR.a)
+
+# Iter 230 — damage-direction modifier for shield_walker enemies.
+# Called from take_hit BEFORE the hp subtract. Returns the final
+# damage value after shield reduction (or break-triggered amplification
+# back to full). Non-shield enemies bypass this entirely (their
+# behavior tag isn't "shield_walker"). For shield enemies:
+#
+#   * shield broken (window active) → return original damage,
+#     do NOT break it again (you already broke it; double-breaking
+#     would consume the same flank twice).
+#   * source position unknown (legacy callers pass no 3rd arg) →
+#     return original damage. Falls back to "always full damage"
+#     so any damage path not yet plumbing source position stays
+#     safe — see take_hit's `_last_damage_source_valid` gate.
+#   * source within cone → 75% reduction (multiply by SHIELD_REDUCTION).
+#   * source outside cone → return original damage AND break the
+#     shield for SHIELD_BREAK_DURATION + spawn a flash VFX.
+func _apply_shield_damage_filter(damage: int) -> int:
+	if enemy_type == null or enemy_type.behavior != "shield_walker":
+		return damage
+	if _shield_broken_time > 0.0:
+		# Shield is down — full damage. Don't re-break (it's already
+		# broken; a flank during the window is "free" damage but
+		# doesn't extend the window).
+		return damage
+	if not _last_damage_source_valid:
+		# Unknown direction — fall back to "always full damage" so
+		# damage paths that haven't plumbed the 3rd arg yet still
+		# work (testing, future expansions). Conservative default.
+		return damage
+	var to_source: Vector2 = _last_damage_source_pos - global_position
+	if to_source.length_squared() < 0.001:
+		# Source on top of enemy — treat as omni, full damage.
+		return damage
+	var src_dir: Vector2 = to_source.normalized()
+	# Angle between shield facing and incoming damage direction. If
+	# within ±SHIELD_CONE_HALF, the attacker is in front — reduce.
+	var angle: float = abs(_shield_facing.angle_to(src_dir))
+	if angle <= SHIELD_CONE_HALF:
+		# FRONT hit — shield absorbs 75%. Floor at 0 in case of integer
+		# rounding (a 1-damage hit × 0.25 rounds to 0, which means the
+		# shield fully nullifies tiny hits — desirable: low-damage
+		# nicks should bounce off, big hits should chip through).
+		return maxi(0, int(round(float(damage) * SHIELD_REDUCTION)))
+	# FLANK / REAR hit — shield breaks for 1.5 s. Spawn a flash VFX
+	# to telegraph the vulnerable window, then return FULL damage.
+	_shield_broken_time = SHIELD_BREAK_DURATION
+	_spawn_shield_break_flash()
+	return damage
+
+# Iter 230 — visual flash when the shield breaks. Quick white expanding
+# ring at the enemy center that fades over 0.3 s. Pure VFX — no damage
+# layer. Reads as "the guard just snapped open" so the player sees
+# they've earned a 1.5 s window.
+func _spawn_shield_break_flash() -> void:
+	if get_parent() == null:
+		return
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 18
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * SHIELD_ARC_RADIUS)
+	ring.polygon = pts
+	ring.color = Color(1.1, 1.05, 0.85, 0.65)
+	ring.position = global_position + Vector2(0, -8)
+	ring.scale = Vector2(0.45, 0.45)
+	ring.z_index = 5
+	get_parent().add_child(ring)
+	var tw: Tween = create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.5, 1.5), 0.30) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.30) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
+
+# Iter 230 — test-only helpers. Headless tests instantiate a Bulwark
+# enemy, set a known facing + source-position, then call take_hit and
+# read `hp` to verify the shield math. These accessors keep the test
+# free of `set("_field", val)` private-member pokes.
+func set_shield_facing_for_test(facing: Vector2) -> void:
+	if facing.length_squared() < 0.001:
+		return
+	_shield_facing = facing.normalized()
+
+func is_shield_broken_for_test() -> bool:
+	return _shield_broken_time > 0.0
+
+func get_shield_broken_time_for_test() -> float:
+	return _shield_broken_time
+
+func force_shield_restore_for_test() -> void:
+	_shield_broken_time = 0.0

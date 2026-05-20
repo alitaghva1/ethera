@@ -1174,7 +1174,10 @@ func _resolve_melee_strike() -> void:
 			if is_crit:
 				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 				any_crit = true  # iter-140 — sticky across the swing
-			enemy.take_hit(dmg_for_this, is_crit)
+			# Iter 230 / Expansion Team R2 — pass attacker position as the
+			# 3rd arg so shield_walker enemies (Bulwark) can do FRONT vs
+			# FLANK damage attribution. Non-shield enemies ignore the arg.
+			enemy.take_hit(dmg_for_this, is_crit, global_position)
 			# Iter 226 / Expansion Team — LUCKY KNIFE. If THIS strike
 			# was a crit AND it killed the target (enemy.hp ≤ 0 after
 			# take_hit's hp subtract), roll crit_bonus_ether_chance_f
