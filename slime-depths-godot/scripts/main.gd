@@ -225,6 +225,20 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # _update_active_relic_label toggles visible + text based on hero
 # ownership + cooldown state.
 @onready var active_relic_label: Label = $UI/ActiveRelicLabel
+
+# Iter 225 / Polish Team — ability cooldown chip strip. Code-built so
+# we don't need a main.tscn edit. Four small labels (LMB sword, RMB
+# blast, Q parry, SHIFT dash) sit in a horizontal row just below the
+# ActiveRelicLabel (y≈148). Each chip:
+#   • Hidden when its cooldown <= 0.0 (the "ready" state — the player
+#     doesn't need to be told an instant-ready ability is ready).
+#   • "LMB 0.4s" style when cooling. Modulate.a 0.55 cooling, color
+#     dim so the strip never pulls the eye away from combat.
+# Polled in _process via _update_ability_cooldown_chips, reading hero
+# fields _attack_cd / _blast_cd / _shield_cd / _dash_strike_cd. Hero
+# script untouched (Polish Team mandate — no hero.gd edits).
+var _ability_cd_strip: HBoxContainer = null
+var _ability_cd_chips: Dictionary = {}  # action_id (String) → Label
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -645,6 +659,12 @@ func _ready() -> void:
 	_update_kills()
 	_update_room_label()
 	_rebuild_relic_strip()
+	# Iter 225 / Polish Team — build the ability cooldown chip strip.
+	# Programmatic injection (Polish-team rule: no .tscn edits). Strip
+	# is hidden one-by-one per chip whenever the ability is ready, so
+	# the resting state is empty + invisible — only appearing during
+	# the brief windows when an ability is cooling.
+	_build_ability_cooldown_strip()
 	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
 	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
 	#
@@ -701,6 +721,12 @@ func _process(_delta: float) -> void:
 	# the relic strip. Hidden when the player doesn't own an active
 	# relic (the typical floor 1-3 state).
 	_update_active_relic_label()
+	# Iter 225 / Polish Team — ability cooldown chips. Reads hero
+	# _attack_cd / _blast_cd / _shield_cd / _dash_strike_cd and
+	# shows/hides 4 small labels showing the remaining seconds. Hidden
+	# when CD<=0 so the strip is empty most of the time and only
+	# appears during the brief windows when an ability is cooling.
+	_update_ability_cooldown_chips()
 	# Iter 160 — tutorial progression. Cheap branch when state is OFF
 	# (early-out on the first line) so the polling cost is negligible
 	# in the steady state.
@@ -5294,6 +5320,119 @@ func _active_ready_color(active_id: String) -> Color:
 		"ashen_seal":  return Color(1.00, 0.78, 0.42, 0.92) # FLAME
 		"blood_tithe": return Color(1.00, 0.62, 0.62, 0.92) # BLOOD
 		_:             return Color(0.95, 0.92, 0.88, 0.92)
+
+# ── Iter 225 / Polish Team — ability cooldown chip strip ──────────────
+# Player-Experience audit (BETA_ROADMAP.md) flagged that only the [R]
+# active-relic chip surfaces cooldown state — sword (LMB), blast (RMB),
+# parry (Q), dash (SHIFT) all run silent. Without feedback the player
+# spams the input + has no idea WHY their swing didn't fire, and lacks
+# the read needed to commit to a parry timing or dash strike opening.
+#
+# Pattern follows _update_active_relic_label's modulate-alpha + dim-color
+# template. Each chip is a small Label parented to a horizontal strip
+# sitting just below the ActiveRelicLabel (y≈148). Resting state is
+# empty (all chips hidden) because cooldowns are short (0.25–1.5s); the
+# strip only blinks into view during the brief cooling window.
+#
+# Hero script is NOT touched (Polish Team mandate — Bug Team's domain).
+# We read the cooldown fields via `get()` with an "in" guard so a
+# future hero refactor renaming a field degrades gracefully (chip just
+# disappears) instead of crashing the HUD.
+func _build_ability_cooldown_strip() -> void:
+	if _ability_cd_strip != null and is_instance_valid(_ability_cd_strip):
+		return
+	var ui_root: CanvasLayer = $UI
+	if ui_root == null:
+		return
+	_ability_cd_strip = HBoxContainer.new()
+	_ability_cd_strip.name = "AbilityCooldownStrip"
+	# Anchor top-left, position below the ActiveRelicLabel row (which
+	# ends at y=144). 4 chips ≈ 220px wide total at our font size.
+	_ability_cd_strip.offset_left = 20.0
+	_ability_cd_strip.offset_top = 148.0
+	_ability_cd_strip.offset_right = 280.0
+	_ability_cd_strip.offset_bottom = 168.0
+	_ability_cd_strip.add_theme_constant_override("separation", 10)
+	# Don't block clicks on whatever's behind us (combat playfield).
+	_ability_cd_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(_ability_cd_strip)
+	# 4 chips, one per ability. Tuple = (action_id, label, hero_field).
+	# action_id is just a key for the dict lookup; label is the visible
+	# prefix; hero_field is the var name on hero.gd we poll each frame.
+	var specs: Array = [
+		["attack", "LMB",   "_attack_cd",       Color(0.96, 0.72, 0.52, 0.86)],  # warm sword
+		["blast",  "RMB",   "_blast_cd",        Color(0.78, 0.86, 1.00, 0.86)],  # cool magic
+		["shield", "Q",     "_shield_cd",       Color(0.92, 0.92, 0.78, 0.86)],  # parry gold
+		["dash",   "SHIFT", "_dash_strike_cd",  Color(0.86, 0.78, 1.00, 0.86)],  # shadow dash
+	]
+	for spec in specs:
+		var chip: Label = Label.new()
+		chip.name = "Chip_" + str(spec[0])
+		chip.text = ""
+		chip.visible = false
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_theme_font_size_override("font_size", 12)
+		chip.add_theme_color_override("font_color", spec[3] as Color)
+		chip.add_theme_color_override(
+			"font_outline_color", Color(0.04, 0.02, 0.05, 0.92)
+		)
+		chip.add_theme_constant_override("outline_size", 1)
+		# Stash the spec so the updater can recover prefix + field name
+		# without re-running the array.
+		chip.set_meta("prefix", str(spec[1]))
+		chip.set_meta("hero_field", str(spec[2]))
+		chip.set_meta("base_color", spec[3])
+		_ability_cd_strip.add_child(chip)
+		_ability_cd_chips[str(spec[0])] = chip
+
+# Iter 225 / Polish Team — per-frame chip refresh. Cheap (4 dict
+# lookups + 4 modulate writes); runs every _process tick.
+#
+# Visibility rule: chip hidden when cd <= 0.0, visible while > 0. The
+# resting state (all 4 cd's at 0) is therefore an empty row that adds
+# zero visual noise. The chip pops in the instant the player presses
+# the input + counts down. This is the same pattern Hades / Risk of
+# Rain use — pip + timer only when relevant.
+func _update_ability_cooldown_chips() -> void:
+	if _ability_cd_chips.is_empty():
+		return
+	if hero == null or not is_instance_valid(hero):
+		for c in _ability_cd_chips.values():
+			if c is Label:
+				(c as Label).visible = false
+		return
+	for chip_v in _ability_cd_chips.values():
+		var chip: Label = chip_v as Label
+		if chip == null:
+			continue
+		var field: String = str(chip.get_meta("hero_field", ""))
+		if field == "" or not (field in hero):
+			chip.visible = false
+			continue
+		var cd_v: Variant = hero.get(field)
+		var cd: float = 0.0
+		if cd_v is float or cd_v is int:
+			cd = float(cd_v)
+		if cd <= 0.0:
+			chip.visible = false
+			continue
+		chip.visible = true
+		# Two display modes: < 1s shows decimal ("LMB 0.3s") so the
+		# player sees rapid abilities are about to be ready; ≥ 1s
+		# rounds up so the chip doesn't flicker too rapidly for slow
+		# abilities like dash. Matches active-relic chip format.
+		var prefix: String = str(chip.get_meta("prefix", "?"))
+		if cd < 1.0:
+			chip.text = "%s %.1fs" % [prefix, cd]
+		else:
+			chip.text = "%s %ds" % [prefix, int(ceil(cd))]
+		# Dim while cooling — same affordance as the active-relic chip.
+		# Brighter relative to background but quieter than the relic
+		# strip so combat focus isn't pulled here.
+		var col: Color = chip.get_meta("base_color", Color(0.9, 0.9, 0.9, 0.86)) as Color
+		chip.add_theme_color_override(
+			"font_color", Color(col.r * 0.78, col.g * 0.78, col.b * 0.78, 0.86)
+		)
 
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when

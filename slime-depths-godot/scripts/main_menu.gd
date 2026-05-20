@@ -121,6 +121,12 @@ func _ready() -> void:
 	# BEGIN button so the meta-progression hook is in the player's
 	# primary scan path.
 	_inject_upgrades_button()
+	# Iter 225 / Polish Team — ACHIEVEMENTS button. Injected just below
+	# UPGRADES so the meta-progression and the long-term-goal hooks sit
+	# adjacent in the menu's scan path. Opens a modal listing all 12+
+	# achievements with locked/unlocked state pulled from
+	# GameState.unlocked_achievements.
+	_inject_achievements_button()
 
 	# Hover scale transitions — each button's own pivot is its center
 	# so the grow looks symmetric.
@@ -520,3 +526,175 @@ func _close_upgrade_panel() -> void:
 		_upgrade_panel = null
 	if _upgrades_button != null:
 		_upgrades_button.grab_focus()
+
+# ── Iter 225 / Polish Team — Achievements viewer ──────────────────────
+# Player-Experience audit (BETA_ROADMAP.md) flagged that the 12
+# achievements in GameState.ACHIEVEMENTS unlock SILENTLY into
+# unlocked_achievements[] with no in-game way to view them after the
+# popup banner clears. Without a viewer the player loses the long-term-
+# goal hook: they can't see what's left to chase, can't show off the
+# ones they earned, and the meta layer collapses to "stuff that
+# happens" instead of "a list I'm filling in."
+#
+# This adds:
+#   • ACHIEVEMENTS button injected into the main menu CenterStack just
+#     below UPGRADES (programmatic — no main_menu.tscn edit).
+#   • Modal panel listing every entry in GameState.ACHIEVEMENTS with
+#     name, description, and locked/unlocked state pulled from
+#     GameState.unlocked_achievements.
+#
+# Unlocked entries render bright with a UNICODE 'OK' glyph + golden
+# tint; locked entries dim out (greyscale, name as "???" for spoiler
+# protection on the description text but the achievement title still
+# shows so the player has a hint). Tests show 12 entries fit on a
+# 720-tall viewport without scrolling; the panel uses a ScrollContainer
+# anyway so future additions don't break layout.
+var _achievements_button: Button = null
+var _achievements_panel: Control = null
+
+func _inject_achievements_button() -> void:
+	var center_stack: Node = $CenterStack
+	if center_stack == null or begin_button == null:
+		return
+	_achievements_button = Button.new()
+	_achievements_button.text = "ACHIEVEMENTS"
+	_achievements_button.theme = begin_button.theme  # inherit menu look
+	center_stack.add_child(_achievements_button)
+	# Place below UPGRADES if present, otherwise just after BEGIN. This
+	# orders the meta block as: BEGIN → UPGRADES → ACHIEVEMENTS →
+	# SETTINGS → QUIT.
+	var anchor: Button = _upgrades_button if _upgrades_button != null else begin_button
+	var idx: int = anchor.get_index() + 1
+	center_stack.move_child(_achievements_button, idx)
+	_achievements_button.pressed.connect(_on_achievements_pressed)
+	_achievements_button.pivot_offset = _achievements_button.size / 2.0
+	_achievements_button.mouse_entered.connect(_on_button_hover_enter.bind(_achievements_button))
+	_achievements_button.mouse_exited.connect(_on_button_hover_exit.bind(_achievements_button))
+	_achievements_button.focus_entered.connect(_on_button_hover_enter.bind(_achievements_button))
+	_achievements_button.focus_exited.connect(_on_button_hover_exit.bind(_achievements_button))
+	_achievements_button.resized.connect(func ():
+		_achievements_button.pivot_offset = _achievements_button.size / 2.0
+	)
+
+func _on_achievements_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
+	_show_achievements_panel()
+
+func _show_achievements_panel() -> void:
+	if _achievements_panel != null and is_instance_valid(_achievements_panel):
+		return
+	_achievements_panel = Control.new()
+	_achievements_panel.name = "AchievementsPanel"
+	_achievements_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_achievements_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_achievements_panel)
+	# Full-screen dim so the menu visually fades out behind the modal.
+	# Matches _show_upgrade_panel and pause_screen._show_quit_confirm
+	# darkness levels.
+	var dim: ColorRect = ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.74)
+	_achievements_panel.add_child(dim)
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_achievements_panel.add_child(center)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.custom_minimum_size = Vector2(600, 0)
+	box.add_theme_constant_override("separation", 10)
+	center.add_child(box)
+	# Header — count of unlocked / total, matches the UPGRADES panel's
+	# "ETHER ◇ N" sub-header pattern.
+	var title: Label = Label.new()
+	title.text = "ACHIEVEMENTS"
+	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
+	title.add_theme_font_size_override("font_size", 28)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var total: int = GameState.ACHIEVEMENTS.size()
+	var unlocked: int = GameState.unlocked_achievements.size()
+	var sub: Label = Label.new()
+	sub.text = "%d / %d  unlocked" % [unlocked, total]
+	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
+	sub.add_theme_font_size_override("font_size", 16)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(sub)
+	# Scrollable list — preempts overflow if achievement count grows
+	# past what fits on 720h. Today 12 entries fit comfortably.
+	var scroll: ScrollContainer = ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600, 420)
+	box.add_child(scroll)
+	var list_box: VBoxContainer = VBoxContainer.new()
+	list_box.add_theme_constant_override("separation", 6)
+	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list_box)
+	# One row per achievement. Stable iteration order (GameState
+	# constant uses dict literal, which Godot preserves insertion order
+	# on).
+	for id in GameState.ACHIEVEMENTS.keys():
+		var spec: Dictionary = GameState.ACHIEVEMENTS[id]
+		var is_unlocked: bool = id in GameState.unlocked_achievements
+		list_box.add_child(_build_achievement_row(spec, is_unlocked))
+	# Close
+	var close_row: HBoxContainer = HBoxContainer.new()
+	close_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(close_row)
+	var close_btn: Button = Button.new()
+	close_btn.text = "CLOSE"
+	close_btn.custom_minimum_size = Vector2(140, 36)
+	close_btn.pressed.connect(_close_achievements_panel)
+	close_row.add_child(close_btn)
+	close_btn.grab_focus()
+
+# Iter 225 — single-row builder. Unlocked entries are bright +
+# gold-tinted with an "OK" prefix glyph; locked entries are dim with
+# a "—" prefix and the description hidden behind "???". Names stay
+# visible regardless so the player has a hint what they're chasing
+# (mythic_find = "MYTHIC FIND" already telegraphs "find a mythic
+# relic" without spoiling specifics).
+func _build_achievement_row(spec: Dictionary, is_unlocked: bool) -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	# Status glyph (24px column).
+	var glyph: Label = Label.new()
+	glyph.text = "OK" if is_unlocked else "—"
+	glyph.custom_minimum_size = Vector2(36, 0)
+	glyph.add_theme_font_size_override("font_size", 16)
+	if is_unlocked:
+		glyph.add_theme_color_override("font_color", Color(1.00, 0.82, 0.32))
+	else:
+		glyph.add_theme_color_override("font_color", Color(0.50, 0.50, 0.50))
+	row.add_child(glyph)
+	# Name column (180px).
+	var name_label: Label = Label.new()
+	name_label.text = str(spec.get("name", "???"))
+	name_label.custom_minimum_size = Vector2(180, 0)
+	name_label.add_theme_font_size_override("font_size", 16)
+	if is_unlocked:
+		name_label.add_theme_color_override("font_color", Color(0.96, 0.92, 0.78))
+	else:
+		name_label.add_theme_color_override("font_color", Color(0.62, 0.60, 0.56))
+	row.add_child(name_label)
+	# Description column — autowrap, fills remaining width.
+	var desc_label: Label = Label.new()
+	if is_unlocked:
+		desc_label.text = str(spec.get("description", ""))
+		desc_label.add_theme_color_override("font_color", Color(0.86, 0.86, 0.82))
+	else:
+		# Light spoiler protection — locked entries hide the
+		# objective, keeping the player guessing the exact trigger.
+		desc_label.text = "???"
+		desc_label.add_theme_color_override("font_color", Color(0.46, 0.46, 0.44))
+	desc_label.add_theme_font_size_override("font_size", 12)
+	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.custom_minimum_size = Vector2(340, 0)
+	desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(desc_label)
+	return row
+
+func _close_achievements_panel() -> void:
+	if _achievements_panel != null and is_instance_valid(_achievements_panel):
+		_achievements_panel.queue_free()
+		_achievements_panel = null
+	if _achievements_button != null:
+		_achievements_button.grab_focus()
+	Audio.play_ui_cue("ui_press", -4.0)
