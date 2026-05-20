@@ -201,6 +201,10 @@ func _input(ev: InputEvent) -> void:
 # exit door, and runs an outro tween to dim + remove the shrine.
 func _pray() -> void:
 	_claimed = true
+	# Iter 222 / Beta M3 — shrine-pray SFX (was silent per A/V audit).
+	# Distinct rising sweep at 660→1980 Hz reads as "spirit ascending".
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("shrine_pray", global_position)
 	if _prompt != null:
 		_prompt.visible = false
 	var cfg: Dictionary = SHRINE_KINDS.get(stat_kind, SHRINE_KINDS["hp"])

@@ -158,6 +158,14 @@ const SOUND_CONFIGS := {
 	#   so the rare proc has clear "you found something amazing"
 	#   audio impact.
 	"pickup_mythic": { "freq_start": 400.0, "freq_end":1800.0, "duration": 0.32, "wave": "sin",    "gain": 0.62, "decay_pow": 1.2 },
+	# Iter 222 / Beta M3 — gameplay-event SFX gap fill. Audio audit found
+	# these signals had no audible cue. Each is a small synthesized sweep
+	# that follows the same construction grammar as the rest of the table.
+	"door_traverse": { "freq_start": 360.0, "freq_end": 880.0, "duration": 0.36, "wave": "sin",    "gain": 0.42, "decay_pow": 1.2 },
+	"room_clear":    { "freq_start": 520.0, "freq_end":1320.0, "duration": 0.38, "wave": "sin",    "gain": 0.50, "decay_pow": 1.4 },
+	"chest_open":    { "freq_start": 280.0, "freq_end": 720.0, "duration": 0.20, "wave": "sin",    "gain": 0.46, "decay_pow": 1.6 },
+	"shrine_pray":   { "freq_start": 660.0, "freq_end":1980.0, "duration": 0.42, "wave": "sin",    "gain": 0.40, "decay_pow": 1.0 },
+	"boss_clear":    { "freq_start": 220.0, "freq_end":1100.0, "duration": 0.70, "wave": "sin",    "gain": 0.65, "decay_pow": 1.0 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is

@@ -3593,6 +3593,9 @@ func _event_announce(entry: Dictionary) -> void:
 
 func _on_wave_cleared() -> void:
 	_wave_state = WaveState.CLEAR
+	# Iter 222 / Beta M3 — room/wave clear SFX (was silent per A/V audit).
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("room_clear", hero.global_position if hero != null else Vector2(640, 384))
 	# iter-79: portal close-call removed along with the portal system.
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]
@@ -5889,6 +5892,11 @@ func _show_run_complete() -> void:
 	# alt-F4s before reaching the victory screen menu return.
 	if SaveSystem != null and SaveSystem.has_method("save_now"):
 		SaveSystem.save_now()
+	# Iter 222 / Beta M3 — boss-clear SFX (was silent per A/V audit).
+	# Distinct from the per-room "room_clear" cue — this is the celebratory
+	# floor-end stinger.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("boss_clear", hero.global_position if hero != null else Vector2(640, 384))
 	# Big floating banner so the moment registers even if the player's
 	# eyes are still tracking the hero, not the HUD corner.
 	var banner: DamageNumber = DamageNumber.spawn(

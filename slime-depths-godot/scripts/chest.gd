@@ -73,6 +73,9 @@ func take_hit(damage: int, _is_crit: bool = false) -> void:
 
 func _open() -> void:
 	_opened = true
+	# Iter 222 / Beta M3 — chest-open SFX (was silent per A/V audit).
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("chest_open", global_position)
 	# Stop participating in the "enemies" iteration entirely — leaving
 	# the chest in the group after opening would let further swings
 	# re-trigger take_hit (cheap, but visually noisy if a player keeps

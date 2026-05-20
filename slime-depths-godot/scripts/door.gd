@@ -189,6 +189,9 @@ func _on_body_entered(body: Node) -> void:
 	if _firing or not body.is_in_group("hero"):
 		return
 	_firing = true
+	# Iter 222 / Beta M3 — door-traverse SFX (was silent per A/V audit).
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("door_traverse", global_position)
 	# Brief delay so the player sees they hit the door before the
 	# screen swaps. Reset time_scale defensively in case a hit-stop
 	# was still in flight.
