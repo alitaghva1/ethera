@@ -2269,9 +2269,41 @@ func _spawn_wall_seepage_to(target: Vector2, kind: String, rng: RandomNumberGene
 		mid - perp * mid_half_width,
 		source - perp * wall_half_width,
 	])
-	trail.color = _seepage_color_for_kind(kind, rng)
+	var trail_color: Color = _seepage_color_for_kind(kind, rng)
+	trail.color = trail_color
 	trail.z_index = -2
 	add_child(trail)
+	# Iter 211 — Active flow particles. Tiny droplets drifting from the
+	# wall source TOWARD the cluster every ~1.3s, fading in/out so the
+	# trail reads as STILL ACTIVELY flowing (not a dried stain). One
+	# emitter per trail, sparse (3 particles in flight) — minimal extra
+	# visual load. Particle color = trail color with slightly higher
+	# alpha so the droplet pops over the static trail beneath it.
+	var trail_length: float = source.distance_to(target)
+	var flow_speed: float = 26.0  # px/sec along the trail
+	var flow: CPUParticles2D = CPUParticles2D.new()
+	flow.emitting = true
+	flow.preprocess = 2.0
+	flow.position = source
+	flow.amount = 3
+	flow.lifetime = max(2.0, trail_length / flow_speed)
+	flow.direction = direction
+	flow.spread = 6.0
+	flow.initial_velocity_min = flow_speed * 0.85
+	flow.initial_velocity_max = flow_speed * 1.15
+	flow.gravity = Vector2.ZERO
+	flow.scale_amount_min = 1.4
+	flow.scale_amount_max = 2.2
+	flow.damping_min = 0.0
+	flow.damping_max = 0.4
+	flow.z_index = -2
+	var c_full: Color = Color(trail_color.r, trail_color.g, trail_color.b, min(trail_color.a + 0.20, 0.88))
+	var c_invis: Color = Color(trail_color.r, trail_color.g, trail_color.b, 0.0)
+	var ramp: Gradient = Gradient.new()
+	ramp.offsets = PackedFloat32Array([0.0, 0.12, 0.72, 1.0])
+	ramp.colors = PackedColorArray([c_invis, c_full, c_full, c_invis])
+	flow.color_ramp = ramp
+	add_child(flow)
 
 # Color/alpha lookup for a seepage trail, matching the kind of cluster
 # it terminates in. Slightly LOWER alpha than the cluster's polygons so
