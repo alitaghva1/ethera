@@ -4,8 +4,13 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-217 = Phase 6 of GOAL ladder)
-Branch: `claude/wizard-kit-sprint-3` @ commit `4382c50` (26 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-218 = Beta M0 batch shipped)
+Branch: `claude/wizard-kit-sprint-3` @ commit `b7c52ff` (31 commits ahead of `main`)
+
+**Recent**: Beta M0 — Freeze & Stabilize landed: per-biome music wired
+(5 OGG tracks were unused), 2 missing relic icons remapped, quit-confirm
+modal added, worktree cruft purged, save migration foundation built.
+See `BETA_ROADMAP.md` for the M0-M5 plan.
 
 ---
 
