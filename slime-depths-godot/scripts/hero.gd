@@ -639,6 +639,10 @@ func _physics_process(delta: float) -> void:
 	# whether the player owns the relic so a re-pickup doesn't get a
 	# free instant cast.
 	_active_relic_cd  = max(0.0, _active_relic_cd  - delta)
+	# Iter 213 — BLOOD TITHE buff timer. Decrements; reaches 0 ends
+	# damage multiplier + heal-on-kill window. No fade-out logic needed —
+	# the aura visual self-frees via its own tween.
+	_blood_tithe_buff_time = max(0.0, _blood_tithe_buff_time - delta)
 	_attack_live      = max(0.0, _attack_live      - delta)
 	# iter-95: _dodge_cd and _dodge_time timer decrements removed with
 	# the dodge ability.
@@ -927,13 +931,23 @@ func _physics_process(delta: float) -> void:
 	# Iter 201 — active relic input. Outside the if/elif chain because
 	# active relic should be triggerable mid-swing / mid-blast (it's
 	# a defensive/burst tool the player uses when surrounded). Only
-	# fires if (a) Soul Surge is owned, (b) cooldown ready, (c) hero
-	# alive. Press-once gate via is_action_just_pressed.
+	# fires if (a) an active relic is owned, (b) cooldown ready,
+	# (c) hero alive. Press-once gate via is_action_just_pressed.
+	# Iter 213 — dispatcher dispatches on GameState.get_owned_active_id()
+	# rather than the iter-201 single hardcoded soul_surge check.
 	if Input.is_action_just_pressed("active_relic") \
 			and _active_relic_cd <= 0.0 \
-			and not _is_dying \
-			and GameState.has_relic("soul_surge"):
-		_trigger_soul_surge()
+			and not _is_dying:
+		var active_id: String = GameState.get_owned_active_id()
+		match active_id:
+			"soul_surge":
+				_trigger_soul_surge()
+			"veilstep":
+				_trigger_veilstep()
+			"ashen_seal":
+				_trigger_ashen_seal()
+			"blood_tithe":
+				_trigger_blood_tithe()
 
 # Facing picker. Returns the direction bucket the sprite should render
 # THIS tick. Priority: dying = sticky · hurt = sticky · attacking/dashing
@@ -1081,6 +1095,9 @@ func _roll_slow() -> bool:
 
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 213 — BLOOD TITHE multiplier. +50 % during the buff window.
+	# Applied AFTER relic mods so it scales the full stick.
+	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
 	# Iter 21 — relic-driven modifiers:
 	#   wide_arc      widens the cone (attack_arc_mul)
 	#   iron_grip     amps knockback force (knockback_force_mul)
@@ -1661,6 +1678,10 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	var proj_speed: float = Projectile.SPEED * (1.0 + GameState.modifier_total_f("projectile_speed_mul", 0.0))
 	p.velocity = aim_dir * proj_speed
 	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	# Iter 213 — BLOOD TITHE multiplier (Phase 2). Applied here so the
+	# bake into the projectile.damage carries through impact + chain
+	# arcs + any per-projectile downstream consumers.
+	dmg = int(round(float(dmg) * _blood_tithe_damage_mul()))
 	if resonance_active:
 		dmg *= 2
 		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
@@ -1954,6 +1975,13 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 	if _is_dying:
 		return
 	_kill_counter += 1
+	# Iter 213 — BLOOD TITHE kill-heal. While the buff window is active,
+	# every kill heals +1 HP (capped at max_hp). Lets the player net
+	# positive on the trade if they're clearing well during the burst.
+	if _blood_tithe_buff_time > 0.0:
+		var max_hp_total: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < max_hp_total:
+			hp = min(hp + BLOOD_TITHE_KILL_HEAL, max_hp_total)
 	# Iter 72 — STONEHEART redesign. Per-room flag pattern: the FIRST
 	# enemy felled each room triggers a vital pulse + +1 HP heal. Flag
 	# auto-resets on scene reload (mirrors _iron_resolve_absorbed_this_
@@ -2451,6 +2479,243 @@ func _trigger_soul_surge() -> void:
 	if Audio != null and Audio.has_method("_play"):
 		Audio._play("kill_explode", global_position)
 
+# ── Iter 213 / Phase 2 — Active relic toolkit expansion ───────────────
+# Three new actives added beside SOUL SURGE. The hero input handler
+# dispatches via GameState.get_owned_active_id() so only ONE active is
+# bound to [R] at any time (BoI-slot pattern). Each trigger sets its
+# OWN cooldown — _active_relic_cd is the shared timer, but the value
+# each active assigns reflects its identity (defensive teleport short,
+# risk-reward long).
+
+# VEILSTEP — defensive phase teleport. ~140 px along the aim direction
+# (clamped to the play area), with full iframes during the brief blink
+# fade. The verb is "get out of trouble," not damage. SHADOW theme.
+const VEILSTEP_DISTANCE: float = 140.0
+const VEILSTEP_COOLDOWN: float = 14.0
+const VEILSTEP_IFRAMES: float = 0.45
+# Play-area bounds copied from main.gd's PLAY_AREA_MIN/MAX so the
+# teleport endpoint can't end inside the perimeter wall mass. Keep in
+# sync if those constants ever shift.
+const VEILSTEP_AREA_MIN: Vector2 = Vector2(96, 96)
+const VEILSTEP_AREA_MAX: Vector2 = Vector2(1184, 672)
+
+func _trigger_veilstep() -> void:
+	_active_relic_cd = VEILSTEP_COOLDOWN
+	# Aim is mouse-relative. If the mouse is right on top of the hero,
+	# fall back to current facing direction so the relic doesn't no-op.
+	var aim: Vector2 = get_global_mouse_position() - global_position
+	if aim.length() < 1.0:
+		aim = _dir_to_vector(_facing_dir)
+	var dir: Vector2 = aim.normalized()
+	var start: Vector2 = global_position
+	var end_raw: Vector2 = start + dir * VEILSTEP_DISTANCE
+	# Clamp endpoint INSIDE the play area minus a small inset so we
+	# don't land touching a wall. 24 px inset = ~ hero radius headroom.
+	var end_pos: Vector2 = Vector2(
+		clampf(end_raw.x, VEILSTEP_AREA_MIN.x + 24.0, VEILSTEP_AREA_MAX.x - 24.0),
+		clampf(end_raw.y, VEILSTEP_AREA_MIN.y + 24.0, VEILSTEP_AREA_MAX.y - 24.0)
+	)
+	# Iframes cover the full teleport + small overhang so an enemy
+	# attack that connects WHILE you're mid-phase still misses.
+	_iframes = max(_iframes, VEILSTEP_IFRAMES)
+	# Spawn shadow rings at BOTH endpoints — the player sees where they
+	# came from and where they are now. SHADOW-themed dark violet.
+	_spawn_veilstep_ring(start)
+	_spawn_veilstep_ring(end_pos)
+	# Brief sprite fade-out at start position, then snap to end_pos
+	# and fade back in. Tween parented to hero so it follows the
+	# teleport instantly. 60 ms each side.
+	if sprite != null:
+		var tw: Tween = create_tween()
+		tw.tween_property(sprite, "modulate:a", 0.15, 0.06)
+		tw.tween_callback(func():
+			global_position = end_pos
+		)
+		tw.tween_property(sprite, "modulate:a", 1.0, 0.10)
+	else:
+		global_position = end_pos
+	# Audio cue — reuse dash whoosh for now; future sound design can
+	# author a phase-specific cue.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("dash_whoosh", global_position)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.25)
+
+func _spawn_veilstep_ring(at_pos: Vector2) -> void:
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 22
+	var r: float = 28.0
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * r)
+	ring.polygon = pts
+	ring.color = Color(0.35, 0.20, 0.55, 0.78)
+	ring.position = at_pos
+	ring.scale = Vector2(0.4, 0.4)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	parent.add_child(ring)
+	var tw: Tween = ring.create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.1, 1.1), 0.32)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.32)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
+
+# ASHEN SEAL — drop a stationary burning sigil at hero's feet. Every
+# 0.5 s for 4 s, applies a short BURN to every enemy within 80 px.
+# Composes with the SHATTER and KINDLE_SPREAD combos — drop, kite,
+# watch the chain reactions. FLAME theme.
+const ASHEN_SEAL_COOLDOWN: float = 20.0
+const ASHEN_SEAL_RADIUS: float = 80.0
+const ASHEN_SEAL_DURATION: float = 4.0
+const ASHEN_SEAL_TICK_INTERVAL: float = 0.5
+const ASHEN_SEAL_BURN_DURATION: float = 1.2
+
+func _trigger_ashen_seal() -> void:
+	_active_relic_cd = ASHEN_SEAL_COOLDOWN
+	var drop_pos: Vector2 = global_position
+	# Build the ward as a Node2D parented to scene root so it stays put
+	# when the hero moves. Visual: a soft orange ring + a smaller inner
+	# glyph polygon, both pulsing during lifetime.
+	var ward: Node2D = Node2D.new()
+	ward.name = "AshenSealWard"
+	ward.position = drop_pos
+	ward.z_index = -1
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	parent.add_child(ward)
+	# Outer flame ring (Polygon2D at the seal radius).
+	var ring: Polygon2D = Polygon2D.new()
+	var rpts: PackedVector2Array = PackedVector2Array()
+	var rverts: int = 26
+	for i in range(rverts):
+		var ang: float = float(i) / rverts * TAU
+		rpts.append(Vector2(cos(ang), sin(ang)) * ASHEN_SEAL_RADIUS)
+	ring.polygon = rpts
+	ring.color = Color(1.0, 0.45, 0.18, 0.42)
+	ward.add_child(ring)
+	# Inner sigil — small 6-pointed star Polygon2D so the ward reads as
+	# "drawn glyph," not generic puddle.
+	var sigil: Polygon2D = Polygon2D.new()
+	var spts: PackedVector2Array = PackedVector2Array()
+	for i in range(12):
+		var ang2: float = float(i) / 12 * TAU
+		var r2: float = 26.0 if i % 2 == 0 else 12.0
+		spts.append(Vector2(cos(ang2), sin(ang2)) * r2)
+	sigil.polygon = spts
+	sigil.color = Color(1.0, 0.65, 0.22, 0.78)
+	ward.add_child(sigil)
+	# Pulse — alpha breathe on the ring throughout the lifetime via
+	# tween loop. Sigil rotates slowly so the player sees CONTINUOUS
+	# activity rather than a static decal.
+	var pulse_tw: Tween = ring.create_tween().set_loops(int(ASHEN_SEAL_DURATION / 0.8) + 1)
+	pulse_tw.tween_property(ring, "modulate:a", 0.7, 0.4)
+	pulse_tw.tween_property(ring, "modulate:a", 0.3, 0.4)
+	var rot_tw: Tween = sigil.create_tween().set_loops(0)
+	rot_tw.tween_property(sigil, "rotation", TAU, 6.0)
+	# Burn-tick timer — fires apply_burn to enemies in range every
+	# ASHEN_SEAL_TICK_INTERVAL seconds. Connect via Callable.bind so the
+	# tick function has access to the ward's position even after the
+	# hero has moved away.
+	var timer: Timer = Timer.new()
+	timer.wait_time = ASHEN_SEAL_TICK_INTERVAL
+	timer.autostart = true
+	timer.one_shot = false
+	ward.add_child(timer)
+	timer.timeout.connect(_ashen_seal_tick.bind(drop_pos))
+	# Lifetime: tween_callback that frees the ward after the duration.
+	# Done via SceneTreeTimer so we don't need to babysit it.
+	get_tree().create_timer(ASHEN_SEAL_DURATION).timeout.connect(ward.queue_free)
+	# Audio + small trauma shake on drop.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", drop_pos)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.30)
+
+func _ashen_seal_tick(at_pos: Vector2) -> void:
+	# Apply a short BURN to every enemy in the radius. apply_burn's
+	# refresh semantics (max of existing vs new) prevent stacking
+	# damage past one DoT per enemy, which is what we want — the seal
+	# REFRESHES burn, not stacks it.
+	var r2: float = ASHEN_SEAL_RADIUS * ASHEN_SEAL_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - at_pos
+		if d.length_squared() <= r2 and e.has_method("apply_burn"):
+			e.apply_burn(ASHEN_SEAL_BURN_DURATION)
+
+# BLOOD TITHE — sacrifice HP for a burst window. Press [R] (HP > 1):
+# pay 1 HP up-front, gain +50 % damage on sword/blast/dash for 6 s,
+# AND every enemy kill during the window heals +1 HP back. Tempo /
+# risk verb — push it when you have momentum and threats lined up.
+# Burst window can net positive if you clear well, but the up-front
+# cost is non-refundable. BLOOD theme. 30 s cooldown.
+const BLOOD_TITHE_COOLDOWN: float = 30.0
+const BLOOD_TITHE_BUFF_DURATION: float = 6.0
+const BLOOD_TITHE_DMG_MUL: float = 1.5
+const BLOOD_TITHE_KILL_HEAL: int = 1
+# Buff timer (decremented in _physics_process). > 0 means damage_mul
+# applies AND on-kill heal fires. _resolve_melee_strike / _start_blast
+# / dash_strike all read this to apply the multiplier; the heal hook
+# lives in _on_enemy_died_for_relics.
+var _blood_tithe_buff_time: float = 0.0
+
+func _trigger_blood_tithe() -> void:
+	# Guard: can't activate at 1 HP — would be a suicide press.
+	if hp <= 1:
+		# Soft refusal — don't burn the cooldown if the player
+		# accidentally pressed at low HP. Brief audio cue.
+		if Audio != null and Audio.has_method("_play"):
+			Audio._play("parry_chime", global_position)
+		return
+	_active_relic_cd = BLOOD_TITHE_COOLDOWN
+	# Pay the cost — direct hp subtract (NOT take_damage; this is a
+	# sacrifice, not an enemy strike, so it bypasses iframes / DR / etc).
+	hp -= 1
+	# Arm the buff window. _physics_process drains this.
+	_blood_tithe_buff_time = BLOOD_TITHE_BUFF_DURATION
+	# Red aura ring around the hero — pulses during the buff window.
+	# Persists for the buff lifetime via a self-freeing Tween loop.
+	var aura: Polygon2D = Polygon2D.new()
+	var apts: PackedVector2Array = PackedVector2Array()
+	var averts: int = 22
+	for i in range(averts):
+		var ang: float = float(i) / averts * TAU
+		apts.append(Vector2(cos(ang), sin(ang)) * 36.0)
+	aura.polygon = apts
+	aura.color = Color(0.85, 0.18, 0.20, 0.55)
+	aura.z_index = 1
+	add_child(aura)  # parent to hero so it follows
+	# Pulse during the buff. The loop count is approximate (one cycle
+	# per 0.6 s); the explicit free at the end of the chain handles
+	# expiry whether or not the loops complete.
+	var loops: int = int(BLOOD_TITHE_BUFF_DURATION / 0.6)
+	var tw: Tween = aura.create_tween().set_loops(loops)
+	tw.tween_property(aura, "modulate:a", 0.85, 0.3)
+	tw.tween_property(aura, "modulate:a", 0.40, 0.3)
+	tw.chain().tween_property(aura, "modulate:a", 0.0, 0.2)
+	tw.chain().tween_callback(aura.queue_free)
+	# Audio: heavy heartbeat-like cue.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", global_position)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.35)
+
+# Multiplier the damage code paths consult while BLOOD TITHE is active.
+# Returns 1.5 during the buff window, 1.0 otherwise.
+func _blood_tithe_damage_mul() -> float:
+	if _blood_tithe_buff_time > 0.0:
+		return BLOOD_TITHE_DMG_MUL
+	return 1.0
+
 func _start_dash_strike() -> void:
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
@@ -2552,6 +2817,9 @@ func _spawn_dash_afterimage() -> void:
 
 func _resolve_dash_strike_hit() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 213 — BLOOD TITHE multiplier on dash-strike too. Dash-strike
+	# is a "spend a chunk of HP for power" move's natural partner.
+	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
 	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
 	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0

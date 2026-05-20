@@ -5185,23 +5185,56 @@ func _update_active_relic_label() -> void:
 	if hero == null or not is_instance_valid(hero):
 		active_relic_label.visible = false
 		return
-	if not GameState.has_relic("soul_surge"):
+	# Iter 213 — Phase 2. Reads GameState.get_owned_active_id() so the
+	# chip reflects whichever active is currently bound to [R] instead
+	# of the iter-201 hardcoded soul_surge. Displays the relic's name
+	# alongside the cooldown so the player remembers WHICH verb they
+	# have on the button.
+	var active_id: String = GameState.get_owned_active_id()
+	if active_id == "":
 		active_relic_label.visible = false
 		return
 	active_relic_label.visible = true
+	# Short-label lookup — keep the chip compact. Falls back to the
+	# registry name if no short label is defined.
+	var short_label: String = _active_short_label(active_id)
+	# Per-active READY color tint so the player reads a different
+	# affordance when they swap actives. Matches the relic's theme.
+	var ready_color: Color = _active_ready_color(active_id)
+	var cooling_color: Color = Color(
+		ready_color.r * 0.65, ready_color.g * 0.65, ready_color.b * 0.65, 0.55
+	)
 	var cd: float = hero.get("_active_relic_cd") if "_active_relic_cd" in hero else 0.0
 	if cd <= 0.0:
-		active_relic_label.text = "[R] READY"
+		active_relic_label.text = "[R] %s — READY" % short_label
 		active_relic_label.modulate.a = 1.0
-		active_relic_label.add_theme_color_override(
-			"font_color", Color(0.95, 0.85, 1.0, 0.92)
-		)
+		active_relic_label.add_theme_color_override("font_color", ready_color)
 	else:
-		active_relic_label.text = "[R] %ds" % int(ceil(cd))
+		active_relic_label.text = "[R] %s %ds" % [short_label, int(ceil(cd))]
 		active_relic_label.modulate.a = 1.0
-		active_relic_label.add_theme_color_override(
-			"font_color", Color(0.62, 0.55, 0.75, 0.55)
-		)
+		active_relic_label.add_theme_color_override("font_color", cooling_color)
+
+# Iter 213 — short HUD label per active relic id. Keeps the chip from
+# blowing past the column width. Add an entry when introducing a new
+# active.
+func _active_short_label(active_id: String) -> String:
+	match active_id:
+		"soul_surge":  return "SURGE"
+		"veilstep":    return "VEIL"
+		"ashen_seal":  return "SEAL"
+		"blood_tithe": return "TITHE"
+		_:             return "ACT"
+
+# Iter 213 — READY-state color per active. Matches the relic's theme so
+# the chip plays the same visual language as the relic strip + theme
+# chips. Cooling state derives a darker variant in caller.
+func _active_ready_color(active_id: String) -> Color:
+	match active_id:
+		"soul_surge":  return Color(0.95, 0.85, 1.0, 0.92)  # SHADOW
+		"veilstep":    return Color(0.78, 0.68, 1.0, 0.92)  # SHADOW
+		"ashen_seal":  return Color(1.00, 0.78, 0.42, 0.92) # FLAME
+		"blood_tithe": return Color(1.00, 0.62, 0.62, 0.92) # BLOOD
+		_:             return Color(0.95, 0.92, 0.88, 0.92)
 
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when

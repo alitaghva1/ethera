@@ -605,6 +605,56 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["shadow"],
 	},
+	# Iter 213 — VEILSTEP (Phase 2 / Cycle 23). Second active relic;
+	# defensive teleport. Press [R] to phase along the aim direction
+	# ~140 px with full iframes during the transit. The verb is
+	# REPOSITION, not damage — gets you out of a swarm, cancels an
+	# incoming attack frame, repositions for combo. 14 s cooldown so
+	# it's spammable enough to feel like a real second dodge, but
+	# expensive enough that you commit to the choice.
+	"veilstep": {
+		"name": "VEILSTEP",
+		"description": "Press [R] to phase ~140 px toward your cursor. Immune to damage during the step. 14 s cooldown.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_dodge.png",
+		"mods": {
+			"active_veilstep": 1,
+		},
+		"themes": ["shadow"],
+	},
+	# Iter 213 — ASHEN SEAL (Phase 2). Third active relic; drop a
+	# stationary burning ward at hero's feet. For 4 s the ward ticks
+	# BURN onto every enemy within 80 px (composes with SHATTER and
+	# KINDLE_SPREAD combos). Verb is CROWD CONTROL / SPACE CONTROL —
+	# drop it before a doorway, fall back, let the burn stack do the
+	# work. 20 s cooldown matches its effect duration ratio.
+	"ashen_seal": {
+		"name": "ASHEN SEAL",
+		"description": "Press [R] to scorch a sigil at your feet — enemies within 80 px catch fire for 4 s. 20 s cooldown.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"mods": {
+			"active_ashen_seal": 1,
+		},
+		"themes": ["flame"],
+	},
+	# Iter 213 — BLOOD TITHE (Phase 2). Fourth active relic; trade HP
+	# for power. Press [R] when HP > 1: -1 current HP, +50 % damage for
+	# 6 s, AND every kill during the window heals 1 HP. The window can
+	# net positive (you can come out richer than you went in) if you
+	# clear well, BUT a missed kill window means flat HP loss for
+	# nothing. 30 s cooldown. Verb is RISK / TEMPO — push it when you
+	# have momentum and threats stacked.
+	"blood_tithe": {
+		"name": "BLOOD TITHE",
+		"description": "Press [R] (HP > 1) to pay 1 HP for +50 % damage for 6 s. Every kill in the window heals 1 HP. 30 s cooldown.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": {
+			"active_blood_tithe": 1,
+		},
+		"themes": ["blood"],
+	},
 	# Iter 203 — ECHO QUILL. Noita-tier spell-modifier relic. Pre-iter-203
 	# blast was always a single-cast event (modified by relics, but
 	# fundamentally one trigger = one fire). Echo Quill MODIFIES the
@@ -1101,6 +1151,32 @@ func finalize_run_time() -> void:
 # Back-compat for hamlet's existing call.
 func register_kill() -> void:
 	session_kills += 1
+
+# ── Active Relic Registry ────────────────────────────────────────────
+# Iter 213 — Phase 2 active relic toolkit. List of all relics that bind
+# to the [R] button. Priority is array order — if the player owns more
+# than one, the first in this list "claims" the button. (BoI-style:
+# the player only has ONE active slot conceptually, even if multiple
+# active items have been picked up. Future enhancement: hamlet UI to
+# swap which active is bound.) When adding a new active here, also:
+#   1. Add a registry entry above (with "active_<id>" mod key).
+#   2. Add a _trigger_<id> handler in hero.gd.
+#   3. Add a label entry in main.gd's _active_relic_label_text.
+const ACTIVE_RELIC_IDS: Array[String] = [
+	"veilstep",      # SHADOW — defensive teleport (iter 213)
+	"ashen_seal",    # FLAME  — burning sigil drop (iter 213)
+	"blood_tithe",   # BLOOD  — risk/reward tempo (iter 213)
+	"soul_surge",    # SHADOW — AoE damage burst (iter 201)
+]
+
+# Returns the id of the FIRST owned active relic, or "" if none. The
+# hero's input handler uses this to decide which _trigger_* to invoke
+# on [R] press.
+func get_owned_active_id() -> String:
+	for id in ACTIVE_RELIC_IDS:
+		if id in owned_relics:
+			return id
+	return ""
 
 # ── Relic API ────────────────────────────────────────────────────────
 func has_relic(id: String) -> bool:
