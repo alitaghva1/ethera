@@ -4,22 +4,29 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-223 = M0 → M5 all shipped)
-Branch: `claude/wizard-kit-sprint-3` @ commit `3d0ffe2` (37 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-227 = 4-team parallel sprint complete)
+Branch: `claude/wizard-kit-sprint-3` @ commit `ecd774a` (41 commits ahead of `main`)
 
-**Recent**: Full M0 → M5 expansion landed in one session:
-  • M0 (iter-218): Freeze & Stabilize — biome music, relic icons, quit
-    confirm, save migration foundation
-  • M1.0 (iter-219): Persistent Ether Shard currency across runs
-  • M1.1 (iter-220): 5-node upgrade tree + invest UI
-  • M2 (iter-221): Accessibility — screen shake / music / SFX /
-    motion-reduction / text scale sliders
-  • M3 (iter-222): 5 missing event SFX wired (door / room-clear /
-    chest / shrine / boss-clear)
-  • M4 (iter-223): Tutorial extended to teach blast + parry
-  • M5 (iter-223): Steam store / press kit / build docs ready for
-    upload when appid provisioned
-See `BETA_ROADMAP.md` for M6-M10 post-EA content cadence.
+**Recent**: 4-team parallel sprint (Bug / Polish / Expansion / Fun Ideas):
+  • Iter-224 (Bug Team): 5 defensive `as Node2D` + `is_instance_valid`
+    guards on per-frame enemy group walks (separation loop, all hero
+    AoE scans). Tests +1.
+  • Iter-225 (Polish Team): ability cooldown chips for LMB/RMB/Q/SHIFT
+    (auto-hide when ready), Achievement Viewer modal with 13 entries
+    (gold/dim per locked/unlocked, spoiler-protection). Tests +1.
+  • Iter-226 (Expansion Team): 4 new relics — ETHER MAGNET (+25%
+    shards), SACRIFICIAL ECHO (+1 HP per 5 kills), SUMMON STONE
+    (stationary turret), LUCKY KNIFE (crit-kill ether bonus). New
+    `turret.gd` + auto-spawn at room start. Tests +1.
+  • Iter-227 (Fun Ideas Team): RITUAL PACT ALTAR — Faustian-bargain
+    counterpart to the iter-33 stat shrine. 4 catalog pacts pairing
+    a boon with a curse (BLOOD +2 atk/-1 HP, ASH legendary/-15%
+    speed, DUSK +8 shards/-1 HP, IRON +1 HP&heal/-1 DR). Distinct
+    obsidian + bloodred visuals. Routes through existing
+    shrine_bonuses → modifier_total chain. New scene + .gd. Tests +1.
+
+Earlier this session: M0-M5 beta milestones shipped (iter-218-223).
+12 audit tests green. See `BETA_ROADMAP.md` for M6-M10 post-EA cadence.
 
 ---
 
