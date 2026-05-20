@@ -15,19 +15,20 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (16 tests)
+# Full audit (17 tests)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
          test_iter224_defensive_guards test_iter225_polish \
          test_iter226_currency_relics test_iter227_pact_altar \
          test_iter228_boss_phases test_iter228_relic_stacking \
-         test_iter229_polish test_iter230_bulwark; do
+         test_iter229_polish test_iter230_bulwark \
+         test_iter231_reaction_web; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 16 should print PASS / OK.
+All 17 should print PASS / OK.
 
 ## Export presets (set up in Godot editor)
 

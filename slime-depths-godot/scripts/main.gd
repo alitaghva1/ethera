@@ -271,6 +271,38 @@ var _affix_tooltip_name_label: Label = null
 var _affix_tooltip_desc_label: Label = null
 var _affix_tooltip_target: Node = null  # currently tracked enemy
 const AFFIX_TOOLTIP_PROXIMITY: float = 96.0  # px hero→enemy to surface
+
+# Iter 231 / Fun Ideas Team R2 — REACTION WEB combo chip strip.
+# A read-only HUD sensor that surfaces, for each of the 6 status combos
+# (SHATTER / KINDLE_SPREAD / PETRIFY / SCATTER_FLAMES / BACKDRAFT /
+# RIME_TRAIL), whether the player's CURRENT build can produce both
+# halves of the trigger. State is one chip per combo; visibility +
+# brightness derive from ReactionWebScript.evaluate_combo() against
+# GameState. Polled once per REACTION_WEB_REFRESH_PERIOD seconds (not
+# every frame — relic ownership only changes on pickup, which is rare
+# enough that 1 Hz is plenty).
+#
+# Chip behavior per combo:
+#   armed      — bright themed text "SHATTER" (combo name)
+#   partial    — dim grey hint "SHATTER · needs SLOW"
+#   unarmable  — hidden (no chip visible at all)
+#
+# Code-built (no main.tscn edit). Strip sits at the LEFT edge below the
+# ability cooldown strip (y≈174) so it shares the HUD column with the
+# active-relic + cooldown chips rather than fighting the right-aligned
+# room name + room counter. Width is generous (340 px) since "needs X"
+# partial strings can run long.
+# Preload the script as a constant so the class_name doesn't need to be
+# registered with the editor's global class table (headless test runs
+# don't go through the editor and would otherwise hit "Identifier
+# ReactionWeb not declared" — same approach other scripts in this repo
+# use when referencing siblings).
+const ReactionWebScript: Script = preload("res://scripts/reaction_web.gd")
+var _reaction_web_strip: VBoxContainer = null
+var _reaction_web_chips: Dictionary = {}  # combo_id (String) → Label
+var _reaction_web_acc: float = 0.0
+const REACTION_WEB_REFRESH_PERIOD: float = 1.0
+
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -701,6 +733,13 @@ func _ready() -> void:
 	# polled per-frame against the enemies group. Hidden when no elite
 	# is within proximity so resting state is invisible.
 	_build_affix_tooltip()
+	# iter-231 / Fun Ideas Team R2 — REACTION WEB combo chip strip.
+	# Six small chips, one per status combo, surfacing whether the
+	# player's build can fire each combo. Educates the system + rewards
+	# build-aware play. Polled at 1 Hz from _process (relic ownership
+	# only changes on pickup so per-frame polling would be wasted work).
+	_build_reaction_web_chips()
+	_update_reaction_web()
 	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
 	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
 	#
@@ -768,6 +807,18 @@ func _process(_delta: float) -> void:
 	# the hero, surface its name + affix line. Empty when no elite is
 	# close (the common case in early floors and during boss fights).
 	_update_affix_tooltip()
+	# iter-231 / Fun Ideas Team R2 — REACTION WEB combo chip strip.
+	# Accumulates _delta until the refresh period elapses, then runs
+	# one pass over the 6 combos. 1 Hz is cheap (6 dict lookups + 6
+	# label writes per second) and matches the relic-ownership change
+	# rate (pickup events are seconds apart at best). Tucked behind a
+	# null-strip guard so headless tests that never build the chip
+	# strip stay zero-cost.
+	if _reaction_web_strip != null:
+		_reaction_web_acc += get_process_delta_time()
+		if _reaction_web_acc >= REACTION_WEB_REFRESH_PERIOD:
+			_reaction_web_acc = 0.0
+			_update_reaction_web()
 	# Iter 160 — tutorial progression. Cheap branch when state is OFF
 	# (early-out on the first line) so the polling cost is negligible
 	# in the steady state.
@@ -5505,6 +5556,131 @@ func _update_ability_cooldown_chips() -> void:
 		chip.add_theme_color_override(
 			"font_color", Color(col.r * 0.78, col.g * 0.78, col.b * 0.78, 0.86)
 		)
+
+# ── iter-231 / Fun Ideas Team R2 — REACTION WEB chip strip ───────────
+# Six small chips, one per status combo, telling the player whether
+# their current build can fire each combo. The status-combo system
+# (SHATTER / KINDLE_SPREAD / PETRIFY / SCATTER_FLAMES / BACKDRAFT /
+# RIME_TRAIL) is powerful but invisible: a player without burn or slow
+# sources will never trigger any of them, and prior to this iter had
+# no way to discover that fact short of reading the wiki.
+#
+# Each chip surfaces three states (see ReactionWebScript.evaluate_combo):
+#   armed     — bright themed text, combo name ("SHATTER")
+#   partial   — dim grey hint ("SHATTER · needs SLOW")
+#   unarmable — chip hidden entirely
+#
+# Resting state with no relics: SHATTER + PETRIFY hidden (both halves
+# chance-gated → unarmable until a burn / slow / crit relic shows up).
+# KINDLE / SCATTER / BACKDRAFT (need burn) + RIME (needs slow) show as
+# partial educational chips ("· KINDLE · needs BURN") so the player
+# knows which relic families to look for. Picking up embers_of_ruin
+# arms SCATTER + BACKDRAFT + KINDLE (3 bright chips), halves SHATTER
+# ("· needs SLOW"). Picking up frost_pulse alongside flips SHATTER
+# bright + arms RIME + halves PETRIFY ("· needs CRIT"). Build-aware
+# play reads the strip at a glance.
+#
+# Code-built (no main.tscn edits) so a future move of the strip to a
+# different HUD slot is a one-line offset change.
+#
+# Refresh frequency is 1 Hz (REACTION_WEB_REFRESH_PERIOD) — relic
+# ownership only changes on pickup, which happens at most every few
+# seconds. Per-frame polling would be wasted work.
+func _build_reaction_web_chips() -> void:
+	if _reaction_web_strip != null and is_instance_valid(_reaction_web_strip):
+		return
+	var ui_root: CanvasLayer = $UI
+	if ui_root == null:
+		return
+	_reaction_web_strip = VBoxContainer.new()
+	_reaction_web_strip.name = "ReactionWebStrip"
+	# Anchor below the ability cooldown strip (which ends at y≈168). The
+	# 340 px right edge gives partial hints ("SHATTER · needs SLOW") room
+	# to render without truncation at 12 pt.
+	_reaction_web_strip.offset_left = 20.0
+	_reaction_web_strip.offset_top = 174.0
+	_reaction_web_strip.offset_right = 340.0
+	_reaction_web_strip.offset_bottom = 320.0
+	_reaction_web_strip.add_theme_constant_override("separation", 2)
+	_reaction_web_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(_reaction_web_strip)
+	# Build one chip per combo. Iterate REQUIREMENTS to preserve dict
+	# declaration order (Godot 4 preserves Dictionary insertion order).
+	for combo_id in ReactionWebScript.COMBO_REQUIREMENTS.keys():
+		var chip: Label = Label.new()
+		chip.name = "Combo_" + str(combo_id)
+		chip.text = ""
+		chip.visible = false
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_theme_font_size_override("font_size", 11)
+		chip.add_theme_color_override(
+			"font_outline_color", Color(0.04, 0.02, 0.05, 0.92)
+		)
+		chip.add_theme_constant_override("outline_size", 1)
+		# Stash combo_id meta for the updater so we can iterate chip
+		# values without re-walking the COMBO_REQUIREMENTS keys array.
+		chip.set_meta("combo_id", str(combo_id))
+		_reaction_web_strip.add_child(chip)
+		_reaction_web_chips[str(combo_id)] = chip
+
+# Iter 231 — 1 Hz update. Cheap (6 dict lookups + 6 evaluate_combo calls,
+# each of which does ~3 modifier reads). Walks every chip, sets text +
+# color + visibility per the combo's current arm state. GameState
+# autoload is resolved through the safe path (get_node_or_null on
+# /root/GameState) so headless test harnesses that don't autoload us
+# don't crash here.
+func _update_reaction_web() -> void:
+	if _reaction_web_chips.is_empty():
+		return
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs == null:
+		# In a headless / test environment without the autoload — hide
+		# everything and bail. Don't error.
+		for c in _reaction_web_chips.values():
+			if c is Label:
+				(c as Label).visible = false
+		return
+	for chip_v in _reaction_web_chips.values():
+		var chip: Label = chip_v as Label
+		if chip == null:
+			continue
+		var combo_id: String = str(chip.get_meta("combo_id", ""))
+		var spec: Dictionary = ReactionWebScript.COMBO_REQUIREMENTS.get(combo_id, {})
+		if spec.is_empty():
+			chip.visible = false
+			continue
+		var state: String = ReactionWebScript.evaluate_combo(combo_id, gs)
+		var theme_str: String = str(spec.get("theme", "vow"))
+		var theme_col: Color = ThemePalette.color_for(theme_str)
+		var label_text: String = str(spec.get("label", combo_id))
+		match state:
+			"armed":
+				chip.visible = true
+				# Solid themed text with a leading "◆" so the chip reads
+				# as an OWNED capability at a glance, distinct from the
+				# greyed partial state.
+				chip.text = "◆ " + label_text
+				chip.add_theme_color_override(
+					"font_color",
+					Color(theme_col.r, theme_col.g, theme_col.b, 0.96),
+				)
+			"partial":
+				chip.visible = true
+				var missing: String = ReactionWebScript.missing_kind(combo_id, gs)
+				if missing == "":
+					missing = "?"
+				# Greyed hint chip — quieter than armed so eye flows to
+				# the armed combos first. The "needs X" tells the
+				# player WHAT relic family completes the combo.
+				chip.text = "· %s · needs %s" % [label_text, missing.to_upper()]
+				chip.add_theme_color_override(
+					"font_color", Color(0.66, 0.66, 0.62, 0.62)
+				)
+			_:
+				# Unarmable — no source for either half. Hide so the
+				# strip doesn't visually noise up with five "needs X"
+				# rows on floor 1 before any relic is picked up.
+				chip.visible = false
 
 # ── iter-229 / Polish Team R2 — elite affix tooltip card ─────────────
 # UX audit risk: elite enemies tint subtly (frost cyan, ember red,
