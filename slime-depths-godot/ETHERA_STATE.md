@@ -4,8 +4,8 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-19
-Branch: `claude/wizard-kit-sprint-3` @ commit `4bbb759` (20 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-217 = Phase 6 of GOAL ladder)
+Branch: `claude/wizard-kit-sprint-3` @ commit `4382c50` (26 commits ahead of `main`)
 
 ---
 
@@ -77,24 +77,44 @@ The hero is a single MAGE class.
 - **Aim** is independent of movement direction (twin-stick or
   mouse-relative).
 
-**Active relic** (Isaac D6 pattern, iter-201):
+**Active relics** (4 total — Isaac D6 pattern, iter-201 + iter-213). Bound
+to [R]. Dispatcher: `GameState.get_owned_active_id()` — priority order
+in `ACTIVE_RELIC_IDS` decides which is bound when player owns multiple.
 
-- `SOUL_SURGE` — 1 active relic so far. Button press fires an effect
-  with a cooldown. HUD cooldown chip wired in iter-204.
+- `SOUL_SURGE` — mythic, SHADOW. 100 px AoE damage burst around hero,
+  3 damage to all enemies. 18 s CD.
+- `VEILSTEP` — legendary, SHADOW. Phase ~140 px toward cursor with
+  iframes during the blink. 14 s CD. Verb: reposition.
+- `ASHEN_SEAL` — legendary, FLAME. Drops a burning sigil at hero's feet
+  that ticks BURN to enemies within 80 px for 4 s. 20 s CD. Verb: zone
+  control. Composes with SHATTER + KINDLE_SPREAD.
+- `BLOOD_TITHE` — legendary, BLOOD. -1 HP, +50% damage for 6 s, +1 HP
+  per kill in the window. 30 s CD. Verb: risk/tempo.
 
-**Spell-modifier relic** (Noita pattern, iter-203):
+**Spell-modifier relics** (4 total — Noita pattern, iter-203 + iter-214):
 
-- `ECHO_QUILL` — every Nth blast doubles. The first hint of Noita's
-  spell-modifier wand system.
+- `ECHO_QUILL` — legendary, STORM. Every blast fires a SECOND projectile
+  0.16 s later at fresh cursor aim. Multi-shot compounds.
+- `SPLIT_CINDER` — rare, FLAME. Every 3rd cast also fires 2 ember sub-
+  projectiles at ±30° from aim. 1 damage each, smaller scale.
+- `GRAVITY_NEEDLE` — rare, SHADOW. Projectiles drag — enemies within
+  32 px of the flight path get a brief 0.5 s slow (0.65×). Per-
+  projectile bookkeeping prevents stacking on one pass.
+- `STATIC_RUNES` — rare, STORM. Every 4th cast bumps storm_chain_count
+  +1 on spawned projectiles. Additive with STORM theme tier.
 
 ## 4. Run Structure
 
-- **Linear DAG of 7 main rooms**. No branching choices yet
-  (`FLOOR_ROOMS` in `floor_state.gd`).
-- Rooms 1-6 = combat rooms. Room 7 = TYRANT'S HEARTH boss room (iter-207).
-- 9 room templates exist: 7 numbered + 1 shrine + 1 treasure variant.
-  Shrine and treasure aren't yet integrated into the linear path —
-  they're available as a future branching layer.
+- **Branching DAG of 7 rooms with 2 choice points** (`floor_state.gd`,
+  iter-216).
+- Linear sequence: room_01 → room_02 → [CHOICE] → room_03 → room_04 →
+  [CHOICE] → room_05 → room_06 → room_07.
+- **Choice point 1** (after room_02): ALTAR (shrine detour) / VAULT
+  (treasure detour) / BRAVE (risk: +1 enemy, rare-tier pedestal).
+- **Choice point 2** (after room_04): VAULT / ALTAR / BRAVE (same
+  3-way pattern with reordered priority).
+- After detour, sequence resumes — pending_branch_path is consumed
+  on first read in `RunState._load_current`.
 - **3 bosses** are wired:
   - **Iron Revenant** (HP 12, telegraphed_melee) — mid-run boss.
   - **Broodmother** (HP 16, chase_contact) — mid-run boss.
@@ -127,15 +147,26 @@ dispatched by the `behavior` field:
 - BURN — DoT (tick damage), refreshable, has sprite tint.
 - SLOW — multiplies enemy `move_speed`; stronger slows override weaker.
 
-**Status combos (2 — both Noita-tier)**:
+**Status combos (6 — Noita-tier chemistry, iter-202 + iter-212 + iter-215)**:
 
-- `BURN + SLOW → SHATTER` (iter-202): thermal shock, +2 damage burst,
-  fires from either status direction (apply_burn-onto-slowed or
-  apply_slow-onto-burning). Cooldown-gated so it can't loop-fire.
-- `BURN + DEATH → KINDLE_SPREAD` (iter-212): a burning enemy that dies
-  spreads burn (1.5 s) to all enemies within 96 px. Chains naturally —
-  if the spread ignites a slowed enemy, SHATTER fires on it, which can
-  kill it, which can KINDLE_SPREAD again.
+Enemy-side combos (fire on enemy state transitions, dispatched from `enemy.gd`):
+- `BURN + SLOW → SHATTER` (iter-202): +2 damage burst, fires from
+  either direction (apply onto already-statused enemy). Per-enemy CD.
+- `BURN + DEATH → KINDLE_SPREAD` (iter-212): burning enemy dies →
+  flames jump 96 px to all neighbors, 1.5 s burn. Chains naturally.
+- `SLOW + CRIT → PETRIFY` (iter-215): slowed enemy hit with crit →
+  0.6 s stun. Per-enemy 1.2 s CD prevents chain-stunlock.
+- `BURN + KNOCKBACK → SCATTER_FLAMES` (iter-215): burning enemy
+  knocked → embers spread to neighbors (64 px, 0.8 s burn).
+  Per-enemy 0.5 s CD.
+
+Hero-side combos (fire on hero actions, dispatched from `hero.gd`):
+- `BURN + PARRY → BACKDRAFT` (iter-215): burning enemy within 96 px
+  when parry catches → 1 dmg + 1 s burn to all enemies in range.
+  Free CD via the parry system.
+- `SLOW + DASH-THROUGH → RIME_TRAIL` (iter-215): dash slices a slowed
+  enemy → frost pulse at hit point, 1.2 s slow at 0.55× to enemies
+  in 84 px. One per dash.
 
 **Relics (53 total in `RELIC_REGISTRY`)**:
 
@@ -241,41 +272,63 @@ pass** that established the room's atmosphere stack:
 ## 8. What's Strong Right Now
 
 - Room visual atmosphere reads as *cursed crypt with leaked magical
-  material* — three layered storytelling passes.
-- 21-enemy roster with 9 distinct behaviors. No reskin-grade enemies
-  after iter-200 (ranged casters now have distinct projectile patterns:
-  spread / pierce / heavy) and iter-198 (chase_contact enemies have
-  signature attacks).
-- 53 relics with mechanical hooks (not pure stat sticks); theme system
-  rewards intentional building.
-- 2 status combos fire with full visual + audio + floater feedback.
-- Stability — load gate test + KINDLE_SPREAD runtime test ship green.
-  4 weeks of agents grinding bugs out of edge cases.
+  material* — three layered storytelling passes (iter-209/210/211).
+- 21-enemy roster with 9 distinct behaviors. No reskin-grade enemies.
+- 53 relics + 4 actives (SOUL_SURGE / VEILSTEP / ASHEN_SEAL / BLOOD_TITHE,
+  iter-213) + 4 spell modifiers (ECHO_QUILL / SPLIT_CINDER /
+  GRAVITY_NEEDLE / STATIC_RUNES, iter-203 + iter-214).
+- 6 status combos (SHATTER / KINDLE_SPREAD / PETRIFY / SCATTER_FLAMES /
+  BACKDRAFT / RIME_TRAIL) all with VFX + audio + floater feedback.
+- Branching DAG with 2 choice points (iter-216).
+- Stability — 7 audit tests (`tests/`) all green: load gate, scenes
+  audit, KINDLE regression, actives dispatcher, modifier registry,
+  combos runtime, DAG branching. Continuous deletion of crash bugs.
 
-## 9. Known Weak Axes (the next ChatGPT-prompt targets)
+## 9. Known Weak Axes (next-up beta gaps)
 
-**Toolkit depth** — the biggest gap to the references.
+**Meta-progression / between-run state**:
 
-- Only **1 active relic** (Soul Surge). Hades has 6 weapons × multiple
-  modifiers, BoI has dozens of actives. Adding 2-3 more actives with
-  distinct verbs (panic-button, crowd-control, defensive teleport,
-  resource-tradeoff) would dramatically deepen run-feel. Pattern is
-  established (cooldown HUD chip already exists from iter-204).
-- Only **1 spell modifier** (Echo Quill). Noita's wand system has
-  dozens of modifiers and triggers — even 4-5 more modifier-class
-  relics would let players feel like they're "building a spell."
-- Only **2 status combos**. Noita's matrix is rich: water+electricity,
-  oil+fire, poison+ignite. A roadmap of 4-6 more combos (e.g.,
-  `BURN + KNOCKBACK → SCATTER_FLAMES`, `SLOW + CRIT → PETRIFY`) would
-  make the toolkit feel like a chemistry set.
+- No persistent unlocks. Each run starts identical. Need: achievements,
+  unlocked relics, ascension tier progress, run records.
+- No hamlet hub. Web build had 8 NPCs (oracle / gravekeeper / smith /
+  etc.) — Godot port goes straight from menu to dungeon. Hub gives the
+  meta loop somewhere to LIVE.
+- No currency. Gold pickup exists but doesn't carry over.
 
-**Run shape**:
+**Audio**:
 
-- Linear 7-room sequence. No branching, no choice tension, no
-  Hades-style "which path do I take into this floor" reading.
-- No shop / curiosity / shrine rooms in the main path (the .tres files
-  exist but aren't yet branched in).
-- No meta-progression unlocks tied to runs. Each run starts identical.
+- Likely the weakest axis. Most SFX are placeholder. No per-biome music.
+  No boss music. Menu probably silent.
+
+**Onboarding / tutorial**:
+
+- No tutorial. New player drops straight into combat with no controls
+  explanation. The iter-160 "WAIT_PICKUP tutorial state" is the only
+  scaffolding.
+
+**Accessibility / settings**:
+
+- Settings screen exists but unaudited. No confirmed rebindable inputs,
+  no colorblind options, no reduced-motion toggle, no screen-shake
+  toggle (the trauma system has no off-switch).
+
+**Content density at scale**:
+
+- 21 enemies / 3 bosses / 7 rooms is ABOVE prototype but BELOW shipped
+  beta. Hades shipped EA with ~30 enemies / 4 bosses / 4 biome arenas;
+  Dead Cells EA had ~40+ enemies / 6 biomes; BoI vanilla had 196 items.
+  Roughly: we'd want ~30 enemies / 5 bosses / 10 rooms / 80 relics
+  for "feels like a real game."
+
+**Class variety**:
+
+- Single class (mage). Future axis: classes from hamlet with different
+  blast spell shape + sword swing.
+
+**Marketing / Steam-readiness**:
+
+- No Steam page. No trailer. No screenshots curated for marketing. No
+  press kit. No build pipeline targeting steam_appid.txt.
 
 **Encounter density / pacing**:
 
@@ -324,16 +377,20 @@ For any new work, the rules:
 | Hit feel / juice           | ★★★    | ★★     | ★★     | ★★★ (close)  |
 | Room as authored location  | ★★★    | ★★     | ★★     | ★★ (rising)  |
 | Item / relic combo density | ★★     | ★★★    | ★★★    | ★★           |
-| Active toolkit verbs       | ★★★    | ★★★    | ★★     | ★            |
-| Status combo chemistry     | ★      | ★★     | ★★★    | ★★ (2 combos)|
-| Run branching / shape      | ★★★    | ★★★    | ★★★    | ★            |
+| Active toolkit verbs       | ★★★    | ★★★    | ★★     | ★★ (4 actives) |
+| Status combo chemistry     | ★      | ★★     | ★★★    | ★★★ (6 combos) |
+| Run branching / shape      | ★★★    | ★★★    | ★★★    | ★★ (2 forks) |
 | Boss readability + phases  | ★★★    | ★★     | ★★     | ★★           |
 | Environmental storytelling | ★★     | ★★     | ★★★    | ★★★          |
 | Meta-progression loop      | ★★★    | ★★     | ★      | ★            |
+| Audio depth                | ★★★    | ★★     | ★★★    | ★            |
+| Tutorial / onboarding      | ★★★    | ★★     | ★      | ★            |
+| Accessibility / settings   | ★★★    | ★★★    | ★★     | ★            |
 
-The biggest deltas are: **active toolkit**, **run branching**, **boss
-phases**, and **meta-progression**. Material/atmosphere is now at parity
-with Noita; combat feel is in shouting distance of Hades.
+The biggest deltas now: **meta-progression**, **audio depth**, **tutorial /
+onboarding**, **accessibility**. Phases 2-6 (May 2026) closed the toolkit,
+combo, and branching gaps. Material/atmosphere is at parity with Noita;
+combat feel is in shouting distance of Hades.
 
 ## 12. How to use this document with ChatGPT
 
