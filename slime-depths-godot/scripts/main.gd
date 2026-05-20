@@ -25,6 +25,12 @@ const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
 const LORE_STONE_SCENE: PackedScene = preload("res://scenes/lore_stone.tscn")
 const FAMILIAR_SCENE: PackedScene = preload("res://scenes/familiar.tscn")
+# Iter 226 / Expansion Team — turret summon (SUMMON STONE relic). Code-
+# built Node2D (no .tscn dependency); preload the script and instantiate
+# fresh nodes in _sync_turrets. Matches the lore_stone pattern (visuals
+# constructed in _ready) so adding a new relic-summon stays a single-file
+# edit.
+const TURRET_SCRIPT: Script = preload("res://scripts/turret.gd")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 const PAUSE_SCREEN_SCENE: PackedScene = preload("res://scenes/pause_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
@@ -5551,6 +5557,11 @@ func _rebuild_relic_strip(newly_added_id: String = "") -> void:
 	# (already wired by _on_pickup_claimed), and the sync method
 	# spawns / despawns familiars to match the new total.
 	_sync_familiars()
+	# Iter 226 / Expansion Team — sync stationary turrets. Parallel to
+	# _sync_familiars but the spawn position locks at hero's CURRENT
+	# global_position (which equals room.hero_spawn at room start, and
+	# wherever the hero is standing at mid-room pickup).
+	_sync_turrets()
 
 # Iter 157 — boss HP bar damage pulse. Fired on every HP DECREASE
 # detected in _process (the boss tracking poll). Snap-then-tween
@@ -5613,6 +5624,37 @@ func _sync_familiars() -> void:
 		var f: Node = existing.pop_back()
 		if is_instance_valid(f):
 			f.queue_free()
+
+# Iter 226 / Expansion Team — turret sync. Parallels _sync_familiars
+# but turrets are STATIONARY: spawned at the hero's room-entry position
+# and never moved. Called from _ready AFTER hero spawn (so hero.global_
+# position reflects the room hero_spawn) and after pickup_claimed so a
+# mid-room SUMMON STONE grant plants the turret at the hero's CURRENT
+# position. Group "summon_turrets" keeps them queryable + cleanable.
+func _sync_turrets() -> void:
+	var target_count: int = GameState.modifier_total("summon_turret_count", 0)
+	var existing: Array = get_tree().get_nodes_in_group("summon_turrets")
+	# Spawn missing.
+	while existing.size() < target_count:
+		var turret: Node2D = Node2D.new()
+		turret.set_script(TURRET_SCRIPT)
+		# Spread multiple turrets in a small ring around the hero so they
+		# don't visually stack. With 1 turret (the only relic offering
+		# +1 today), this just falls through to the hero position.
+		var idx: int = existing.size()
+		var ring_offset: Vector2 = Vector2.ZERO
+		if target_count > 1:
+			var ang: float = (TAU / float(target_count)) * float(idx)
+			ring_offset = Vector2(cos(ang), sin(ang)) * 36.0
+		var spawn_pos: Vector2 = (hero.global_position if is_instance_valid(hero) else Vector2(640, 384)) + ring_offset
+		turret.global_position = spawn_pos
+		add_child(turret)
+		existing = get_tree().get_nodes_in_group("summon_turrets")
+	# Despawn excess (would only fire if a future de-grant relic ships).
+	while existing.size() > target_count:
+		var t: Node = existing.pop_back()
+		if is_instance_valid(t):
+			t.queue_free()
 
 # Iter 39 — theme chip strip builder. Iterates ALL 5 themes (so the
 # player sees pre-resonance progress, not just active themes once they

@@ -955,6 +955,69 @@ const RELIC_REGISTRY := {
 		"mods": {},   # triggered — see hero.take_damage
 		"themes": ["vow"],
 	},
+	# Iter 226 / Expansion Team — currency relic #1. Ether Magnet
+	# multiplies ether shard rewards from all sources (room clear, boss
+	# kill, run complete, lucky_knife bonus drop) by 1.25× for the rest
+	# of the run. Folds via `ether_shard_drop_mul_f` modifier read in
+	# GameState.award_ether_shards. SHADOW themed (covert / scavenger
+	# flavor) — also bolsters SHADOW resonance which was the thinnest
+	# pool pre-iter-102.
+	"ether_magnet": {
+		"name": "ETHER MAGNET",
+		"description": "+25% Ether Shards from all sources for the rest of this run. Shards bend toward you.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_eye_of_ether.png",
+		"mods": { "ether_shard_drop_mul_f": 0.25 },
+		"themes": ["shadow"],
+	},
+	# Iter 226 / Expansion Team — counter/reactive relic. Sacrificial
+	# Echo follows the bloodstone every-N-kills heal pattern: every 5th
+	# kill heals +1 HP (capped at max_hp). Distinct cadence from
+	# bloodstone (every 3) and lifestone (every 8) so a player can stack
+	# all three for a layered BLOOD regen ramp at 3 / 5 / 8 kill ticks.
+	# Triggered — handler reads has_relic + per-run counter in hero.gd
+	# (_sacrificial_echo_counter).
+	"sacrificial_echo": {
+		"name": "SACRIFICIAL ECHO",
+		"description": "Every 5th enemy slain whispers life back into you — heal 1 HP.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_bloodstone.png",
+		"mods": {},   # triggered — see hero._on_enemy_died_for_relics
+		"themes": ["blood"],
+	},
+	# Iter 226 / Expansion Team — summon archetype #1 (stationary turret).
+	# Sums via `summon_turret_count` modifier; main.gd._sync_turrets()
+	# parallels _sync_familiars(). Turret spawns at hero's room-entry
+	# position, stays put, scans for enemies in 200px and fires every
+	# 1.5s. STORM theme parity with familiars (wisp_companion /
+	# phantom_squad) — but the verb is "drop a ward" not "orbit you,"
+	# so positional choice now matters: where you stand on room load
+	# is where the turret guards.
+	"summon_stone": {
+		"name": "SUMMON STONE",
+		"description": "At room start, conjure a stationary turret that strikes nearby enemies every 1.5s.",
+		"tier": "legendary",
+		"icon_path": "res://assets/icons/relic_chain_lightning.png",
+		"mods": { "summon_turret_count": 1 },
+		"themes": ["storm"],
+	},
+	# Iter 226 / Expansion Team — currency relic #2. Lucky Knife
+	# couples the crit build to the meta-currency loop: any sword crit
+	# that kills its target has `crit_bonus_ether_chance_f` to drop
+	# +1 Ether Shard at the kill site. Reads as "lucky cuts pay you
+	# back" — pairs naturally with keen_focus / focused_strike /
+	# umbral_thread / SHADOW theme tier (which all increase crit
+	# chance, which increases the proc rate). Folds via
+	# `crit_bonus_ether_chance_f` (0..1 float modifier) read at the
+	# crit-kill site in hero._resolve_melee_strike.
+	"lucky_knife": {
+		"name": "LUCKY KNIFE",
+		"description": "Sword crits that kill have a 25% chance to drop +1 Ether Shard at the strike. Lucky cuts repay themselves.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_executioner.png",
+		"mods": { "crit_bonus_ether_chance_f": 0.25 },
+		"themes": ["shadow"],
+	},
 }
 
 var owned_relics: Array[String] = []
@@ -1482,11 +1545,23 @@ const SHARDS_PER_RUN_COMPLETE: int = 30  # bonus on top of clear / boss
 # IMPLICITLY — caller is responsible for invoking SaveSystem.save() at
 # the right moment (typically on death/clear/transition, not per-room
 # event, to avoid disk churn).
+#
+# Iter 226 / Expansion Team — ETHER MAGNET multiplier. Folds
+# `ether_shard_drop_mul_f` from owned relics + shrines + themes
+# (currently only ether_magnet sets it, but the modifier-total path
+# means future relics / shrine grants can stack additively). A 1.25×
+# multiplier on amount=5 awards 6 shards (round-half-up via int(round)).
+# Floor at 0 (no clamp needed — amount > 0 check above + multiplier
+# is additive on a non-negative base).
 func award_ether_shards(amount: int) -> void:
 	if amount <= 0:
 		return
-	ether_shards += amount
-	ether_lifetime_earned += amount
+	var mul: float = 1.0 + modifier_total_f("ether_shard_drop_mul_f", 0.0)
+	var final_amount: int = int(round(float(amount) * mul))
+	if final_amount <= 0:
+		return
+	ether_shards += final_amount
+	ether_lifetime_earned += final_amount
 
 # Convenience: ether shard drop for clearing a (non-boss) room.
 func award_shards_for_room_clear() -> void:

@@ -430,6 +430,12 @@ var _iron_resolve_absorbed_this_room: bool = false
 # rather than per-room so a player whose 5th hit was end-of-room sees
 # the 6th proc on the first hit of the next room.
 var _iron_fang_hit_counter: int = 0
+# Iter 226 / Expansion Team — SACRIFICIAL ECHO counter. Bumps in
+# _on_enemy_died_for_relics on every kill; heals +1 HP every 5th tick.
+# Distinct cadence from bloodstone (3) and lifestone (8) so the three
+# relics stack as a layered BLOOD regen ramp without colliding on the
+# same kill counts.
+var _sacrificial_echo_counter: int = 0
 # Iter 72 — ARCANE PULSE redesign counter. Bumps on every blast cast;
 # on every 5th increment, the cast also forks a violet bolt to the
 # nearest off-target enemy within 140px for 1 damage. Persists per-run.
@@ -1156,6 +1162,25 @@ func _resolve_melee_strike() -> void:
 				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 				any_crit = true  # iter-140 — sticky across the swing
 			enemy.take_hit(dmg_for_this, is_crit)
+			# Iter 226 / Expansion Team — LUCKY KNIFE. If THIS strike
+			# was a crit AND it killed the target (enemy.hp ≤ 0 after
+			# take_hit's hp subtract), roll crit_bonus_ether_chance_f
+			# for a bonus +1 Ether Shard at the strike site. Reads at
+			# the player as "lucky cuts pay you back." Awards via
+			# GameState.award_ether_shards which honors ETHER_MAGNET's
+			# 1.25× multiplier transparently. Per-hit roll on per-kill
+			# event = naturally capped at 1 proc per cleave per enemy.
+			if is_crit and enemy.hp <= 0:
+				var lk_chance: float = GameState.modifier_total_f("crit_bonus_ether_chance_f", 0.0)
+				if lk_chance > 0.0 and randf() < lk_chance:
+					GameState.award_ether_shards(1)
+					var lk_floater: DamageNumber = DamageNumber.spawn(
+						enemy.global_position + Vector2(0, -40),
+						"+1 SHARD",
+						Color(0.6, 0.85, 1.0),  # ether-cyan to differentiate from gold drops
+					)
+					if get_parent() != null:
+						get_parent().add_child(lk_floater)
 			# Iter 43 — burn roll per enemy hit. burn_chance_f is a
 			# float modifier (0..1). Burn duration is fixed (1.6s = 4
 			# ticks @ 0.4s) so the proc is "set on fire" rather than
@@ -2156,6 +2181,25 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 				Color(1.0, 0.55, 0.50),  # dimmer rose vs bloodstone's bright crimson
 			)
 			get_parent().add_child(ls_floater)
+	# Iter 226 / Expansion Team — SACRIFICIAL ECHO. Heal +1 HP every 5th
+	# kill (capped at max). Independent counter from bloodstone/lifestone
+	# so its cadence is uncoupled; on a 15th kill, bloodstone (every 3),
+	# lifestone (every 8 — no), AND sacrificial_echo (every 5) tick the
+	# same beat, stacking three +1 HP heals if all are owned and hp < cap.
+	# Dusky-violet floater so the source is visually distinct from the
+	# crimson bloodstone (1.0, 0.35, 0.4) and rose lifestone (1.0, 0.55).
+	if GameState.has_relic("sacrificial_echo"):
+		_sacrificial_echo_counter += 1
+		if _sacrificial_echo_counter % 5 == 0:
+			var se_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+			if hp < se_cap and not _is_dying:
+				heal(1)
+				var se_floater: DamageNumber = DamageNumber.spawn(
+					global_position + Vector2(0, -64),
+					"+1",
+					Color(0.85, 0.45, 0.95),  # dusky violet — Sacrificial Echo signature
+				)
+				get_parent().add_child(se_floater)
 	# Iter 44 — lifesteal on kill. Stacks via modifier_total_f
 	# (Drinking Edge 0.15 + Crimson Hunger 0.30 = 0.45 combined chance).
 	# Independent of bloodstone's every-3rd-kill counter so the two
