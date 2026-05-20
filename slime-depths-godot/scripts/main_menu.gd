@@ -116,6 +116,11 @@ func _ready() -> void:
 	begin_button.pressed.connect(_on_begin_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
+	# Iter 220 / Beta M1.1 — UPGRADES button. Built programmatically so
+	# we don't need to edit main_menu.tscn. Inserted right after the
+	# BEGIN button so the meta-progression hook is in the player's
+	# primary scan path.
+	_inject_upgrades_button()
 
 	# Hover scale transitions — each button's own pivot is its center
 	# so the grow looks symmetric.
@@ -389,3 +394,129 @@ func _process(delta: float) -> void:
 		title_block.position = _title_block_base_pos + title_drift
 	if title_halo != null:
 		title_halo.position = _title_halo_base_pos + title_drift
+
+# ── Iter 220 / Beta M1.1 — Upgrade tree panel ─────────────────────────
+# Adds an UPGRADES button to the main menu CenterStack and an inline
+# panel listing the 5 upgrade-tree nodes with invest buttons. Spend
+# Ether Shards (M1.0 currency) to advance levels; effects fold into
+# GameState.modifier_total at run time.
+
+var _upgrades_button: Button = null
+var _upgrade_panel: Control = null
+
+func _inject_upgrades_button() -> void:
+	var center_stack: Node = $CenterStack
+	if center_stack == null or begin_button == null:
+		return
+	_upgrades_button = Button.new()
+	_upgrades_button.text = "UPGRADES"
+	_upgrades_button.theme = begin_button.theme  # inherit menu look
+	# Insert at index of BeginButton + 1 so the button sits BELOW BEGIN
+	# but ABOVE SETTINGS.
+	center_stack.add_child(_upgrades_button)
+	var idx: int = begin_button.get_index() + 1
+	center_stack.move_child(_upgrades_button, idx)
+	_upgrades_button.pressed.connect(_on_upgrades_pressed)
+	_upgrades_button.pivot_offset = _upgrades_button.size / 2.0
+	_upgrades_button.mouse_entered.connect(_on_button_hover_enter.bind(_upgrades_button))
+	_upgrades_button.mouse_exited.connect(_on_button_hover_exit.bind(_upgrades_button))
+	_upgrades_button.focus_entered.connect(_on_button_hover_enter.bind(_upgrades_button))
+	_upgrades_button.focus_exited.connect(_on_button_hover_exit.bind(_upgrades_button))
+	_upgrades_button.resized.connect(func ():
+		_upgrades_button.pivot_offset = _upgrades_button.size / 2.0
+	)
+
+func _on_upgrades_pressed() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
+	_show_upgrade_panel()
+
+func _show_upgrade_panel() -> void:
+	if _upgrade_panel != null and is_instance_valid(_upgrade_panel):
+		return
+	_upgrade_panel = Control.new()
+	_upgrade_panel.name = "UpgradePanel"
+	_upgrade_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_upgrade_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_upgrade_panel)
+	var dim: ColorRect = ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.74)
+	_upgrade_panel.add_child(dim)
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_upgrade_panel.add_child(center)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.custom_minimum_size = Vector2(560, 0)
+	box.add_theme_constant_override("separation", 12)
+	center.add_child(box)
+	var title: Label = Label.new()
+	title.text = "PERMANENT BINDINGS"
+	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
+	title.add_theme_font_size_override("font_size", 28)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var sub: Label = Label.new()
+	sub.text = "ETHER ◇ %d" % GameState.ether_shards
+	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
+	sub.add_theme_font_size_override("font_size", 18)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(sub)
+	# One row per node.
+	for node_id in GameState.UPGRADE_TREE.keys():
+		var spec: Dictionary = GameState.UPGRADE_TREE[node_id]
+		var row: HBoxContainer = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
+		box.add_child(row)
+		var label: Label = Label.new()
+		var lvl: int = GameState.upgrade_level(node_id)
+		label.text = "%s  [%d/%d]" % [spec.get("display_name", node_id), lvl, spec.get("max_level", 0)]
+		label.add_theme_color_override("font_color", Color(0.94, 0.92, 0.86))
+		label.add_theme_font_size_override("font_size", 16)
+		label.custom_minimum_size = Vector2(280, 0)
+		row.add_child(label)
+		var desc: Label = Label.new()
+		desc.text = str(spec.get("description", ""))
+		desc.add_theme_color_override("font_color", Color(0.78, 0.78, 0.74))
+		desc.add_theme_font_size_override("font_size", 12)
+		desc.autowrap_mode = TextServer.AUTOWRAP_WORD
+		desc.custom_minimum_size = Vector2(180, 0)
+		row.add_child(desc)
+		var btn: Button = Button.new()
+		var next_cost: int = GameState.upgrade_next_cost(node_id)
+		if next_cost < 0:
+			btn.text = "MAXED"
+			btn.disabled = true
+		else:
+			btn.text = "INVEST ◇%d" % next_cost
+			btn.disabled = (GameState.ether_shards < next_cost)
+		btn.custom_minimum_size = Vector2(120, 32)
+		btn.pressed.connect(_on_invest_pressed.bind(node_id))
+		row.add_child(btn)
+	# Close button
+	var close_row: HBoxContainer = HBoxContainer.new()
+	close_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_child(close_row)
+	var close_btn: Button = Button.new()
+	close_btn.text = "CLOSE"
+	close_btn.custom_minimum_size = Vector2(140, 36)
+	close_btn.pressed.connect(_close_upgrade_panel)
+	close_row.add_child(close_btn)
+	close_btn.grab_focus()
+
+func _on_invest_pressed(node_id: String) -> void:
+	if not GameState.upgrade_node(node_id):
+		Audio.play_ui_cue("ui_hover", -10.0)  # soft denial
+		return
+	Audio.play_ui_cue("ui_press", -2.0)
+	SaveSystem.save_now()
+	_populate_stats()  # refresh menu's records line
+	# Rebuild panel so labels reflect new state.
+	_close_upgrade_panel()
+	_show_upgrade_panel()
+
+func _close_upgrade_panel() -> void:
+	if _upgrade_panel != null and is_instance_valid(_upgrade_panel):
+		_upgrade_panel.queue_free()
+		_upgrade_panel = null
+	if _upgrades_button != null:
+		_upgrades_button.grab_focus()

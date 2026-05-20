@@ -89,6 +89,94 @@ var ether_shards: int = 0
 # Lifetime accumulator — does NOT decrement on spending. Surface for
 # "total earned" stats / future achievements.
 var ether_lifetime_earned: int = 0
+
+# Iter 220 / Beta M1.1 — Permanent upgrade tree state. 5-node Mirror-of-
+# Night-equivalent. Each entry is current level (0..max). Levels persist
+# via save_to_dict. Effects applied at hero spawn (main.gd reads them).
+# Spend prices defined in UPGRADE_TREE; spent via spend_upgrade_node().
+var upgrade_levels: Dictionary = {
+	"resilience": 0,    # +1 max HP per level  (0..3)
+	"quick_step": 0,    # +1 dodge charge       (0..1)
+	"first_talisman": 0,# unlock starting relic (0..2 → unlock slot, then raise tier)
+	"tribute": 0,       # +N starting gold      (0..2)
+	"bound_vow": 0,     # unlock active-relic slot (0..1)
+}
+
+# Upgrade tree spec. Each entry has max_level (= upgrade_levels[id]
+# clamp), costs[] (length = max_level, indexed by NEXT level to buy
+# minus 1 — i.e. costs[0] is the price to go 0→1), display_name +
+# description for UI. The hub UI (M1.2) and the main-menu Records
+# panel (M1.1) both read this same spec.
+const UPGRADE_TREE: Dictionary = {
+	"resilience": {
+		"display_name": "RESILIENCE",
+		"description": "+1 max HP per level.",
+		"max_level": 3,
+		"costs": [50, 100, 200],
+	},
+	"quick_step": {
+		"display_name": "QUICK STEP",
+		"description": "+1 starting dodge charge.",
+		"max_level": 1,
+		"costs": [150],
+	},
+	"first_talisman": {
+		"display_name": "FIRST TALISMAN",
+		"description": "Start each run with a relic. Level 2 raises its tier.",
+		"max_level": 2,
+		"costs": [100, 300],
+	},
+	"tribute": {
+		"display_name": "TRIBUTE",
+		"description": "+50 starting gold, +200 at level 2.",
+		"max_level": 2,
+		"costs": [60, 150],
+	},
+	"bound_vow": {
+		"display_name": "BOUND VOW",
+		"description": "Unlock the active-relic slot (R) at hub.",
+		"max_level": 1,
+		"costs": [400],
+	},
+}
+
+# Spend `ether_shards` to advance the node's level by 1. Returns true on
+# success, false if max-level reached, unknown id, or insufficient
+# shards. Callers should save after a successful upgrade.
+func upgrade_node(node_id: String) -> bool:
+	if not UPGRADE_TREE.has(node_id):
+		return false
+	var spec: Dictionary = UPGRADE_TREE[node_id]
+	var current_level: int = int(upgrade_levels.get(node_id, 0))
+	var max_level: int = int(spec.get("max_level", 0))
+	if current_level >= max_level:
+		return false
+	var costs: Array = spec.get("costs", [])
+	if current_level >= costs.size():
+		return false  # mis-specced data
+	var cost: int = int(costs[current_level])
+	if not spend_ether_shards(cost):
+		return false
+	upgrade_levels[node_id] = current_level + 1
+	return true
+
+# Cost to reach the NEXT level on node_id, or -1 if already maxed / unknown.
+func upgrade_next_cost(node_id: String) -> int:
+	if not UPGRADE_TREE.has(node_id):
+		return -1
+	var spec: Dictionary = UPGRADE_TREE[node_id]
+	var current_level: int = int(upgrade_levels.get(node_id, 0))
+	var max_level: int = int(spec.get("max_level", 0))
+	if current_level >= max_level:
+		return -1
+	var costs: Array = spec.get("costs", [])
+	if current_level >= costs.size():
+		return -1
+	return int(costs[current_level])
+
+# Helper for hero / main.gd to read effect amounts.
+func upgrade_level(node_id: String) -> int:
+	return int(upgrade_levels.get(node_id, 0))
 # Iter 166 — first-encounter banner. Tracks which enemy display_names
 # have already been intro'd THIS SESSION (cleared on game launch by
 # nature of being an in-memory autoload field). Each new enemy type
@@ -1097,13 +1185,14 @@ func save_to_dict() -> Dictionary:
 		"has_completed_tutorial": has_completed_tutorial,
 		"ether_shards": ether_shards,
 		"ether_lifetime_earned": ether_lifetime_earned,
+		"upgrade_levels": upgrade_levels.duplicate(),
 	}
 
 # Current save schema version. Bump when fields are added/removed in a
 # breaking way; add a corresponding migration step in _migrate_save_dict.
 # Iter 218 / Beta M0.F — extracted as a constant so `_migrate_save_dict`
 # can target it explicitly and tests can introspect.
-const SAVE_VERSION_CURRENT: int = 6
+const SAVE_VERSION_CURRENT: int = 7
 
 # Iter 218 / Beta M0.F — Save migration foundation. The audit found
 # save_version was written but never read on load — any future schema
@@ -1160,6 +1249,14 @@ func _migrate_save_dict(d: Dictionary) -> Dictionary:
 		if not d.has("ether_lifetime_earned"):
 			d["ether_lifetime_earned"] = 0
 		from_version = 6
+	# v6 → v7: introduced upgrade_levels (Beta M1.1 upgrade tree).
+	if from_version < 7:
+		if not d.has("upgrade_levels"):
+			d["upgrade_levels"] = {
+				"resilience": 0, "quick_step": 0, "first_talisman": 0,
+				"tribute": 0, "bound_vow": 0,
+			}
+		from_version = 7
 	# Future versions: add `if from_version < N:` block here.
 	d["save_version"] = SAVE_VERSION_CURRENT
 	return d
@@ -1204,6 +1301,13 @@ func load_from_dict(d: Dictionary) -> void:
 	# from scratch on first launch with the new currency).
 	ether_shards = int(d.get("ether_shards", 0))
 	ether_lifetime_earned = int(d.get("ether_lifetime_earned", 0))
+	# Iter 220 / Beta M1.1 — upgrade tree levels. Validate each known
+	# node_id; ignore unknown keys (forward compat with future trees).
+	var loaded_up: Variant = d.get("upgrade_levels", {})
+	if loaded_up is Dictionary:
+		for k in upgrade_levels.keys():
+			if loaded_up.has(k):
+				upgrade_levels[k] = int(loaded_up[k])
 
 	# Array[String] needs a fresh typed array — JSON returns a plain
 	# Array (no element typing) so we rebuild element-by-element and
@@ -1405,6 +1509,15 @@ func modifier_total(key: String, default_value: int = 0) -> int:
 	# total without needing to know about themes.
 	var theme_bonuses: Dictionary = theme_stat_bonuses()
 	total += int(theme_bonuses.get(key, 0))
+	# Iter 220 / Beta M1.1 — fold permanent upgrade tree levels into
+	# the same total so the meta-progression effects show up wherever
+	# relic mods do. No new code paths needed in consumers.
+	#   resilience → max_hp_bonus per level
+	#   quick_step → dodge_charge_bonus per level (consumed by hero)
+	if key == "max_hp_bonus":
+		total += int(upgrade_levels.get("resilience", 0))
+	elif key == "dodge_charge_bonus":
+		total += int(upgrade_levels.get("quick_step", 0))
 	return total
 
 # Float variant for fractional mods (e.g. -0.2 cooldown, +0.3 speed).
