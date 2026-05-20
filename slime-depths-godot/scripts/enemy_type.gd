@@ -32,6 +32,14 @@ extends Resource
 #   "stationary_shoot"   never move, fire when hero in range
 #   "shield_walker"      iter-230, faces hero; 90° front cone reduces
 #                        damage 75%; flank breaks shield 1.5 s
+#   "flying_orbit"       iter-234, circles hero at ORBIT_RADIUS px,
+#                        occasionally dives in for a contact attack.
+#                        Conceptually airborne — set is_flying=true so
+#                        the enemy reads as "doesn't trigger floor
+#                        hazards" (currently hazards only damage hero,
+#                        so the marker is design clarity + future-
+#                        proofing for any hazard system that affects
+#                        enemies). Used by the moth.
 @export var behavior: String = "chase_contact"
 
 # ── Sprite sheets ─────────────────────────────────────────────────────
@@ -108,6 +116,18 @@ extends Resource
 @export var max_hp: int = 1
 @export var move_speed: float = 90.0   # px/s. 0 = never moves (also see can_move()).
 @export var death_duration: float = 0.8
+
+# Iter 234 / Expansion Team R3 — flying flag. Used by the moth (and any
+# future flying archetype). Set True for aerial enemies that should
+# conceptually IGNORE floor hazards (spike pits, fire jets, slow zones).
+# Today the hazard scripts only damage the hero (group-gated), so
+# enemies never trigger hazards regardless — but this field lets the
+# behavior tick OR future hazard interactions branch cleanly without
+# overloading `behavior == "flying_orbit"` everywhere. Also surfaces
+# the concept on the EnemyType so a future hazard system that DID
+# damage enemies (acid clouds, etc.) has a single switch to skip
+# flyers. Default False = ground enemy, current behavior unchanged.
+@export var is_flying: bool = false
 
 # ── Behavior tunables ─────────────────────────────────────────────────
 # Each group is only used when behavior matches. They're all declared

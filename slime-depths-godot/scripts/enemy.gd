@@ -224,6 +224,47 @@ const SHIELD_ARC_BROKEN_ALPHA: float = 0.18
 var _shield_facing: Vector2 = Vector2.RIGHT
 var _shield_broken_time: float = 0.0
 var _shield_arc: Polygon2D = null
+
+# Iter 234 / Expansion Team R3 — flying_orbit (Moth) state.
+#
+# A flying enemy that circles the hero at a steady radius, occasionally
+# darting in for a contact attack. Brings a NEW tactical axis — until
+# iter-234 every enemy moved on the 2D plane, so flying creates the
+# first archetype the player has to read with a different positioning
+# instinct (can't be flanked by simply walking around; presents from
+# above; crosses where the player can't).
+#
+# State machine:
+#   ORBIT  — pick a tangent direction (clockwise or counter), set
+#            velocity perpendicular to the hero-vector + a small radial
+#            correction so the moth holds a stable orbit radius.
+#            Periodically (DIVE_INTERVAL) commit to a DIVE.
+#   DIVE   — straight-line lunge at the hero for DIVE_DURATION. Contact
+#            damage applies during the dive (same body-bump shape as
+#            chase_contact). After DIVE_DURATION elapses, return to
+#            ORBIT (radius re-establishes naturally via the correction).
+#
+# Tunables: orbit radius 180 px (mid-screen, comfortable dash range so
+# the player can close OR shoot), orbit speed equals move_speed
+# (uses enemy_type.move_speed; ~80 in the moth.tres), dive duration
+# 0.4s straight-line at 1.6× move_speed so the dive READS as a sudden
+# threat — not just "the moth got a little closer."
+const MOTH_ORBIT_RADIUS: float = 180.0
+const MOTH_ORBIT_RADIUS_TOLERANCE: float = 28.0   # ± window for radial correction
+const MOTH_DIVE_INTERVAL: float = 3.5             # cycle time between dives
+const MOTH_DIVE_DURATION: float = 0.4
+const MOTH_DIVE_SPEED_MULT: float = 1.6           # × move_speed during dive
+const MOTH_RADIAL_CORRECTION: float = 0.45        # weight of radial pullback vs tangent
+
+enum MothState { ORBIT, DIVE }
+var _moth_state: MothState = MothState.ORBIT
+var _moth_dive_cooldown: float = 0.0
+var _moth_dive_timer: float = 0.0
+var _moth_dive_dir: Vector2 = Vector2.RIGHT
+# +1 = clockwise, -1 = counter-clockwise. Randomized per spawn so two
+# moths don't orbit in lockstep + a single moth visually commits to one
+# orbital direction the player can read.
+var _moth_orbit_sign: float = 1.0
 # Iter 230 — last-known damage source position. Set transiently by
 # take_hit's 3rd optional arg so the shield damage-direction check can
 # decide FRONT vs FLANK. Fallback (no source given) keeps the legacy
@@ -765,6 +806,17 @@ func _ready() -> void:
 	# so non-shield enemies pay zero overhead.
 	if enemy_type.behavior == "shield_walker":
 		_ensure_shield_arc()
+	# Iter 234 / Expansion Team R3 — flying_orbit (Moth) per-spawn orbit
+	# direction. 50/50 clockwise vs counter so a pair of moths visually
+	# split (one orbits left, one orbits right) instead of stacking on
+	# the same arc. Read once at spawn — the moth COMMITS to one
+	# direction for its lifetime; the dive recovery reuses the same sign
+	# so the orbit re-establishes naturally on the post-dive arc.
+	if enemy_type.behavior == "flying_orbit":
+		_moth_orbit_sign = 1.0 if randf() < 0.5 else -1.0
+		# Stagger first dive so multiple moths in a wave don't all dive on
+		# the same frame.
+		_moth_dive_cooldown = MOTH_DIVE_INTERVAL * randf_range(0.5, 1.0)
 
 # Iter 177 — outline shader applied at runtime so every enemy gets
 # the same silhouette definition the hero has had since iter-117.
@@ -1148,6 +1200,8 @@ func _physics_process(delta: float) -> void:
 			_tick_glyph_warden(delta)
 		"shield_walker":
 			_tick_shield_walker(delta)
+		"flying_orbit":
+			_tick_flying_orbit(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -3345,3 +3399,128 @@ func get_shield_broken_time_for_test() -> float:
 
 func force_shield_restore_for_test() -> void:
 	_shield_broken_time = 0.0
+
+# ── Behavior: flying_orbit ───────────────────────────────────────────
+# Iter 234 / Expansion Team R3 — Moth. The first AIRBORNE enemy in the
+# roster. Pre-iter-234 every enemy moved on the 2D plane (chase /
+# kite / orbit-to-cast / phase-flank); none of them OWNED the air as
+# a positioning axis. The moth circles the hero at a steady radius
+# and periodically dives in for a contact attack.
+#
+# Why a separate behavior tag (vs reusing chase_contact with a wider
+# `contact_range`): chase_contact's body-bump shape is "walk straight
+# at hero, slam, repeat." That gives no read on the moth's tactical
+# identity — players just see "a slime that flew over the hazard."
+# Orbit + commit-to-dive surfaces the air-mobility fantasy: the moth
+# is HARD to pin from one direction (it'll just circle around), but
+# it telegraphs its commitment via the dive arc.
+#
+# State machine:
+#   ORBIT — pick perpendicular-to-hero-vector × _moth_orbit_sign as the
+#           tangent direction. Blend in a small radial-correction term
+#           (push outward when too close, pull inward when too far) so
+#           the moth holds a stable orbit ± MOTH_ORBIT_RADIUS_TOLERANCE.
+#           Tick _moth_dive_cooldown; when ≤ 0, commit to DIVE.
+#   DIVE  — straight-line lunge at the hero for MOTH_DIVE_DURATION at
+#           1.6× move_speed. Damage applies on body contact (same shape
+#           as chase_contact). After DIVE_DURATION elapses, reset the
+#           dive cooldown and return to ORBIT.
+#
+# Visual: walk anim during ORBIT (wing-flap), attack anim during DIVE
+# (lunge pose). sprite.flip_h tracks the hero direction so the moth
+# faces its target each frame.
+func _tick_flying_orbit(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	_contact_cd = max(0.0, _contact_cd - delta)
+	_contact_attack_anim_time = max(0.0, _contact_attack_anim_time - delta)
+	_hurt_anim_time = max(0.0, _hurt_anim_time - delta)
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	# Hurt anim hold (same shape as chase_contact / shield_walker).
+	if _hurt_anim_time > 0.0 and t.frames_hurt > 0:
+		# Don't override sprite below.
+		move_and_slide()
+		return
+	match _moth_state:
+		MothState.ORBIT:
+			# Tangent direction: rotate the hero-vector 90° via the orbit
+			# sign so the moth circles either clockwise or counter. Skip
+			# tangent calc when degenerate (hero on top of moth) — fall
+			# through to a straight-line approach so we never zero out
+			# velocity mid-fight.
+			var dir_to_hero: Vector2 = Vector2.RIGHT
+			if dist > 0.5:
+				dir_to_hero = to_hero / dist
+			var tangent: Vector2 = Vector2(-dir_to_hero.y, dir_to_hero.x) * _moth_orbit_sign
+			# Radial correction — push outward if too close, pull inward if
+			# too far. Sign: + dir_to_hero pulls inward (toward hero), so
+			# we negate when dist < radius (too close → push away).
+			var radial_err: float = dist - MOTH_ORBIT_RADIUS
+			var radial: Vector2 = Vector2.ZERO
+			if abs(radial_err) > MOTH_ORBIT_RADIUS_TOLERANCE:
+				# Direction: + dir_to_hero when too far (pull in), - when too close.
+				var sign_in: float = sign(radial_err)
+				radial = dir_to_hero * sign_in
+			var blended: Vector2 = (tangent + radial * MOTH_RADIAL_CORRECTION).normalized()
+			velocity = blended * (_effective_move_speed())
+			sprite.play(&"walk")
+			move_and_slide()
+			# Tick dive cooldown — when it hits 0, commit to a DIVE. Only
+			# dive if the hero is in reasonable reach (within ~2× orbit
+			# radius) so a wandered-off hero doesn't get a free attack from
+			# off-screen.
+			_moth_dive_cooldown = max(0.0, _moth_dive_cooldown - delta)
+			if _moth_dive_cooldown <= 0.0 and dist < MOTH_ORBIT_RADIUS * 2.0:
+				_enter_moth_dive()
+		MothState.DIVE:
+			_moth_dive_timer = max(0.0, _moth_dive_timer - delta)
+			# Straight-line lunge at the dive direction captured on entry.
+			# Damage on body contact (same shape as chase_contact).
+			velocity = _moth_dive_dir * (_effective_move_speed() * MOTH_DIVE_SPEED_MULT)
+			if t.frames_attack > 0:
+				sprite.play(&"attack")
+			else:
+				sprite.play(&"walk")
+			move_and_slide()
+			# Body contact during dive.
+			if dist < t.contact_range and _contact_cd <= 0.0:
+				_contact_cd = t.contact_cooldown
+				if t.frames_attack > 0:
+					_contact_attack_anim_time = CONTACT_ATTACK_ANIM_DURATION
+				if _hero.has_method("take_damage"):
+					_hero.take_damage(t.contact_damage, global_position, _affix_aware_source_name())
+					_apply_contact_affix()
+			if _moth_dive_timer <= 0.0:
+				# Recovery: reset cooldown + return to orbit. Orbit re-
+				# establishes naturally as the radial-correction term
+				# kicks in next frame.
+				_moth_dive_cooldown = MOTH_DIVE_INTERVAL
+				_moth_state = MothState.ORBIT
+
+# Enter DIVE: capture the dive direction at this instant + set the timer.
+# Dive direction is fixed at entry (doesn't track the hero through the
+# dive) so a dodging hero can EARN the escape — the moth commits.
+func _enter_moth_dive() -> void:
+	_moth_state = MothState.DIVE
+	_moth_dive_timer = MOTH_DIVE_DURATION
+	if _hero != null and is_instance_valid(_hero):
+		var to_hero: Vector2 = _hero.global_position - global_position
+		if to_hero.length_squared() > 0.001:
+			_moth_dive_dir = to_hero.normalized()
+		else:
+			_moth_dive_dir = Vector2.RIGHT
+
+# Iter 234 — test helpers. Headless tests instantiate a Moth and read
+# orbit/state changes without poking private fields. Mirrors the
+# Bulwark test-helper pattern from iter-230.
+func get_moth_state_for_test() -> int:
+	return int(_moth_state)
+
+func force_moth_dive_for_test() -> void:
+	_moth_dive_cooldown = 0.0
+	_enter_moth_dive()

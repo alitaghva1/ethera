@@ -112,6 +112,16 @@ const ENEMY_TYPES := {
 	# sprite_modulate so the silhouette reads distinct from a vanilla armor
 	# mob even from across the room.
 	"bulwark":           preload("res://scenes/enemies/bulwark.tres"),
+	# Iter 234 / Expansion Team R3 — Moth (flying enemy). Uses the new
+	# "flying_orbit" behavior in enemy.gd. Circles the hero at ~180 px
+	# radius and dives in for a contact attack every ~3.5 s. The first
+	# airborne archetype in the roster — pre-iter-234 every enemy moved
+	# on the 2D plane, so flying creates a new positioning axis. HP 2 +
+	# move_speed 80 + 1 contact damage = positioning threat, not a damage
+	# sponge. is_flying=true marks the moth as aerial (skipping floor
+	# hazards conceptually; hazards already only damage hero today so
+	# the flag is design clarity + future-proofing).
+	"moth":              preload("res://scenes/enemies/moth.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05
