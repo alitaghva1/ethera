@@ -404,7 +404,9 @@ enum TutorialState {
 	OFF,             # tutorial not active (subsequent rooms / runs)
 	WAIT_MOVE,       # show "MOVE — WASD" until ~200 px traveled
 	WAIT_ATTACK,     # show "ATTACK — LEFT MOUSE" until attack pressed
+	WAIT_BLAST,      # iter 223 — RMB blast (added in M4 tutorial extension)
 	WAIT_DASH,       # show "DASH — SHIFT" until dash strike pressed
+	WAIT_SHIELD,     # iter 223 — Q parry/shield
 	WAIT_PICKUP,     # show "PICK UP RELIC — Walk to glowing pedestal"
 	DONE,            # short fade-out then OFF + persist completion
 }
@@ -5168,9 +5170,20 @@ func _tick_tutorial(delta: float) -> void:
 					_advance_tutorial(TutorialState.WAIT_ATTACK, "ATTACK  —  LEFT MOUSE")
 		TutorialState.WAIT_ATTACK:
 			if Input.is_action_just_pressed("attack"):
+				_advance_tutorial(TutorialState.WAIT_BLAST, "BLAST  —  RIGHT MOUSE")
+		TutorialState.WAIT_BLAST:
+			# Iter 223 / Beta M4 — RMB blast tutorial step. Detect the
+			# next blast cast; if the player skips by walking to the
+			# pedestal, the WAIT_PICKUP handler still fires DONE.
+			if Input.is_action_just_pressed("blast"):
 				_advance_tutorial(TutorialState.WAIT_DASH, "DASH  —  SHIFT")
 		TutorialState.WAIT_DASH:
 			if Input.is_action_just_pressed("dash_strike"):
+				_advance_tutorial(TutorialState.WAIT_SHIELD, "PARRY  —  Q  (tap to deflect)")
+		TutorialState.WAIT_SHIELD:
+			# Iter 223 / Beta M4 — Q shield/parry tutorial step. Detect
+			# the next shield press. Skippable via the WAIT_PICKUP advance.
+			if Input.is_action_just_pressed("shield"):
 				_advance_tutorial(TutorialState.WAIT_PICKUP, "PICK UP  —  Walk to glowing pedestal")
 		TutorialState.WAIT_PICKUP:
 			# Advance hook lives in _on_pickup_claimed extension below.
