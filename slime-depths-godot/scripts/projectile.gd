@@ -104,6 +104,18 @@ var ricochet_count: int = 0
 # can't loop back to a previous target.
 var _hit_ids: Dictionary = {}
 
+# Iter 214 — GRAVITY NEEDLE (Phase 3 spell modifier). When true, this
+# projectile applies a brief slow to any enemy that comes within
+# GRAVITY_NEEDLE_RADIUS of its position during flight. Per-projectile
+# bookkeeping in _gravity_needle_slowed prevents re-slowing the same
+# enemy multiple times during a single projectile's lifetime — each
+# enemy gets ONE near-miss slow per projectile.
+const GRAVITY_NEEDLE_RADIUS: float = 32.0
+const GRAVITY_NEEDLE_SLOW_DURATION: float = 0.5
+const GRAVITY_NEEDLE_SLOW_MUL: float = 0.65  # mild — 35% slow, weaker than direct hit
+var gravity_needle_active: bool = false
+var _gravity_needle_slowed: Dictionary = {}
+
 @onready var glow: PointLight2D = $PointLight2D
 @onready var orb: Sprite2D = $Sprite2D
 var _life := LIFETIME
@@ -203,6 +215,25 @@ func _physics_process(delta: float) -> void:
 		# Iter 60 — scale base energy by damage so a +damage build's
 		# projectiles glow brighter (matches their larger silhouette).
 		glow.energy = max(0.3, 1.6 * _dmg_scale * (_life / LIFETIME))
+	# Iter 214 — GRAVITY NEEDLE per-frame near-miss check. Scans the
+	# enemies group; any enemy within RADIUS of the projectile's
+	# current position that hasn't already been slowed by THIS
+	# projectile gets a brief apply_slow. O(n) scan per frame is
+	# cheap with the room's typical enemy count (≤ ~10).
+	if gravity_needle_active and target_group == "enemies":
+		var rsq: float = GRAVITY_NEEDLE_RADIUS * GRAVITY_NEEDLE_RADIUS
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(e) or not (e is Node2D):
+				continue
+			if e.get("_dying"):
+				continue
+			var eid: int = e.get_instance_id()
+			if _gravity_needle_slowed.has(eid):
+				continue
+			var d: Vector2 = (e as Node2D).global_position - global_position
+			if d.length_squared() <= rsq and e.has_method("apply_slow"):
+				e.apply_slow(GRAVITY_NEEDLE_SLOW_DURATION, GRAVITY_NEEDLE_SLOW_MUL)
+				_gravity_needle_slowed[eid] = true
 
 func _on_body_entered(body: Node) -> void:
 	# Wall (or any non-target body) — always ends the projectile.

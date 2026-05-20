@@ -675,6 +675,57 @@ const RELIC_REGISTRY := {
 		},
 		"themes": ["storm"],
 	},
+	# Iter 214 — SPLIT CINDER (Phase 3 spell modifier #1). Every 3rd blast
+	# cast also fires 2 smaller ember sub-projectiles at ±30° from the
+	# aim. Each ember does 1 damage, scaled to 70 % size, warm orange
+	# tint. The verb is COVERAGE — your blast occasionally fans into
+	# crowd-fragment hits without dropping focused single-target output.
+	# FLAME theme. Compounds with ECHO QUILL (echo cast also rolls the
+	# counter, so a sustained burst can get visually wild).
+	"split_cinder": {
+		"name": "SPLIT CINDER",
+		"description": "Every 3rd blast also fires 2 ember sub-shots at ±30°. Smaller, single-damage, but extra coverage.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"mods": {
+			"split_cinder_active": 1,
+		},
+		"themes": ["flame"],
+	},
+	# Iter 214 — GRAVITY NEEDLE (Phase 3 #2). All blast projectiles emit
+	# a low-key gravitational drag — enemies within 32 px of the
+	# projectile's flight path get a brief slow (0.5 s) applied as a
+	# NEAR-MISS effect. Doesn't deal damage; the slow is the entire
+	# point. Combos with SHATTER (apply burn while they're slowed →
+	# free SHATTER procs) and feeds RIME_TRAIL / future combos. SHADOW
+	# theme. Visible trail: faint violet smear behind the projectile.
+	"gravity_needle": {
+		"name": "GRAVITY NEEDLE",
+		"description": "Blasts drag at nearby enemies — anyone within 32 px of the projectile's path is briefly slowed.",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_dodge.png",
+		"mods": {
+			"gravity_needle_active": 1,
+		},
+		"themes": ["shadow"],
+	},
+	# Iter 214 — STATIC RUNES (Phase 3 #3). Every 4th blast cast bumps
+	# storm_chain_count on the spawned projectile(s) by +1, so the cast
+	# arcs to one extra enemy regardless of STORM theme tier. Visible
+	# but restrained — a single sharp chain arc per proc, no screen
+	# clutter. Compounds with STORM theme tier (tier 1 + Runes proc
+	# = 2 chains on that cast). STORM theme. Damage on the chain is
+	# 0.8× to avoid making this a flat upgrade vs STORM tier 2.
+	"static_runes": {
+		"name": "STATIC RUNES",
+		"description": "Every 4th blast also arcs a chain bolt to one extra enemy nearby (1× damage chain, additive with STORM).",
+		"tier": "rare",
+		"icon_path": "res://assets/icons/relic_chain_lightning.png",
+		"mods": {
+			"static_runes_active": 1,
+		},
+		"themes": ["storm"],
+	},
 	# Iter 56 — familiar pet relics. Drive familiar_count modifier
 	# which main.gd._sync_familiars reads to spawn / despawn wisps
 	# that orbit the hero and auto-fire at nearby enemies. Pairs

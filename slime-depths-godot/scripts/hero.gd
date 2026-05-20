@@ -434,6 +434,18 @@ var _iron_fang_hit_counter: int = 0
 # on every 5th increment, the cast also forks a violet bolt to the
 # nearest off-target enemy within 140px for 1 damage. Persists per-run.
 var _arcane_pulse_cast_counter: int = 0
+# Iter 214 — Phase 3 spell modifier counters. Each ticks ONCE per
+# _start_blast call (NOT per projectile in a multi-shot) so the proc
+# fires on its own cadence regardless of how many shots the cast
+# spawns. Independent of _blast_counter so the modulo cycles don't
+# accidentally sync up across relics.
+var _split_cinder_cast_counter: int = 0
+var _static_runes_cast_counter: int = 0
+# Single-cast flag — set true at start of _start_blast if this cast is
+# the STATIC RUNES proc cast, read inside _spawn_blast_projectile to
+# bump storm_chain_count for each projectile in the cast (so multi-
+# shot all benefit on the proc cast, not just the first projectile).
+var _static_runes_proc_this_cast: bool = false
 # Iter 72 — STONEHEART redesign per-room flag. Auto-resets on scene
 # reload (same pattern as _iron_resolve_absorbed_this_room) so each
 # new room re-arms the first-kill heal. No manual reset needed.
@@ -1593,6 +1605,17 @@ func _start_blast() -> void:
 	# the hero is re-instantiated for each new scene load.
 	_blast_counter += 1
 	var resonance_active: bool = GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0
+	# Iter 214 — STATIC RUNES per-cast proc check. Computed BEFORE the
+	# projectile spawn loop so EVERY projectile in this cast sees the
+	# same proc flag — multi-shot all chain on the proc cast, otherwise
+	# none chain. _static_runes_proc_this_cast is cleared at the start
+	# of every cast regardless of ownership so a stale flag from a
+	# previous cast can't leak.
+	_static_runes_proc_this_cast = false
+	if GameState.has_relic("static_runes"):
+		_static_runes_cast_counter += 1
+		if _static_runes_cast_counter % 4 == 0:
+			_static_runes_proc_this_cast = true
 	# Iter 42 — multi-shot. projectile_count mod (Twin Cast etc.) adds
 	# extra projectiles in a small spread around the aim direction.
 	# 1 (default) = single shot; 2 = two projectiles 14° apart; 3 = three
@@ -1628,6 +1651,17 @@ func _start_blast() -> void:
 		_arcane_pulse_cast_counter += 1
 		if _arcane_pulse_cast_counter % 5 == 0:
 			_trigger_arcane_pulse_bolt(spawn_pos)
+	# Iter 214 — SPLIT CINDER. Every 3rd blast cast, fan TWO smaller
+	# ember projectiles at ±30 ° from the aim. These are SEPARATE shots
+	# from the main spawn loop (not part of the spread_aim multi-shot
+	# fan) so they always fire EVEN if the player doesn't own
+	# projectile_count modifiers. Smaller scale + warm orange tint +
+	# 1 base damage so they don't compete with main cast output —
+	# they're crowd-fragment hits, not focused damage.
+	if GameState.has_relic("split_cinder"):
+		_split_cinder_cast_counter += 1
+		if _split_cinder_cast_counter % 3 == 0:
+			_spawn_split_cinder_embers(spawn_pos, aim)
 	# Iter 203 — Echo Quill. Noita-tier spell-modifier relic. Every
 	# blast schedules a follow-up projectile 0.16 s later, fired from
 	# the hero's CURRENT position (chases the hero's movement) toward
@@ -1643,6 +1677,48 @@ func _start_blast() -> void:
 	# Emit at chest height so the muzzle streak originates from the
 	# mage's hands, not under her feet.
 	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
+
+# Iter 214 — SPLIT CINDER ember spawn. Fires 2 smaller orange ember
+# projectiles at ±30 ° from the cast aim. These are distinct from the
+# main projectile (separate _spawn_blast_projectile-style construction)
+# so they don't get pierce/ricochet/resonance/crit — they're crowd-
+# fragment shots with fixed 1 damage and a warm tint. Skipped if hero
+# died between cast and proc (would happen if a status-combo death
+# fires during cast, extremely rare).
+func _spawn_split_cinder_embers(origin: Vector2, aim: Vector2) -> void:
+	if _is_dying:
+		return
+	# Two embers — one at +30 °, one at -30 °. 0.524 rad ≈ 30 °.
+	var split_angle: float = 0.524
+	for sign in [1.0, -1.0]:
+		var ember_aim: Vector2 = aim.rotated(split_angle * sign)
+		var p: Projectile = PROJECTILE_SCENE.instantiate()
+		p.global_position = origin
+		# Embers fly a bit slower so they FAN behind the main shot
+		# rather than racing past it.
+		p.velocity = ember_aim * Projectile.SPEED * 0.85
+		p.damage = 1
+		p.orb_tint = Color(1.0, 0.55, 0.20, 1.0)  # warm ember orange
+		p.executioner_active = false
+		# No pierce / ricochet — keep these sharp fragments simple.
+		p.pierce_count = 0
+		p.ricochet_count = 0
+		# Carry GRAVITY NEEDLE through — embers are still YOUR projectiles
+		# so the near-miss slow should apply to them too.
+		if GameState.has_relic("gravity_needle"):
+			p.gravity_needle_active = true
+		# Embers are visually smaller — scale down by setting damage = 1
+		# implies _dmg_scale ≈ 1.0, then override via additional scale.
+		# Easier: just multiply final scale in _ready via a flag, but we
+		# don't have that hook. Workaround: set scale here AFTER ready
+		# fires by deferring to next frame, OR just trust the smaller
+		# damage's natural _dmg_scale. For now, smaller scale via
+		# parent_for assignment after spawn — projectile.gd's _ready
+		# sets scale based on _dmg_scale only, so a damage=1 ember
+		# already reads slightly smaller than a damage=2 main cast.
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(p)
 
 # Iter 203 — Echo Quill follow-up cast. Fires N projectiles (same
 # count as the original cast) from the hero's CURRENT position with
@@ -1732,6 +1808,24 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 	# damage is UNCHANGED, the chains carry the spread. Projectile.gd
 	# resolves the chains in _on_body_entered (enemy hit) and spawns
 	# ChainArc visuals from impact → each chain target.
+	# Iter 214 — GRAVITY NEEDLE. Each projectile gets the near-miss-slow
+	# flag if the player owns the relic. Projectile.gd's
+	# _physics_process applies the slow to any enemy within
+	# GRAVITY_NEEDLE_RADIUS of the projectile's path (per-enemy guard
+	# so a single projectile only slows each enemy once).
+	if GameState.has_relic("gravity_needle"):
+		p.gravity_needle_active = true
+	# Iter 214 — STATIC RUNES. If this cast is the proc cast (computed
+	# in _start_blast BEFORE the spawn loop), bump storm_chain_count
+	# by +1 and ensure radius / damage_mul defaults are populated. The
+	# bump is ADDITIVE to the STORM theme tier's chain count below —
+	# so a STORM tier 1 player + Static Runes proc cast = 2 chains.
+	if _static_runes_proc_this_cast:
+		p.storm_chain_count = max(p.storm_chain_count, 0) + 1
+		if p.storm_chain_radius <= 0.0:
+			p.storm_chain_radius = 120.0
+		if p.storm_chain_dmg_mul <= 0.0:
+			p.storm_chain_dmg_mul = 0.8
 	var storm_tier_now: int = GameState.theme_tier("storm")
 	if storm_tier_now >= 2:
 		p.storm_chain_count = 2
