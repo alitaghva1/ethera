@@ -2213,7 +2213,81 @@ func _spawn_material_story_clusters() -> void:
 		pool.remove_at(idx)
 		# Pick a kind for this cluster
 		var kind: String = MATERIAL_CLUSTER_KINDS[rng.randi() % MATERIAL_CLUSTER_KINDS.size()]
+		# Iter 210 — Wall seepage trail FIRST so it draws under the
+		# cluster pool. Connects each cluster back to the nearest wall:
+		# tells the "corruption entered HERE and pooled THERE" story.
+		_spawn_wall_seepage_to(pos, kind, rng)
 		_spawn_material_cluster_at(pos, kind, rng)
+
+# Iter 210 — Wall corruption seepage trail. Traces a tapered stain from
+# the nearest perimeter wall edge to a material cluster's center,
+# colored to match the cluster's substance. One per cluster — STRONG
+# storytelling without adding more scatter. Tapered (wide at wall edge,
+# narrow at cluster) so it reads as "the material seeped FROM the wall
+# and pooled INTO the cluster" with a clear direction of flow. Drawn at
+# z=-2 so the cluster (z=-1) sits visibly on top of the trail's tip.
+func _spawn_wall_seepage_to(target: Vector2, kind: String, rng: RandomNumberGenerator) -> void:
+	# Determine nearest perimeter wall to the cluster target.
+	var d_left: float = target.x - PLAY_AREA_MIN.x
+	var d_right: float = PLAY_AREA_MAX.x - target.x
+	var d_top: float = target.y - PLAY_AREA_MIN.y
+	var d_bottom: float = PLAY_AREA_MAX.y - target.y
+	var min_d: float = min(min(d_left, d_right), min(d_top, d_bottom))
+	# Source point on the wall edge + flow direction unit vector toward
+	# the cluster. The source X/Y is jittered along the wall by ±18px so
+	# the trail doesn't line up perfectly perpendicular to the cluster —
+	# avoids a "geometric ruler" read in favor of an organic seepage.
+	var source: Vector2
+	var direction: Vector2
+	var jitter: float = rng.randf_range(-18.0, 18.0)
+	if min_d == d_left:
+		source = Vector2(PLAY_AREA_MIN.x, target.y + jitter)
+		direction = (target - source).normalized()
+	elif min_d == d_right:
+		source = Vector2(PLAY_AREA_MAX.x, target.y + jitter)
+		direction = (target - source).normalized()
+	elif min_d == d_top:
+		source = Vector2(target.x + jitter, PLAY_AREA_MIN.y)
+		direction = (target - source).normalized()
+	else:
+		source = Vector2(target.x + jitter, PLAY_AREA_MAX.y)
+		direction = (target - source).normalized()
+	# Tapered polygon: wide at wall, mid-width at midpoint (with a small
+	# perpendicular wiggle so the trail isn't a clean trapezoid), narrow
+	# at cluster. 6 verts total.
+	var wall_half_width: float = rng.randf_range(8.0, 12.0)
+	var mid_half_width: float = rng.randf_range(5.0, 8.0)
+	var tip_half_width: float = rng.randf_range(2.0, 3.5)
+	var perp: Vector2 = Vector2(-direction.y, direction.x)
+	var mid: Vector2 = source.lerp(target, 0.5) + perp * rng.randf_range(-3.5, 3.5)
+	var trail: Polygon2D = Polygon2D.new()
+	trail.polygon = PackedVector2Array([
+		source + perp * wall_half_width,
+		mid + perp * mid_half_width,
+		target + perp * tip_half_width,
+		target - perp * tip_half_width,
+		mid - perp * mid_half_width,
+		source - perp * wall_half_width,
+	])
+	trail.color = _seepage_color_for_kind(kind, rng)
+	trail.z_index = -2
+	add_child(trail)
+
+# Color/alpha lookup for a seepage trail, matching the kind of cluster
+# it terminates in. Slightly LOWER alpha than the cluster's polygons so
+# the cluster reads as a denser "pool" at the end of a fading trail.
+func _seepage_color_for_kind(kind: String, rng: RandomNumberGenerator) -> Color:
+	match kind:
+		"burn_scrape":
+			return Color(0.04, 0.03, 0.03, rng.randf_range(0.45, 0.62))
+		"blood_smear":
+			return Color(0.20, 0.05, 0.04, rng.randf_range(0.42, 0.58))
+		"fungal_patch":
+			return Color(0.16, 0.26, 0.10, rng.randf_range(0.40, 0.55))
+		"corruption_crack":
+			return Color(0.18, 0.28, 0.10, rng.randf_range(0.45, 0.60))
+		_:
+			return Color(0.05, 0.05, 0.05, 0.5)
 
 func _spawn_material_cluster_at(pos: Vector2, kind: String, rng: RandomNumberGenerator) -> void:
 	match kind:
