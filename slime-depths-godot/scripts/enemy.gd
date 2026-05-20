@@ -171,7 +171,7 @@ var _idle_bob_phase: float = 0.0
 # Reinforces "feet on the floor" read; enemies without a shadow look
 # like they're floating, especially boss enemies that have larger
 # sprites.
-const SHADOW_BASE_ALPHA: float = 0.35
+const SHADOW_BASE_ALPHA: float = 0.26  # Iter 217 Phase 6 — softened from 0.35. Tighter contact shadow reads as "the silhouette meets the floor" without the heavy underprint.
 const SHADOW_PULSE_AMP: float = 0.12  # ±12% of base scale at peak bob
 var _shadow: Polygon2D = null
 var _shadow_base_scale: Vector2 = Vector2.ONE
@@ -771,7 +771,11 @@ func _build_ground_shadow() -> void:
 	if enemy_type == null:
 		return
 	var sc: float = enemy_type.sprite_scale
-	var rx: float = 14.0 * sc
+	# Iter 217 Phase 6 — radius softened from 14 → 11 px-at-scale-1.0 so
+	# a slime gets ~7 px and a boss gets ~14 px. Combined with the
+	# alpha drop from 0.35 → 0.26, the shadow reads as "the silhouette
+	# anchors to the floor" instead of "the enemy casts a 3D shadow."
+	var rx: float = 11.0 * sc
 	var ry: float = rx * 0.45
 	var pts: PackedVector2Array = PackedVector2Array()
 	for i in range(12):
