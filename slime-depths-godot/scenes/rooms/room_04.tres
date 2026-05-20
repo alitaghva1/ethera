@@ -18,6 +18,6 @@ wall_rects = [Rect2(520, 370, 240, 28), Rect2(626, 284, 28, 200), Rect2(260, 200
 hazard_positions = Array[Vector2]([Vector2(640, 200)])
 hazard_kind = "spike_pit"
 hazards = [{"kind": "slow_zone", "position": Vector2(380, 320)}, {"kind": "slow_zone", "position": Vector2(900, 448)}]
-branches = [{"kind": "shrine", "label": "SHRINE", "subtitle": "skip fight · pray for stat", "room_path": "res://scenes/rooms/room_shrine.tres"}, {"kind": "risk", "label": "RISK", "subtitle": "+1 enemy · rare+ relics"}]
+branches = [{"kind": "treasure", "label": "VAULT", "subtitle": "a legendary offering", "room_path": "res://scenes/rooms/room_treasure.tres"}, {"kind": "shrine", "label": "ALTAR", "subtitle": "skip fight · pray for stat", "room_path": "res://scenes/rooms/room_shrine.tres"}, {"kind": "risk", "label": "BRAVE", "subtitle": "tougher waves · rare+ relic"}]
 biome = "sanctuary"
 lore_stones = [{"position": Vector2(220, 200), "text": "altar fragment: \"vows kept · debts paid\"", "stat_key": "max_hp_bonus", "stat_value": 1}]
