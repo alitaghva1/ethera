@@ -355,14 +355,21 @@ func apply_slow(duration: float, multiplier: float = SLOW_DEFAULT_MULTIPLIER) ->
 
 # Iter 202 — status combo dispatcher. Noita's signature design move:
 # two compatible statuses combining into a third effect that's bigger
-# than either alone. Currently one combo wired:
-#   BURN + SLOW → SHATTER (thermal shock damage burst)
-# Future combos go on this dispatcher (e.g., FROST + SHADOW → PETRIFY,
-# FLAME + STORM → CHAIN_IGNITE). Cooldown prevents loop-firing when
-# multiple sources stack the trigger status in the same frame.
+# than either alone. Combos wired so far:
+#   BURN + SLOW → SHATTER       (thermal shock damage burst — iter 202)
+#   BURN + DEATH → KINDLE_SPREAD (flames jump to neighbors — iter 212)
+# Cooldown prevents loop-firing when multiple sources stack the trigger
+# status in the same frame.
 const SHATTER_COMBO_COOLDOWN: float = 0.45
 const SHATTER_COMBO_DAMAGE: int = 2
 var _shatter_cd: float = 0.0
+
+# Iter 212 — KINDLE_SPREAD combo constants. When a BURNING enemy dies,
+# fire jumps to all enemies within KINDLE_RADIUS. Short duration so the
+# chain stays bounded (a chained kindle's burn is shorter than the
+# initial burn that killed the enemy, so chain dies out naturally).
+const KINDLE_RADIUS: float = 96.0
+const KINDLE_BURN_DURATION: float = 1.5
 
 func _trigger_shatter_combo() -> void:
 	_shatter_cd = SHATTER_COMBO_COOLDOWN
@@ -397,6 +404,71 @@ func _trigger_shatter_combo() -> void:
 	var dn_pos: Vector2 = global_position + Vector2(0, -40)
 	var dn: DamageNumber = DamageNumber.spawn(
 		dn_pos, "SHATTER!", Color(0.95, 0.78, 0.55)
+	)
+	var parent_for_dn: Node = get_parent()
+	if parent_for_dn != null:
+		parent_for_dn.add_child(dn)
+
+# Iter 212 — KINDLE_SPREAD combo. Called from _die() when this enemy
+# dies while BURN is active. Iterates all enemies in the room and
+# applies a short-duration burn to each one within KINDLE_RADIUS that
+# isn't already dying. Visual: orange expanding ring at the corpse +
+# "KINDLE" floater. Second Noita-tier status combo wired into the same
+# dispatcher pattern as SHATTER. Reuses existing apply_burn so the
+# downstream tick + audio + tint stack happens for free.
+func _trigger_kindle_spread() -> void:
+	var hit_count: int = 0
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if node == self or not is_instance_valid(node):
+			continue
+		# Same _dying guard as the separation-vector loop — don't ignite
+		# corpses or in-flight death animations.
+		if node.get("_dying"):
+			continue
+		if not (node is Node2D):
+			continue
+		var dist: float = global_position.distance_to((node as Node2D).global_position)
+		if dist > KINDLE_RADIUS:
+			continue
+		if node.has_method("apply_burn"):
+			node.call("apply_burn", KINDLE_BURN_DURATION)
+			hit_count += 1
+	# No neighbors in range → skip visual (no point in a kindle ring
+	# nothing reacted to).
+	if hit_count == 0:
+		return
+	# Visual: warm-orange expanding ring centered on the corpse. Reads
+	# as "fire jumping outward." Slightly slower expansion than SHATTER
+	# (0.36 s vs 0.22 s) — gives more time to see the chain land.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 18
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * KINDLE_RADIUS, sin(ang) * KINDLE_RADIUS * 0.7))
+	ring.polygon = pts
+	ring.color = Color(1.0, 0.55, 0.18, 0.55)
+	ring.scale = Vector2(0.15, 0.15)
+	ring.z_index = 3
+	# Iter 212 — parent the ring to scene root rather than self so it
+	# isn't culled when this corpse queue_frees in ~0.8s. Otherwise the
+	# ring blinks out mid-expansion when the dying enemy is removed.
+	var sroot: Node = get_parent()
+	if sroot == null:
+		sroot = get_tree().current_scene
+	if sroot != null:
+		sroot.add_child(ring)
+		ring.global_position = global_position
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.36)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.36)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+	# KINDLE floater (orange) above the corpse.
+	var dn_pos: Vector2 = global_position + Vector2(0, -40)
+	var dn: DamageNumber = DamageNumber.spawn(
+		dn_pos, "KINDLE!", Color(1.0, 0.65, 0.30)
 	)
 	var parent_for_dn: Node = get_parent()
 	if parent_for_dn != null:
@@ -2536,6 +2608,15 @@ func _die() -> void:
 		s_factor = enemy_type.sprite_scale
 		is_heavy_kill = enemy_type.is_boss or enemy_type.max_hp >= 8
 	FX.spawn_enemy_kill_burst(global_position, s_factor, is_heavy_kill)
+	# Iter 212 — KINDLE_SPREAD combo. If this enemy was burning when it
+	# died, the flames jump to nearby enemies. Fires AFTER the kill
+	# burst FX so the corpse's burst reads as the "source" of the
+	# spreading ring. apply_burn refresh rules (max of remaining vs new
+	# duration) mean already-burning neighbors aren't re-amplified, so
+	# chain damage stays bounded by the initial burn that killed THIS
+	# enemy.
+	if _burn_remaining > 0.0:
+		_trigger_kindle_spread()
 
 # ── Behavior: glyph_warden ────────────────────────────────────────────
 # Iter 72 — conjurer / trap-layer. Kites the hero at WARDEN_KEEP_DIST
