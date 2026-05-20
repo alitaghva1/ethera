@@ -1142,6 +1142,14 @@ func _compute_separation_vector() -> Vector2:
 		# unnecessary AND broken.
 		if e.get("_dying"):
 			continue
+		# Iter 224 — Bug Team defensive guard. The "enemies" group is
+		# joined by Enemy instances today (all Node2D-derived), but a
+		# future breakable / debug node mistakenly added would crash this
+		# per-physics-frame loop on the bare `as Node2D` coerce →
+		# primitive null on `.global_position`. is_instance_valid alone
+		# doesn't tell us if the member is a Node2D.
+		if not (e is Node2D):
+			continue
 		var d: Vector2 = global_position - (e as Node2D).global_position
 		var dist: float = d.length()
 		if dist > 0.001 and dist < SEPARATION_RADIUS:

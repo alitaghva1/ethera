@@ -1133,6 +1133,10 @@ func _resolve_melee_strike() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
+		# Iter 224 — Bug Team guard. A future non-Node2D node in the
+		# "enemies" group would crash `.global_position` access below.
+		if not (enemy is Node2D):
+			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > _pending_melee_range:
 			continue
@@ -2182,6 +2186,9 @@ func _trigger_soul_burst(world_pos: Vector2) -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
+			continue
 		if enemy.global_position.distance_to(world_pos) > SOUL_BURST_RADIUS:
 			continue
 		if enemy.has_method("take_hit"):
@@ -2223,6 +2230,9 @@ func _trigger_kill_explosion(world_pos: Vector2) -> void:
 	Events.kill_exploded.emit(world_pos)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
 			continue
 		if enemy.global_position.distance_to(world_pos) > KILL_EXPLOSION_RADIUS:
 			continue
@@ -2318,6 +2328,9 @@ func _spawn_storm_dash_shock_pulse() -> void:
 func _trigger_shadow_dash_shockwave() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
 			continue
 		if enemy.global_position.distance_to(global_position) > SHADOW_SHOCKWAVE_RADIUS:
 			continue
@@ -3059,6 +3072,11 @@ func _resolve_dash_strike_hit() -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
+		# Iter 224 — Bug Team guard. A future non-Node2D in the "enemies"
+		# group would crash `.global_position` and the typed
+		# `enemy.get("_slow_remaining")` assignment (null → float crash).
+		if not (enemy is Node2D):
+			continue
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > DASH_STRIKE_RADIUS:
 			continue
@@ -3085,7 +3103,12 @@ func _resolve_dash_strike_hit() -> void:
 			# at THEIR position. _try_trigger_rime_trail consumes the
 			# arming flag so only ONE pulse per dash even if the dash
 			# slices multiple slowed enemies.
-			var enemy_slow: float = enemy.get("_slow_remaining")
+			# Iter 224 — defensively read _slow_remaining. .get() returns
+			# Variant; if the property isn't on this enemy (mocked / test
+			# / future non-Enemy node) the assignment to a typed float
+			# would crash. Coerce via float() with null fallback to 0.0.
+			var slow_var: Variant = enemy.get("_slow_remaining")
+			var enemy_slow: float = float(slow_var) if slow_var != null else 0.0
 			enemy.take_hit(dmg_for_this, is_crit_ds)
 			if enemy_slow > 0.0 and _rime_trail_armed_this_dash:
 				_try_trigger_rime_trail(enemy.global_position)
