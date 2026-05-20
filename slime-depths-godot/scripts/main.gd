@@ -4179,6 +4179,17 @@ func _spawn_pedestal_offer(count: int) -> void:
 		var ped: Pedestal = PEDESTAL_SCENE.instantiate()
 		ped.global_position = Vector2(start_x + spacing * i, y)
 		ped.relic_id = picks[i]
+		# Iter 235 / Fun Ideas R3 — Cursed Pickup variant. 10% chance per
+		# pedestal to spawn cursed; mythic is excluded inside the helper
+		# so the player's once-per-run mythic find isn't penalized.
+		# We pass null RNG → uses the default global randf, which is
+		# the same source the by_tier draw above uses (so the curse
+		# rolls inherit the room's RNG seeding from _visit_rng — no
+		# parallel seed needed).
+		var pick_info: Dictionary = GameState.relic_info(picks[i])
+		var pick_tier: String = str(pick_info.get("tier", "common"))
+		if CursedPickup.should_offer_cursed(pick_tier, null):
+			ped.cursed_curse_id = CursedPickup.pick_curse_id(null)
 		add_child(ped)
 
 # Iter 192 batch 3 — ritual framing for the relic offer. Two components:

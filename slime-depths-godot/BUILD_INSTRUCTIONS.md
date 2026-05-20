@@ -15,7 +15,7 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (22 tests)
+# Full audit (23 tests)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -25,12 +25,13 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter229_polish test_iter230_bulwark \
          test_iter231_reaction_web test_iter232_migration_v6_v8 \
          test_iter232_upgrade_tree test_iter232_achievements \
-         test_iter233_hero_status_chips test_iter234_moth; do
+         test_iter233_hero_status_chips test_iter234_moth \
+         test_iter235_cursed_pickup; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 22 should print PASS / OK.
+All 23 should print PASS / OK.
 
 ## Export presets (set up in Godot editor)
 
@@ -115,7 +116,8 @@ jobs:
                    tests/test_iter229_polish tests/test_iter230_bulwark \
                    tests/test_iter231_reaction_web tests/test_iter232_migration_v6_v8 \
                    tests/test_iter232_upgrade_tree tests/test_iter232_achievements \
-                   tests/test_iter233_hero_status_chips tests/test_iter234_moth; do
+                   tests/test_iter233_hero_status_chips tests/test_iter234_moth \
+                   tests/test_iter235_cursed_pickup; do
               godot --headless --script "$t.gd" || exit 1
           done
 ```

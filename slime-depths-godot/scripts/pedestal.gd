@@ -62,6 +62,27 @@ const DESC_FONT_SHRUNK: int = 13
 
 @export var relic_id: String = "iron_fang"
 
+# Iter 235 / Fun Ideas Team R3 — Cursed Pickup variant. When the main.gd
+# pedestal-offer roller picks a curse for this pedestal, it sets
+# cursed_curse_id to one of the CursedPickup.CURSE_CATALOG ids before
+# _ready fires. The pedestal then renders a dark-violet aura + badge,
+# and _claim applies the curse via CursedPickup.apply_curse alongside
+# the normal grant_relic. Empty string = uncursed (vast majority).
+@export var cursed_curse_id: String = ""
+
+# Iter 235 — cursed visual constants. Distinct from the tier palette so
+# a cursed COMMON still reads "this is the dangerous one" against an
+# adjacent clean LEGENDARY. The dark-violet sits between BoI curse-room
+# purple and Hades shop magenta — recognizable risk grammar.
+const CURSED_AURA_COLOR: Color = Color(0.55, 0.20, 0.65, 0.55)
+const CURSED_BADGE_BG: Color = Color(0.20, 0.08, 0.25, 0.90)
+const CURSED_BADGE_FG: Color = Color(0.95, 0.65, 1.0, 1.0)
+
+# Cached visual refs for the cursed overlay so _claim / _dismiss can
+# tween them in parallel with the orb fade. Both null on a clean pickup.
+var _cursed_aura: PointLight2D = null
+var _cursed_badge: Node2D = null
+
 # Iter 178 — Plinth is now a Node2D wrapper around 3 Polygon2Ds + 1
 # Line2D (was a single Panel). Same name + path so _claim / _dismiss
 # tweens that target `plinth.modulate:a` still work — Node2D inherits
@@ -164,6 +185,12 @@ func _ready() -> void:
 	# missing the field so a typo never makes the pedestal disappear.
 	var tier: String = str(info.get("tier", "common"))
 	_apply_tier_visuals(tier)
+	# Iter 235 — cursed pickup overlay. If main.gd's pedestal-offer roller
+	# tagged this pedestal as cursed before add_child, render the dark-
+	# violet aura + small CURSED badge above the name label so the
+	# player can SEE the risk from approach distance.
+	if cursed_curse_id != "":
+		_build_cursed_overlay()
 	# Iter 28 — swap in the real relic art with NORMALIZED scale.
 	# Source icons range 32×32 to 209×192 (same chaos that caused the
 	# iter-26 HUD bug). A flat 0.6 scale rendered 32-px icons at 19 px
@@ -588,6 +615,27 @@ func _claim() -> void:
 		if other != self and other.has_method("_dismiss"):
 			other._dismiss()
 	var granted: bool = GameState.grant_relic(relic_id)
+	# Iter 235 — apply the cursed-pickup curse alongside the relic grant.
+	# Folds through GameState.shrine_bonuses → modifier_total, same path
+	# as Pact Altar curses + Shrine of Vows boons. Only fires when the
+	# relic was actually granted (a re-pickup of an owned relic shouldn't
+	# re-apply the curse).
+	if granted and cursed_curse_id != "":
+		CursedPickup.apply_curse(cursed_curse_id, GameState)
+		# Tiny "+ curse name" floater above the standard pickup banner
+		# so the player gets explicit feedback on what just hit them.
+		var curse_entry: Dictionary = CursedPickup.get_curse(cursed_curse_id)
+		var curse_label: String = str(curse_entry.get("label", "CURSE"))
+		var num: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -140),
+			"+ " + curse_label,
+			CURSED_BADGE_FG,
+		)
+		var parent_node_curse: Node = get_parent()
+		if parent_node_curse != null:
+			parent_node_curse.add_child(num)
+		else:
+			num.queue_free()
 	# Spawn a pickup banner (damage-number-shaped). Yellow + bigger
 	# than damage numbers so it reads as a real beat.
 	var n: DamageNumber = DamageNumber.spawn(
@@ -641,6 +689,12 @@ func _claim() -> void:
 		tween.tween_property(_rare_ring, "modulate:a", 0.0, 0.35)
 	if _legendary_aura != null:
 		_legendary_aura.emitting = false
+	# Iter 235 — fade the cursed overlay alongside the orb. PointLight2D
+	# tweens energy → 0; the badge Node2D's children inherit modulate.
+	if _cursed_aura != null:
+		tween.tween_property(_cursed_aura, "energy", 0.0, 0.35)
+	if _cursed_badge != null:
+		tween.tween_property(_cursed_badge, "modulate:a", 0.0, 0.35)
 	tween.chain().tween_callback(queue_free)
 
 # Iter 16 — dismissed (un-chosen) sibling in a 3-pedestal offer. No
@@ -671,4 +725,85 @@ func _dismiss() -> void:
 		tween.tween_property(_rare_ring, "modulate:a", 0.0, 0.45)
 	if _legendary_aura != null:
 		_legendary_aura.emitting = false
+	# Iter 235 — fade the cursed overlay with the rest of the pedestal.
+	if _cursed_aura != null:
+		tween.tween_property(_cursed_aura, "energy", 0.0, 0.45)
+	if _cursed_badge != null:
+		tween.tween_property(_cursed_badge, "modulate:a", 0.0, 0.45)
 	tween.chain().tween_callback(queue_free)
+
+# Iter 235 / Fun Ideas Team R3 — Cursed pedestal overlay. Two parts:
+#   A) Dark-violet PointLight2D anchored at the orb's bob center, low
+#      energy + slow pulse — distinct from the tier glow's color +
+#      cadence so a cursed COMMON reads differently from a clean RARE
+#      at distance.
+#   B) Small CURSED badge (Polygon2D background + Label text) docked
+#      above the InfoPanel so the player sees both the relic name AND
+#      the curse name BEFORE pressing E. Reads "cursed pedestal" from
+#      anywhere on screen.
+#
+# Both nodes are tracked on _cursed_aura / _cursed_badge so the
+# _claim and _dismiss tweens above can fade them in parallel with the
+# orb. The pulse is driven by a self-restarting Tween on the aura so
+# we don't have to add another _process branch.
+func _build_cursed_overlay() -> void:
+	# A) Aura — dark-violet point light at orb center, low energy so it
+	# adds menace WITHOUT washing out the tier color underneath.
+	var aura: PointLight2D = PointLight2D.new()
+	aura.name = "CursedAura"
+	aura.color = CURSED_AURA_COLOR
+	aura.energy = 0.85
+	aura.texture_scale = 1.7
+	aura.position = Vector2(0, -80)  # match orb bob center
+	aura.range_z_min = -1024
+	aura.range_z_max = 1024
+	add_child(aura)
+	_cursed_aura = aura
+	# Slow pulse — separate from the orb's tier-glow pulse so the two
+	# don't sync up and merge visually. 1.6 s period chosen for "patient,
+	# hungry" feel rather than "active, ready."
+	var pulse_tween: Tween = aura.create_tween().set_loops()
+	pulse_tween.tween_property(aura, "energy", 1.25, 0.8)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse_tween.tween_property(aura, "energy", 0.65, 0.8)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# B) Badge — small "CURSED" label with a dark-violet pill background.
+	# Anchored above the InfoPanel so it's the FIRST thing the player
+	# reads when approaching the pedestal.
+	var badge: Node2D = Node2D.new()
+	badge.name = "CursedBadge"
+	badge.position = Vector2(0, -208)
+	add_child(badge)
+	_cursed_badge = badge
+	# Pill background — rounded rectangle approximated with a 12-vertex
+	# polygon (looks rounded enough at this size without the cost of
+	# a StyleBoxFlat). Width sized to fit "CURSED" at font_size 12.
+	var pill: Polygon2D = Polygon2D.new()
+	const PILL_HALF_W: float = 38.0
+	const PILL_HALF_H: float = 9.0
+	const PILL_R: float = 6.0
+	var pill_pts: PackedVector2Array = PackedVector2Array()
+	# Build rounded rect: 4 corner arcs joined by straight edges.
+	# 4 arcs × 4 verts each = 16 verts total — cheap.
+	for corner in 4:
+		var cx: float = (PILL_HALF_W - PILL_R) * (1 if (corner == 0 or corner == 3) else -1)
+		var cy: float = (PILL_HALF_H - PILL_R) * (1 if (corner >= 2) else -1)
+		var start_angle: float = float(corner) * (TAU / 4.0) - TAU * 0.25
+		for v in 4:
+			var ang: float = start_angle + (TAU / 16.0) * v
+			pill_pts.append(Vector2(cx + PILL_R * cos(ang), cy + PILL_R * sin(ang)))
+	pill.polygon = pill_pts
+	pill.color = CURSED_BADGE_BG
+	badge.add_child(pill)
+	# Label — "CURSED" at font_size 11, foreground in the magenta tint
+	# with a heavy outline for readability over any tier color or biome.
+	var label: Label = Label.new()
+	label.text = "CURSED"
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", CURSED_BADGE_FG)
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	label.add_theme_constant_override("outline_size", 3)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.position = Vector2(-PILL_HALF_W, -PILL_HALF_H - 1)
+	label.size = Vector2(PILL_HALF_W * 2.0, PILL_HALF_H * 2.0 + 2)
+	badge.add_child(label)
