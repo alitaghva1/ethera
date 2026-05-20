@@ -23,6 +23,9 @@ const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
 const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
+# Iter 227 / Fun Ideas Team — Pact Altar (Faustian bargain counterpart to
+# the shrine). Spawns as a 4th option in shrine rooms; player picks ONE.
+const PACT_ALTAR_SCENE: PackedScene = preload("res://scenes/pact_altar.tscn")
 const LORE_STONE_SCENE: PackedScene = preload("res://scenes/lore_stone.tscn")
 const FAMILIAR_SCENE: PackedScene = preload("res://scenes/familiar.tscn")
 # Iter 226 / Expansion Team — turret summon (SUMMON STONE relic). Code-
@@ -3934,6 +3937,37 @@ func _do_spawn_pending_shrines() -> void:
 		sh.set("stat_kind", kind)
 		add_child(sh)
 	_pending_shrine_spawns.clear()
+	# Iter 227 / Fun Ideas Team — spawn a PACT ALTAR as a 4th option in
+	# shrine rooms. The pact offers a stronger reward at the cost of a
+	# per-run curse, so the shrine room now has a "safe" axis (3 stat
+	# shrines) and a "risky" axis (1 pact altar) — Hades-flavor choice
+	# without growing the room count. Positioned below center so it
+	# reads as a distinct ritual offering, not a sibling shrine.
+	_spawn_pact_altar()
+
+# Iter 227 / Fun Ideas Team — single-instance Pact Altar spawner. Places
+# one altar at a fixed offset south of the shrine line. Self-contained
+# so the spawn beat lives in one place (and tests can introspect main.gd
+# source for the wiring without grepping the full _do_spawn_pending
+# function).
+func _spawn_pact_altar() -> void:
+	# Anchor position — directly south of the 3-shrine line so the player
+	# sees 4 ritual options on entry: 3 in front, 1 below. Falls back to
+	# the canonical (640, 480) center-south slot when shrine_positions is
+	# missing.
+	var altar_pos: Vector2 = Vector2(640, 480)
+	if _room != null and _room.has_method("get") and "shrine_positions" in _room:
+		var sp: Array = _room.shrine_positions
+		if not sp.is_empty():
+			# Take the average X of the shrine line, then 120px south.
+			var avg_x: float = 0.0
+			for p in sp:
+				avg_x += (p as Vector2).x
+			avg_x /= float(sp.size())
+			altar_pos = Vector2(avg_x, (sp[0] as Vector2).y + 120.0)
+	var altar: Node2D = PACT_ALTAR_SCENE.instantiate() as Node2D
+	altar.global_position = altar_pos
+	add_child(altar)
 
 func _spawn_pedestal_offer(count: int) -> void:
 	# Bucket all unowned relics by tier so the roller can pick a tier

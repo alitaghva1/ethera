@@ -18,6 +18,7 @@ const SCENES_TO_LOAD: Array[String] = [
 	"res://scenes/achievement_popup.tscn",
 	"res://scenes/door.tscn",
 	"res://scenes/shrine.tscn",
+	"res://scenes/pact_altar.tscn",
 	"res://scenes/chest.tscn",
 	"res://scenes/torch.tscn",
 	"res://scenes/pillar.tscn",

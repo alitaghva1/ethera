@@ -1,0 +1,19 @@
+[gd_scene load_steps=2 format=3 uid="uid://b9pactaltar0227"]
+
+[ext_resource type="Script" path="res://scripts/pact_altar.gd" id="1_script"]
+
+; Iter 227 / Fun Ideas Team — Ritual Pact Altar. Counterpart to the
+; iter-33 stat shrine. Where a shrine grants a pure boon, this altar
+; offers a boon + a per-run curse. Player picks ONE per shrine room:
+; safe shrine prayer OR risky pact bargain.
+;
+; All visuals (plinth, obelisk, rune, glow, labels) are code-built in
+; pact_altar.gd so adding a new pact entry stays a single-file edit on
+; the script's PACT_CATALOG array. The CollisionShape2D is also code-
+; built so the radius is governed by INTERACT_RADIUS.
+
+[node name="PactAltar" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
