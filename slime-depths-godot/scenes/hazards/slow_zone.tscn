@@ -201,6 +201,68 @@ polygon = PackedVector2Array(7, 0, 6, 4, 0, 6, -6, 4, -7, 0, -6, -4, 0, -6, 6, -
 color = Color(0.18, 0.24, 0.08, 0.60)
 z_index = 0
 
+; ── Iter 209 — Noita-tier material seepage. Pre-iter-209 the font had
+; 3 small Seep blots (iter-188) but no SUGGESTION of liquid actively
+; flowing out. New: 4 long thin TRAILS radiating outward like the
+; cursed liquid is leaking from the basin and snaking across the
+; floor. Plus 2 broader ACID STAINS just outside the rim — darker
+; bilious patches where the floor has been corroded by repeated
+; spills.
+; Z = 0 (same as the rim) so trails sit ON the floor decals but
+; UNDER the pool itself (which is at z = default 0 but drawn later
+; in tree). Bilious dark yellow-green for "this is old / aged
+; corrosion."
+
+; SeepTrailE — long thin trail extending east-southeast from the
+; basin. 12-vertex elongated diamond shape that tapers toward
+; the tip. Reads as "the liquid is running this way."
+[node name="SeepTrailE" type="Polygon2D" parent="."]
+position = Vector2(48, 8)
+polygon = PackedVector2Array(0, -3, 12, -2, 28, -1, 48, 0, 64, 1, 48, 2, 28, 2, 12, 2, 0, 3, -8, 2, -12, 0, -8, -2)
+color = Color(0.20, 0.28, 0.10, 0.62)
+rotation = 0.4
+z_index = 0
+
+; SeepTrailNW — short trail to northwest, where the floor cracks lead.
+[node name="SeepTrailNW" type="Polygon2D" parent="."]
+position = Vector2(-42, -22)
+polygon = PackedVector2Array(0, -2, 10, -1, 22, 0, 38, 0, 30, 1, 18, 2, 8, 2, 0, 2, -6, 1, -10, 0, -6, -1)
+color = Color(0.18, 0.24, 0.08, 0.55)
+rotation = -2.6
+z_index = 0
+
+; SeepTrailSW — secondary trail to southwest, longer.
+[node name="SeepTrailSW" type="Polygon2D" parent="."]
+position = Vector2(-44, 32)
+polygon = PackedVector2Array(0, -3, 14, -2, 32, -1, 52, 0, 40, 1, 24, 2, 10, 2, 0, 3, -8, 2, -14, 0, -10, -1)
+color = Color(0.22, 0.28, 0.10, 0.58)
+rotation = 2.4
+z_index = 0
+
+; SeepTrailN — small upward trail toward the north rim crack.
+[node name="SeepTrailN" type="Polygon2D" parent="."]
+position = Vector2(8, -50)
+polygon = PackedVector2Array(0, -2, 6, -1, 14, 0, 22, 0, 14, 1, 6, 1, 0, 1, -4, 0, -6, 0)
+color = Color(0.18, 0.24, 0.08, 0.48)
+rotation = -1.6
+z_index = 0
+
+; AcidStainE — broader darker patch east of the rim where the SeepTrailE
+; pools into a residue zone. Reads as "the alchemical liquid has been
+; here long enough to ETCH the stone — the floor is permanently stained."
+[node name="AcidStainE" type="Polygon2D" parent="."]
+position = Vector2(78, 12)
+polygon = PackedVector2Array(14, 0, 12, 7, 7, 12, 0, 14, -7, 12, -12, 7, -14, 0, -12, -7, -7, -12, 0, -14, 7, -12, 12, -7)
+color = Color(0.14, 0.18, 0.06, 0.55)
+z_index = -1
+
+; AcidStainSW — secondary acid pool southwest.
+[node name="AcidStainSW" type="Polygon2D" parent="."]
+position = Vector2(-72, 38)
+polygon = PackedVector2Array(11, 0, 9, 6, 5, 9, 0, 11, -5, 9, -9, 6, -11, 0, -9, -6, -5, -9, 0, -11, 5, -9, 9, -6)
+color = Color(0.14, 0.18, 0.06, 0.50)
+z_index = -1
+
 ; Iter 189 batch 2 — toxic light emission. The cursed well becomes
 ; an actual LIGHT SOURCE in the room: pillars near it cast greenish
 ; shadows, walls catch the toxic glow, hero standing close visually

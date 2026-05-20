@@ -1234,6 +1234,13 @@ func _spawn_room_chrome() -> void:
 	# room, seeded per room. Reads as "this hall has SEEN AGE" —
 	# environmental storytelling for the Outer Hall crypt theme.
 	_spawn_perimeter_rubble()
+	# Iter 209 batch 2 — Noita-tier material storytelling. 2-3 small
+	# authored clusters per room implying environmental damage history:
+	# burn scrape near torch, dried blood near wall, fungal patch near
+	# corner, cracked-stone corruption leak. Sparse and DELIBERATE (not
+	# random scatter — these read as authored "something happened here"
+	# moments). Adds the "the room is alive and hostile" Noita feel.
+	_spawn_material_story_clusters()
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).
@@ -2164,6 +2171,163 @@ func _spawn_perimeter_rubble() -> void:
 			)
 			chunk.z_index = 1
 			add_child(chunk)
+
+# Iter 209 batch 2 — material storytelling clusters. Per Noita inspiration:
+# the room is alive and CONTAMINATED. Authored sparse marks that imply
+# environmental damage history.
+# Each cluster is one of:
+#   "burn_scrape"   — charcoal streaks near a torch
+#   "blood_smear"   — dried red blots near a wall
+#   "fungal_patch"  — small green spores cluster (corner)
+#   "corruption_crack" — dark line + tiny green leak (cracked floor)
+# Per-room seeded RNG picks 2-3 of these per room, placed at
+# perimeter zones away from combat lanes. AUTHORED, not random
+# confetti — sparse + deliberate.
+const MATERIAL_CLUSTER_KINDS: Array[String] = [
+	"burn_scrape",
+	"blood_smear",
+	"fungal_patch",
+	"corruption_crack",
+]
+
+const MATERIAL_CLUSTER_POSITIONS: Array[Vector2] = [
+	Vector2(180, 200),   # near top-left wall
+	Vector2(180, 568),   # near bottom-left wall
+	Vector2(1100, 200),  # near top-right wall
+	Vector2(1100, 568),  # near bottom-right wall
+	Vector2(640, 144),   # near top center wall
+	Vector2(640, 624),   # near bottom center wall
+]
+
+func _spawn_material_story_clusters() -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 12289 + GameState.dungeon_runs * 23 + 79
+	# Pick 2-3 cluster positions
+	var num: int = rng.randi_range(2, 3)
+	var pool: Array[Vector2] = MATERIAL_CLUSTER_POSITIONS.duplicate()
+	for i in range(num):
+		if pool.is_empty():
+			break
+		var idx: int = rng.randi() % pool.size()
+		var pos: Vector2 = pool[idx]
+		pool.remove_at(idx)
+		# Pick a kind for this cluster
+		var kind: String = MATERIAL_CLUSTER_KINDS[rng.randi() % MATERIAL_CLUSTER_KINDS.size()]
+		_spawn_material_cluster_at(pos, kind, rng)
+
+func _spawn_material_cluster_at(pos: Vector2, kind: String, rng: RandomNumberGenerator) -> void:
+	match kind:
+		"burn_scrape":
+			# Charcoal streaks fanning out — short irregular black lines.
+			# Reads as "fire scrape across the stone." 3-4 streaks at
+			# slight angle variations.
+			var num_streaks: int = rng.randi_range(3, 4)
+			for k in range(num_streaks):
+				var streak: Polygon2D = Polygon2D.new()
+				var len_streak: float = rng.randf_range(10.0, 18.0)
+				var wid: float = rng.randf_range(1.5, 2.5)
+				streak.polygon = PackedVector2Array([
+					Vector2(0, -wid * 0.5),
+					Vector2(len_streak, -wid * 0.3),
+					Vector2(len_streak * 1.05, 0),
+					Vector2(len_streak, wid * 0.3),
+					Vector2(0, wid * 0.5),
+				])
+				streak.position = pos + Vector2(
+					rng.randf_range(-6.0, 6.0),
+					rng.randf_range(-4.0, 4.0)
+				)
+				streak.rotation = rng.randf_range(-0.4, 0.4)
+				streak.color = Color(0.04, 0.03, 0.03, rng.randf_range(0.55, 0.80))
+				streak.z_index = -1
+				add_child(streak)
+		"blood_smear":
+			# Dried red blots — 3-4 irregular dark-red polygons clustered.
+			# Reads as "old wound, dried in place."
+			var num_blots: int = rng.randi_range(3, 4)
+			for k in range(num_blots):
+				var blot: Polygon2D = Polygon2D.new()
+				var r1: float = rng.randf_range(3.0, 6.0)
+				var pts: PackedVector2Array = PackedVector2Array()
+				var verts: int = 6
+				for v in range(verts):
+					var t: float = float(v) / verts * TAU
+					var radius: float = r1 * rng.randf_range(0.5, 1.0)
+					pts.append(Vector2(cos(t) * radius, sin(t) * radius))
+				blot.polygon = pts
+				blot.position = pos + Vector2(
+					rng.randf_range(-10.0, 10.0),
+					rng.randf_range(-6.0, 6.0)
+				)
+				blot.color = Color(0.22, 0.05, 0.04, rng.randf_range(0.60, 0.80))
+				blot.z_index = -1
+				add_child(blot)
+		"fungal_patch":
+			# Small green spore cluster — 4-5 pale-green dots, varying
+			# sizes, plus a slightly larger sickly-green base patch.
+			# Reads as "moisture rot."
+			var base: Polygon2D = Polygon2D.new()
+			var br: float = rng.randf_range(6.0, 10.0)
+			var bpts: PackedVector2Array = PackedVector2Array()
+			for v in range(8):
+				var t: float = float(v) / 8 * TAU
+				var rad: float = br * rng.randf_range(0.5, 1.0)
+				bpts.append(Vector2(cos(t) * rad, sin(t) * rad))
+			base.polygon = bpts
+			base.position = pos
+			base.color = Color(0.18, 0.28, 0.10, 0.55)
+			base.z_index = -1
+			add_child(base)
+			# Spore dots — small lighter green
+			var num_spores: int = rng.randi_range(4, 6)
+			for k in range(num_spores):
+				var spore: Polygon2D = Polygon2D.new()
+				var sr: float = rng.randf_range(1.2, 2.4)
+				spore.polygon = PackedVector2Array([
+					Vector2(sr, 0), Vector2(0, sr),
+					Vector2(-sr, 0), Vector2(0, -sr),
+				])
+				spore.position = pos + Vector2(
+					rng.randf_range(-8.0, 8.0),
+					rng.randf_range(-6.0, 6.0)
+				)
+				spore.color = Color(0.45, 0.62, 0.28, rng.randf_range(0.55, 0.78))
+				spore.z_index = -1
+				add_child(spore)
+		"corruption_crack":
+			# Dark cracked line + tiny green ooze leak. Reads as "the
+			# floor split here and the cursed material is seeping
+			# through." Long dark Line2D + small green Polygon at one end.
+			var crack: Line2D = Line2D.new()
+			var crack_len: float = rng.randf_range(16.0, 24.0)
+			crack.points = PackedVector2Array([
+				Vector2(0, 0),
+				Vector2(crack_len * 0.4, rng.randf_range(-3.0, 3.0)),
+				Vector2(crack_len, rng.randf_range(-4.0, 4.0)),
+			])
+			crack.position = pos
+			crack.width = 1.5
+			crack.default_color = Color(0.03, 0.03, 0.04, 0.85)
+			crack.antialiased = true
+			crack.rotation = rng.randf_range(0.0, TAU)
+			crack.z_index = -1
+			add_child(crack)
+			# Green leak at the crack tip
+			var leak: Polygon2D = Polygon2D.new()
+			var lr: float = rng.randf_range(3.0, 5.0)
+			var lpts: PackedVector2Array = PackedVector2Array()
+			for v in range(8):
+				var t: float = float(v) / 8 * TAU
+				lpts.append(Vector2(cos(t) * lr, sin(t) * lr * 0.7))
+			leak.polygon = lpts
+			# Position at the crack's end point in world coords.
+			var crack_end_local: Vector2 = Vector2(crack_len, 0).rotated(crack.rotation)
+			leak.position = pos + crack_end_local
+			leak.color = Color(0.20, 0.30, 0.10, 0.68)
+			leak.z_index = -1
+			add_child(leak)
+		_:
+			pass
 
 # Wall overlays — 2-3 random PixelLab decals placed on the perimeter
 # wall mass per room. Sits at z = 1 so it's above the wall mass and the
