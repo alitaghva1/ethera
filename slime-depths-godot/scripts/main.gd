@@ -515,6 +515,14 @@ func _ready() -> void:
 		# biome has its own distinct stone tone, not just a tinted view
 		# of the same color.
 		_apply_biome_palette(_room.biome)
+		# Iter 218 / Beta M0.A — per-biome music swap. Audit found 5 of 6
+		# OGG tracks (vault/abyss/inferno/boss + per-biome routing) were
+		# unwired. Boss rooms get the boss track instead.
+		if Audio != null:
+			if _room.is_last_room and Audio.has_method("play_boss_music"):
+				Audio.play_boss_music()
+			elif Audio.has_method("play_music_for_biome"):
+				Audio.play_music_for_biome(_room.biome)
 		_spawn_torches(_room.torch_positions)
 		# Decor — collidable stone pillars + breakable chests. Both spawn
 		# from per-room arrays in the same data-driven shape as torches.

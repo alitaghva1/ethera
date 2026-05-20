@@ -782,11 +782,39 @@ const MUSIC_TRACKS := {
 # to SCENE_TO_AMBIENT — same trigger, different lookup. Death screens
 # and other scenes fall through to silence so the music doesn't keep
 # playing while the player reads menus mid-run.
+# Note: main.tscn maps to "crypt" as the DEFAULT — biome music swap
+# happens via play_music_for_biome() called from main.gd after the
+# room's biome is resolved.
 const SCENE_TO_MUSIC := {
 	"res://scenes/main_menu.tscn":       "ambient",
 	"res://scenes/settings_screen.tscn": "ambient",
 	"res://scenes/main.tscn":            "crypt",
 }
+
+# Iter 218 / Beta M0.A — Per-biome music routing. Five OGGs were
+# preloaded in MUSIC_TRACKS but only "crypt" and "ambient" were ever
+# wired. This dict maps RoomConfig.biome → track id so each biome
+# carries its own atmosphere. Boss rooms override via play_boss_music().
+const BIOME_TO_MUSIC := {
+	"crypt":     "crypt",     # cool stone — established main theme
+	"ossuary":   "abyss",     # bone-pale dread, abyssal palette match
+	"ember":     "inferno",   # ember biome → inferno track
+	"sanctuary": "vault",     # sanctified, vault echoes
+}
+
+# Public — called from main.gd after _room.biome is resolved on room
+# entry. Looks up the biome → track mapping and crossfades. Unknown
+# biomes fall through to the default crypt track. No-op if the target
+# track is already playing (the crossfade guard short-circuits).
+func play_music_for_biome(biome: String) -> void:
+	var track_id: String = BIOME_TO_MUSIC.get(biome, "crypt")
+	_crossfade_music_to(track_id)
+
+# Public — called from main.gd when a boss room begins. Switches to
+# the dedicated boss track regardless of biome. Safe to call multiple
+# times (crossfade guard short-circuits).
+func play_boss_music() -> void:
+	_crossfade_music_to("boss")
 
 # ── Music state ───────────────────────────────────────────────────────
 var _music_player_a: AudioStreamPlayer = null

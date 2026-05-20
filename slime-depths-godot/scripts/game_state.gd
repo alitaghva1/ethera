@@ -450,7 +450,7 @@ const RELIC_REGISTRY := {
 		"name": "EMBERS OF RUIN",
 		"description": "+25% chance for hits to ignite enemies. Burning enemies take 1 damage every 0.4s for 1.6s.",
 		"tier": "rare",
-		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": { "burn_chance_f": 0.25 },
 		"themes": ["flame"],
 	},
@@ -487,7 +487,7 @@ const RELIC_REGISTRY := {
 		"name": "COMBUSTION CORE",
 		"description": "+20% chance for kills to detonate a 72-px AoE for 2 damage.",
 		"tier": "rare",
-		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": { "explode_on_kill_chance_f": 0.20 },
 		"themes": ["flame"],
 	},
@@ -495,7 +495,7 @@ const RELIC_REGISTRY := {
 		"name": "DETONATOR",
 		"description": "+40% chance for kills to detonate a 72-px AoE for 2 damage. The brood remembers fire.",
 		"tier": "legendary",
-		"icon_path": "res://assets/icons/relic_cataclysm.png",
+		"icon_path": "res://assets/icons/relic_soul_burst.png",
 		"mods": { "explode_on_kill_chance_f": 0.40 },
 		"themes": ["flame"],
 	},
@@ -550,7 +550,7 @@ const RELIC_REGISTRY := {
 		"name": "CATACLYSM",
 		"description": "+50% chance for kills to detonate a 72-px AoE for 2 damage. +25% chance for hits to ignite. The dungeon answers your hunger.",
 		"tier": "mythic",
-		"icon_path": "res://assets/icons/relic_cataclysm.png",
+		"icon_path": "res://assets/icons/relic_soul_burst.png",
 		"mods": { "explode_on_kill_chance_f": 0.50, "burn_chance_f": 0.25 },
 		"themes": ["flame"],
 	},
@@ -632,7 +632,7 @@ const RELIC_REGISTRY := {
 		"name": "ASHEN SEAL",
 		"description": "Press [R] to scorch a sigil at your feet — enemies within 80 px catch fire for 4 s. 20 s cooldown.",
 		"tier": "legendary",
-		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": {
 			"active_ashen_seal": 1,
 		},
@@ -686,7 +686,7 @@ const RELIC_REGISTRY := {
 		"name": "SPLIT CINDER",
 		"description": "Every 3rd blast also fires 2 ember sub-shots at ±30°. Smaller, single-damage, but extra coverage.",
 		"tier": "rare",
-		"icon_path": "res://assets/icons/relic_pyromancer.png",
+		"icon_path": "res://assets/icons/relic_phoenix.png",
 		"mods": {
 			"split_cinder_active": 1,
 		},
@@ -1064,7 +1064,7 @@ var master_volume: float = 0.7
 # easiest to diff in a text editor when debugging save files.
 func save_to_dict() -> Dictionary:
 	return {
-		"save_version": 5,   # iter 158 — added last_run_time / best_run_time
+		"save_version": SAVE_VERSION_CURRENT,   # iter 218 — extracted constant for migration
 		"owned_relics": owned_relics,
 		"session_kills": session_kills,
 		"dungeon_runs": dungeon_runs,
@@ -1078,12 +1078,74 @@ func save_to_dict() -> Dictionary:
 		"has_completed_tutorial": has_completed_tutorial,
 	}
 
+# Current save schema version. Bump when fields are added/removed in a
+# breaking way; add a corresponding migration step in _migrate_save_dict.
+# Iter 218 / Beta M0.F — extracted as a constant so `_migrate_save_dict`
+# can target it explicitly and tests can introspect.
+const SAVE_VERSION_CURRENT: int = 5
+
+# Iter 218 / Beta M0.F — Save migration foundation. The audit found
+# save_version was written but never read on load — any future schema
+# break would silently corrupt or drop player progress. This helper is
+# now called at the top of load_from_dict; it normalizes an arbitrary
+# (older) save into the CURRENT schema shape. Each version bump that
+# breaks shape MUST add a step here.
+#
+# Convention: migrations are forward-only (v3 → v4 → v5 step-by-step,
+# never v3 → v5 directly). Keeps each step small and auditable.
+func _migrate_save_dict(d: Dictionary) -> Dictionary:
+	var from_version: int = int(d.get("save_version", 0))
+	# Already current — nothing to do.
+	if from_version >= SAVE_VERSION_CURRENT:
+		return d
+	# v0 → v1: pre-versioned saves (no save_version key, no
+	# best_run_kills). Fall through to v1+ logic below.
+	if from_version < 1:
+		# Initialize the new fields with safe defaults; later
+		# migrations may refine.
+		if not d.has("best_run_kills"):
+			d["best_run_kills"] = d.get("last_run_kills", 0)
+		from_version = 1
+	# v1 → v2: introduced master_volume.
+	if from_version < 2:
+		if not d.has("master_volume"):
+			d["master_volume"] = 0.7
+		from_version = 2
+	# v2 → v3: introduced unlocked_achievements.
+	if from_version < 3:
+		if not d.has("unlocked_achievements"):
+			d["unlocked_achievements"] = []
+		from_version = 3
+	# v3 → v4: introduced has_seen_controls_hint.
+	if from_version < 4:
+		if not d.has("has_seen_controls_hint"):
+			d["has_seen_controls_hint"] = false
+		from_version = 4
+	# v4 → v5: introduced last_run_time, best_run_time,
+	# has_completed_tutorial.
+	if from_version < 5:
+		if not d.has("last_run_time"):
+			d["last_run_time"] = 0.0
+		if not d.has("best_run_time"):
+			d["best_run_time"] = -1.0
+		if not d.has("has_completed_tutorial"):
+			d["has_completed_tutorial"] = false
+		from_version = 5
+	# Future versions: add `if from_version < N:` block here.
+	d["save_version"] = SAVE_VERSION_CURRENT
+	return d
+
 # Tolerant loader: every field has a default, missing keys are ignored,
 # wrong-type values fall back to defaults. This is the forward-compat
 # contract for older save files (e.g. a v0 file with no master_volume
 # still loads, just keeps the default volume). JSON round-trips ints
 # as floats, so we coerce numeric fields back to int explicitly.
+# Iter 218 / Beta M0.F — runs _migrate_save_dict FIRST so an older
+# schema is normalized to current before per-field reads. Each per-
+# field read already had its own default, so this is belt-and-suspenders,
+# but explicit migration makes future breaking-change paths obvious.
 func load_from_dict(d: Dictionary) -> void:
+	d = _migrate_save_dict(d)
 	session_kills = int(d.get("session_kills", 0))
 	dungeon_runs = int(d.get("dungeon_runs", 0))
 	last_run_kills = int(d.get("last_run_kills", 0))

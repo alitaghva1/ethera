@@ -150,16 +150,80 @@ func _on_settings_pressed() -> void:
 	)
 
 func _on_quit_pressed() -> void:
-	# No confirm — fast path. If the player ESC'd by mistake they
-	# hit RESUME first. Unpause + RunState.end_floor() so the menu
-	# reads a clean slate (parallels what _on_death_to_menu does in
-	# main.gd on the death path).
-	#
-	# iter-114: ui_press cue + fade-to-black before the scene change,
-	# matching the dungeon→menu fade pattern from iter-112. Pre-iter-114
-	# this transition hard-cut from "paused dungeon under overlay" to
-	# "main menu" — incongruous with every other nav fade in the game.
+	# Iter 218 / Beta M0.C — Quit confirmation modal. Pre-iter-218 this
+	# was a no-confirm fast path that the UX audit flagged: one misclick
+	# on a 30-minute clear run was unrecoverable since the next BEGIN
+	# wipes owned_relics. Now we show a small confirm modal; the
+	# original quit code runs only after explicit YES.
 	Audio.play_ui_cue("ui_press", -2.0)
+	_show_quit_confirm()
+
+func _show_quit_confirm() -> void:
+	# Inline confirm — a small CenterContainer panel with YES / NO
+	# buttons + a one-line warning. Modal because process_mode is
+	# WHEN_PAUSED on the pause root (already paused tree); buttons
+	# inherit. We hide the underlying pause menu children while the
+	# confirm is up so the player isn't visually distracted.
+	var confirm: Control = Control.new()
+	confirm.name = "QuitConfirm"
+	confirm.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(confirm)
+	# Dim background
+	var dim: ColorRect = ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.62)
+	confirm.add_child(dim)
+	# Center panel
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	confirm.add_child(center)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.custom_minimum_size = Vector2(440, 0)
+	box.add_theme_constant_override("separation", 12)
+	center.add_child(box)
+	var title: Label = Label.new()
+	title.text = "Abandon the run?"
+	title.add_theme_color_override("font_color", Color(0.95, 0.92, 0.85))
+	title.add_theme_font_size_override("font_size", 26)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var warn: Label = Label.new()
+	warn.text = "All relics and progress this run will be lost."
+	warn.add_theme_color_override("font_color", Color(0.78, 0.72, 0.62))
+	warn.add_theme_font_size_override("font_size", 14)
+	warn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(warn)
+	var row: HBoxContainer = HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 16)
+	box.add_child(row)
+	var yes_btn: Button = Button.new()
+	yes_btn.text = "YES, ABANDON"
+	yes_btn.custom_minimum_size = Vector2(160, 36)
+	row.add_child(yes_btn)
+	var no_btn: Button = Button.new()
+	no_btn.text = "CANCEL"
+	no_btn.custom_minimum_size = Vector2(120, 36)
+	row.add_child(no_btn)
+	# Hide existing pause buttons while confirm is up.
+	for child in get_children():
+		if child is Control and child != confirm:
+			(child as Control).visible = false
+	# Default focus on CANCEL — safer if the player taps Enter
+	# reflexively.
+	no_btn.grab_focus()
+	yes_btn.pressed.connect(_quit_confirmed)
+	no_btn.pressed.connect(func() -> void:
+		confirm.queue_free()
+		for child in get_children():
+			if child is Control and child != confirm:
+				(child as Control).visible = true
+		resume_button.grab_focus()
+	)
+
+func _quit_confirmed() -> void:
+	# Original quit path — extracted so the YES button calls it cleanly.
 	get_tree().paused = false
 	if Engine.get_main_loop().root.has_node("/root/RunState"):
 		var rs: Node = Engine.get_main_loop().root.get_node("/root/RunState")
