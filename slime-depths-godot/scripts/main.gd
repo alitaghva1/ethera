@@ -248,6 +248,19 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 # script untouched (Polish Team mandate — no hero.gd edits).
 var _ability_cd_strip: HBoxContainer = null
 var _ability_cd_chips: Dictionary = {}  # action_id (String) → Label
+
+# iter-229 / Polish Team R2 — elite affix tooltip card. Code-built
+# Panel positioned in world space (Control parented to $UI CanvasLayer
+# but tracked to the hovered/proximate elite enemy via _process). Shows
+# the enemy's display_name + the affix name + a one-line rules string
+# from ELITE_AFFIX_DESCRIPTIONS. Hidden when no elite is within
+# proximity. Auto-tints the border by affix color so the tooltip reads
+# part-of the same visual family as the enemy's sprite tint.
+var _affix_tooltip_panel: Panel = null
+var _affix_tooltip_name_label: Label = null
+var _affix_tooltip_desc_label: Label = null
+var _affix_tooltip_target: Node = null  # currently tracked enemy
+const AFFIX_TOOLTIP_PROXIMITY: float = 96.0  # px hero→enemy to surface
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -674,6 +687,10 @@ func _ready() -> void:
 	# the resting state is empty + invisible — only appearing during
 	# the brief windows when an ability is cooling.
 	_build_ability_cooldown_strip()
+	# iter-229 / Polish Team R2 — elite affix tooltip card. Built once,
+	# polled per-frame against the enemies group. Hidden when no elite
+	# is within proximity so resting state is invisible.
+	_build_affix_tooltip()
 	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
 	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
 	#
@@ -736,6 +753,11 @@ func _process(_delta: float) -> void:
 	# when CD<=0 so the strip is empty most of the time and only
 	# appears during the brief windows when an ability is cooling.
 	_update_ability_cooldown_chips()
+	# iter-229 / Polish Team R2 — elite affix tooltip. Polled every
+	# frame: find the closest elite within AFFIX_TOOLTIP_PROXIMITY of
+	# the hero, surface its name + affix line. Empty when no elite is
+	# close (the common case in early floors and during boss fights).
+	_update_affix_tooltip()
 	# Iter 160 — tutorial progression. Cheap branch when state is OFF
 	# (early-out on the first line) so the polling cost is negligible
 	# in the steady state.
@@ -5474,6 +5496,151 @@ func _update_ability_cooldown_chips() -> void:
 			"font_color", Color(col.r * 0.78, col.g * 0.78, col.b * 0.78, 0.86)
 		)
 
+# ── iter-229 / Polish Team R2 — elite affix tooltip card ─────────────
+# UX audit risk: elite enemies tint subtly (frost cyan, ember red,
+# venom green, warded silver-gold) but the player has no in-game way
+# to learn WHAT each affix does — they learn by death (slow → stuck
+# in a swarm; ember → killed by the post-mortem explosion they didn't
+# know was coming). This tooltip surfaces the rules text the moment
+# the hero approaches an elite, so the lesson lands BEFORE the kill.
+#
+# Design: passive proximity surface — no input, no targeting cursor.
+# When the hero is within AFFIX_TOOLTIP_PROXIMITY (96 px) of an elite
+# enemy, the panel shows above the enemy's head with the affix name
+# + one-line description. Multiple elites in range → tracks the
+# CLOSEST. Code-built Panel + Labels parented to $UI so they survive
+# scene scrolling (HUD layer, not world layer).
+func _build_affix_tooltip() -> void:
+	if _affix_tooltip_panel != null and is_instance_valid(_affix_tooltip_panel):
+		return
+	var ui_root: CanvasLayer = $UI
+	if ui_root == null:
+		return
+	_affix_tooltip_panel = Panel.new()
+	_affix_tooltip_panel.name = "AffixTooltipPanel"
+	_affix_tooltip_panel.visible = false
+	_affix_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_affix_tooltip_panel.custom_minimum_size = Vector2(280, 56)
+	# Subtle dark panel — same family as the pickup banner / boss intro
+	# label so the tooltip reads "informational HUD" not "world prop."
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.04, 0.05, 0.92)
+	sb.border_color = Color(0.78, 0.65, 0.41, 1.0)  # default gold; recolored per-affix on show
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(3)
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	_affix_tooltip_panel.add_theme_stylebox_override("panel", sb)
+	ui_root.add_child(_affix_tooltip_panel)
+	# Name label — "FROST SLIME" style; gets the affix color at show time.
+	_affix_tooltip_name_label = Label.new()
+	_affix_tooltip_name_label.text = ""
+	_affix_tooltip_name_label.add_theme_font_size_override("font_size", 14)
+	_affix_tooltip_name_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.66, 1))
+	_affix_tooltip_name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	_affix_tooltip_name_label.add_theme_constant_override("outline_size", 2)
+	_affix_tooltip_name_label.position = Vector2(10, 4)
+	_affix_tooltip_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_affix_tooltip_panel.add_child(_affix_tooltip_name_label)
+	# Description label — one line of rules text, cream-grey.
+	_affix_tooltip_desc_label = Label.new()
+	_affix_tooltip_desc_label.text = ""
+	_affix_tooltip_desc_label.add_theme_font_size_override("font_size", 12)
+	_affix_tooltip_desc_label.add_theme_color_override("font_color", Color(0.86, 0.80, 0.66, 1))
+	_affix_tooltip_desc_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+	_affix_tooltip_desc_label.add_theme_constant_override("outline_size", 1)
+	_affix_tooltip_desc_label.position = Vector2(10, 26)
+	_affix_tooltip_desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_affix_tooltip_panel.add_child(_affix_tooltip_desc_label)
+
+# Polled in _process. Walks the enemies group, finds the closest
+# elite within proximity, populates + positions the tooltip. Hides
+# the panel when no eligible elite is in range.
+#
+# Performance: O(N) over the enemies group each frame, but we early-out
+# on non-elite enemies (the `elite_affix == ""` check) and the group
+# typically has <30 entries per room. Cheaper than wiring an enter/
+# exit area2D signal pair to every spawn (which would touch the spawn
+# pipeline + risk leaks on cleanup).
+func _update_affix_tooltip() -> void:
+	if _affix_tooltip_panel == null or not is_instance_valid(_affix_tooltip_panel):
+		return
+	if hero == null or not is_instance_valid(hero):
+		_affix_tooltip_panel.visible = false
+		_affix_tooltip_target = null
+		return
+	# Find the closest elite within proximity.
+	var hero_pos: Vector2 = hero.global_position
+	var best: Node2D = null
+	var best_dist: float = AFFIX_TOOLTIP_PROXIMITY
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(node) or not (node is Node2D):
+			continue
+		var n2d: Node2D = node as Node2D
+		# Only elites carry a non-empty elite_affix. Non-elites + bosses
+		# (which keep elite_affix == "" by spawn rule) are skipped.
+		var affix: String = str(n2d.get("elite_affix"))
+		if affix == "":
+			continue
+		# Don't surface dying corpses — the tooltip would linger past
+		# the actual threat being relevant.
+		if n2d.get("_dying"):
+			continue
+		var d: float = hero_pos.distance_to(n2d.global_position)
+		if d <= best_dist:
+			best = n2d
+			best_dist = d
+	if best == null:
+		_affix_tooltip_panel.visible = false
+		_affix_tooltip_target = null
+		return
+	# Found a closest elite — populate + show.
+	_affix_tooltip_target = best
+	var affix: String = str(best.get("elite_affix"))
+	var et: Variant = best.get("enemy_type")
+	var enemy_name: String = ""
+	if et != null and "display_name" in et:
+		enemy_name = str(et.get("display_name"))
+	var affix_name: String = str(Enemy.ELITE_AFFIX_NAMES.get(affix, affix.to_upper()))
+	var affix_desc: String = str(Enemy.ELITE_AFFIX_DESCRIPTIONS.get(affix, ""))
+	var tint: Color = Enemy.ELITE_AFFIX_TINTS.get(affix, Color(0.78, 0.65, 0.41, 1)) as Color
+	# Saturate the tint slightly for the header so it reads as a stamp,
+	# not a sprite modulate (which is already on the enemy itself).
+	_affix_tooltip_name_label.text = "%s %s" % [affix_name, enemy_name.to_upper()]
+	_affix_tooltip_name_label.add_theme_color_override(
+		"font_color", Color(tint.r, tint.g, tint.b, 1.0)
+	)
+	_affix_tooltip_desc_label.text = affix_desc
+	# Recolor border to match the affix.
+	var sb_v: Variant = _affix_tooltip_panel.get_theme_stylebox("panel")
+	if sb_v is StyleBoxFlat:
+		(sb_v as StyleBoxFlat).border_color = tint
+	# Position above the enemy's head in screen space. Camera transform
+	# converts world → screen for the CanvasLayer-parented panel.
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	var screen_pos: Vector2 = best.global_position
+	if cam != null:
+		screen_pos = (best.global_position - cam.global_position) \
+			+ get_viewport().get_visible_rect().size * 0.5
+	# Center the panel over the head, lifted ~80 px above the enemy.
+	var panel_size: Vector2 = _affix_tooltip_panel.custom_minimum_size
+	_affix_tooltip_panel.position = Vector2(
+		screen_pos.x - panel_size.x * 0.5,
+		screen_pos.y - 110.0
+	)
+	# Clamp inside viewport — a tooltip clipping off-screen reads as a
+	# bug. 8 px breathing room on each edge.
+	var vp_size: Vector2 = get_viewport().get_visible_rect().size
+	_affix_tooltip_panel.position.x = clamp(
+		_affix_tooltip_panel.position.x, 8.0, vp_size.x - panel_size.x - 8.0
+	)
+	_affix_tooltip_panel.position.y = clamp(
+		_affix_tooltip_panel.position.y, 8.0, vp_size.y - panel_size.y - 8.0
+	)
+	_affix_tooltip_panel.visible = true
+
 # Iter 158 — format current run elapsed seconds as "m:ss" into the
 # HUD label. Reads RunState.run_elapsed_seconds() (returns 0.0 when
 # not in an active run, so the HUD stays at "0:00" on edge cases).
@@ -5978,6 +6145,14 @@ func _on_hero_died() -> void:
 	# immediately inside finalize_run_time() so a crash mid-cinematic
 	# doesn't lose the time.
 	GameState.finalize_run_time()
+	# iter-229 / Polish Team R2 — snapshot the hero's last-damage-source
+	# + biggest-hit-this-run into GameState so the death_screen run
+	# summary can render them. Mirrors the finalize_run_time pattern: a
+	# one-shot copy from the dying hero into a stable autoload slot.
+	if hero != null and is_instance_valid(hero) and GameState.has_method("finalize_run_death_stats"):
+		var src: String = str(hero.get("_last_damage_source_name"))
+		var biggest: int = int(hero.get("_biggest_hit_taken"))
+		GameState.finalize_run_death_stats(src, biggest)
 	# Iter 22 — DO NOT reset Engine.time_scale here. The cinematic
 	# triggered by hero_death_started owns the time scale for the next
 	# 1.6 seconds (slow-mo to 0.25 then back to 1.0) and queues the

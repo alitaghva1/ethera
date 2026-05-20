@@ -140,6 +140,14 @@ func show_death(kills: int) -> void:
 	# cheap and the .tscn stays lean. _rebuild_relics_list already
 	# clears+rebuilds its panel; the new blocks follow that pattern.
 	_rebuild_reached_label(kills)
+	# iter-229 / Polish Team R2 — richer run summary. Hades-style
+	# "cause of death" + biggest hit + status combo fire count.
+	# Pulled from GameState.last_run_death_source / last_run_biggest_hit
+	# / last_run_combo_counts which were populated at hero death by
+	# main.gd._on_hero_died → GameState.finalize_run_death_stats and
+	# enemy.gd combo triggers → GameState.note_combo_fired.
+	_rebuild_cause_of_death()
+	_rebuild_combat_summary()
 	_rebuild_themes_summary()
 	_rebuild_relics_list()
 	# iter-102: fade in instead of hard-cut. Every other cinematic
@@ -266,6 +274,83 @@ func _rebuild_themes_summary() -> void:
 		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
 		lbl.add_theme_constant_override("outline_size", 3)
 		_themes_strip.add_child(lbl)
+
+# iter-229 / Polish Team R2 — "CAUSE OF DEATH" line. Hades-style
+# attribution that names the killing enemy (or hazard) so the player
+# can read the death as a story rather than an abstract HP-to-zero.
+# Pulled from GameState.last_run_death_source which the dying hero
+# wrote to via main.gd._on_hero_died. Fallback "the dark" reads as
+# atmospheric flavor instead of "(unknown)" when the killing blow was
+# unattributed (DoT tick, hazard, off-by-default projectile path).
+# Inserted into the Stack above the StatsRow so it reads with the
+# REACHED label as a single "who/where" pair.
+var _cause_of_death_label: Label = null
+func _rebuild_cause_of_death() -> void:
+	if not _has_game_state():
+		return
+	var stack: VBoxContainer = $Panel/Stack as VBoxContainer
+	if _cause_of_death_label != null and is_instance_valid(_cause_of_death_label):
+		_cause_of_death_label.queue_free()
+	var src: String = str(GameState.get("last_run_death_source"))
+	if src == "":
+		src = "the dark"
+	_cause_of_death_label = Label.new()
+	_cause_of_death_label.text = "FELLED BY %s" % src.to_upper()
+	_cause_of_death_label.add_theme_font_size_override("font_size", 14)
+	# Crimson tint distinct from the cream REACHED line above; reads as
+	# "this is the killing blow's story" — same red family as the title
+	# but dimmer so the title still wins the eye.
+	_cause_of_death_label.add_theme_color_override("font_color", Color(0.85, 0.45, 0.42, 1))
+	_cause_of_death_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	_cause_of_death_label.add_theme_constant_override("outline_size", 2)
+	_cause_of_death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(_cause_of_death_label)
+	# Position: just above the StatsRow (after REACHED + optional BEST
+	# callout). Find StatsRow index and insert just before it.
+	var stats_row: Node = $Panel/Stack/StatsRow
+	var stats_idx: int = stack.get_children().find(stats_row)
+	if stats_idx >= 0:
+		stack.move_child(_cause_of_death_label, stats_idx)
+
+# iter-229 / Polish Team R2 — combat summary line ("BIGGEST HIT" +
+# combo fire counts). Suppresses individual sub-segments when their
+# stat is zero so the line stays tight (a player who never triggered
+# SHATTER doesn't see "SHATTER ×0"). Empty whole-line is skipped.
+# Sits below the cause-of-death line for a coherent "who killed you
+# + the worst hit + the highlights" trio.
+var _combat_summary_label: Label = null
+func _rebuild_combat_summary() -> void:
+	if not _has_game_state():
+		return
+	var stack: VBoxContainer = $Panel/Stack as VBoxContainer
+	if _combat_summary_label != null and is_instance_valid(_combat_summary_label):
+		_combat_summary_label.queue_free()
+	var segments: Array[String] = []
+	var biggest: int = int(GameState.get("last_run_biggest_hit"))
+	if biggest > 0:
+		segments.append("BIGGEST HIT %d" % biggest)
+	var counts_v: Variant = GameState.get("last_run_combo_counts")
+	if counts_v is Dictionary:
+		var counts: Dictionary = counts_v as Dictionary
+		for k in counts.keys():
+			var n: int = int(counts[k])
+			if n > 0:
+				segments.append("%s×%d" % [str(k).to_upper(), n])
+	if segments.is_empty():
+		return
+	_combat_summary_label = Label.new()
+	_combat_summary_label.text = "  ·  ".join(segments)
+	_combat_summary_label.add_theme_font_size_override("font_size", 12)
+	# Warm cream-grey; reads as quiet detail under the louder CAUSE line.
+	_combat_summary_label.add_theme_color_override("font_color", Color(0.72, 0.66, 0.52, 1))
+	_combat_summary_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.92))
+	_combat_summary_label.add_theme_constant_override("outline_size", 2)
+	_combat_summary_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stack.add_child(_combat_summary_label)
+	var stats_row: Node = $Panel/Stack/StatsRow
+	var stats_idx: int = stack.get_children().find(stats_row)
+	if stats_idx >= 0:
+		stack.move_child(_combat_summary_label, stats_idx)
 
 func hide_death() -> void:
 	visible = false

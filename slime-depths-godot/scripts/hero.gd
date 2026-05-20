@@ -424,6 +424,19 @@ var _sword_hit_counter: int = 0
 # hero instance with this flag back to false. No manual reset needed.
 var _iron_resolve_absorbed_this_room: bool = false
 
+# iter-229 / Polish Team R2 — last damage source label for the death
+# screen "CAUSE OF DEATH" line. Populated by take_damage's optional
+# third arg (default "" — backward-compatible with all pre-iter-229
+# callers). enemy.gd contact paths now pass _affix_aware_source_name()
+# (e.g. "Slime", "Frost Wraith"); ember death AoE passes "Ember Burst";
+# hazards / projectiles / DoT ticks leave it blank → death_screen
+# falls back to "the dark" so the line still reads coherently.
+# Also tracks the biggest single hit this run (max amount actually
+# dealt after iron_skin / iron_resolve reductions) so the death
+# screen can report "BIGGEST HIT: N damage."
+var _last_damage_source_name: String = ""
+var _biggest_hit_taken: int = 0
+
 # Iter 72 — IRON FANG redesign counter. Bumps on every successful sword
 # hit; on every 6th increment, spawn EmberBurst at the hit position for
 # a 40-px AoE / 1 damage. Persists per-run (mirrors _sword_hit_counter)
@@ -1910,7 +1923,7 @@ func apply_venom(duration: float) -> void:
 		# the previous DoT happened to be in its cycle.
 		_hero_venom_tick_timer = HERO_VENOM_TICK_INTERVAL
 
-func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
+func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: String = "") -> void:
 	# Iter 70 — optional source_pos for knockback. Defaults to Vector2.INF
 	# (sentinel "unknown source") so existing callers in enemy.gd /
 	# fire_jet.gd / spike_pit.gd / projectile.gd still work without
@@ -1919,6 +1932,11 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	# Callers that DO want directional knockback (the contact path in
 	# enemy.gd is the obvious candidate) can pass enemy.global_position;
 	# they don't HAVE to update, the feature degrades gracefully.
+	# iter-229 — optional source_name for the death-screen "CAUSE OF
+	# DEATH" line. Default "" preserves the 2-arg signature for callers
+	# that haven't been updated; recorded into _last_damage_source_name
+	# only when non-empty so a hazard hit doesn't erase the last meaningful
+	# enemy attribution.
 	if hp <= 0:
 		return
 	# Iter 25 — parry catch. Checked BEFORE the iframes early-return so
@@ -1965,6 +1983,16 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF) -> void:
 	if actual <= 0:
 		return
 	hp -= actual
+	# iter-229 / Polish Team R2 — track the cause-of-death + biggest-hit
+	# stats for the death-screen run summary. Only record source_name
+	# when non-empty so DoT ticks / unattributed hazards don't overwrite
+	# the meaningful last enemy hit. _biggest_hit_taken is "actual" not
+	# "amount" so iron_skin reduction is reflected (a 4-dmg swing
+	# reduced to 1 reports as 1, the player's real loss).
+	if source_name != "":
+		_last_damage_source_name = source_name
+	if actual > _biggest_hit_taken:
+		_biggest_hit_taken = actual
 	# Iter 17 — second_wind: the killing blow leaves you at 1 HP instead
 	# of dying, once per run. Triggers ONLY when HP would otherwise hit
 	# 0 or lower, so a partial hit can't burn the proc. _second_wind_used

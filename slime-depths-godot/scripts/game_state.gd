@@ -34,6 +34,20 @@ var best_run_kills := 0
 var last_run_time: float = 0.0
 var best_run_time: float = -1.0
 
+# iter-229 / Polish Team R2 — death-screen run summary stats. Captured
+# in main.gd._on_hero_died via finalize_run_death_stats(); read by
+# death_screen.gd._rebuild_cause_of_death + _rebuild_combat_summary.
+# Cleared in start_dungeon_run so each fresh run starts clean. NOT
+# persisted in save_to_dict — these are intra-run scratch state, only
+# meaningful between hero-death and the next start_dungeon_run.
+var last_run_death_source: String = ""
+var last_run_biggest_hit: int = 0
+# Status-combo counter — incremented from enemy.gd's
+# _trigger_shatter_combo / _trigger_kindle_spread via note_combo_fired().
+# Dictionary[String,int] e.g. {"shatter": 4, "kindle": 2}. Empty means
+# no combos fired this run — death_screen suppresses the line.
+var last_run_combo_counts: Dictionary = {}
+
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
 # tree_exiting hook when leaving the dungeon scene alive; reset to -1
@@ -1469,6 +1483,12 @@ func start_dungeon_run() -> void:
 	persisted_hp = -1
 	# iter-105: phoenix_feather true once-per-run reset.
 	phoenix_feather_used = false
+	# iter-229 / Polish Team R2 — clear death-screen run summary stats.
+	# These are intra-run scratch (captured at hero death, read by the
+	# death overlay, cleared here when the next run begins).
+	last_run_death_source = ""
+	last_run_biggest_hit = 0
+	last_run_combo_counts = {}
 	# Reset HP carryover too — without this, a quit-mid-run could leave
 	# persisted_hp populated and the next run's hero would spawn at the
 	# saved HP value instead of full health.
@@ -1502,6 +1522,25 @@ func finalize_run_time() -> void:
 		var ss = Engine.get_main_loop().root.get_node("/root/SaveSystem")
 		if ss.has_method("save_now"):
 			ss.save_now()
+
+# iter-229 / Polish Team R2 — snapshot the dying hero's stats into
+# GameState so the death-screen overlay can render them. Mirrors the
+# finalize_run_time() pattern (one-shot copy on hero death). Skips
+# the save_now persist call because these fields aren't in save_to_dict
+# (they're intra-run scratch — the next start_dungeon_run clears them).
+func finalize_run_death_stats(source_name: String, biggest_hit: int) -> void:
+	last_run_death_source = source_name
+	last_run_biggest_hit = biggest_hit
+
+# iter-229 / Polish Team R2 — bump the named-combo counter. Called
+# from enemy.gd at the SHATTER / KINDLE trigger sites. Lazy-creates
+# the dict entry, so the call is safe on the first ever proc of a
+# given combo type.
+func note_combo_fired(combo_name: String) -> void:
+	if combo_name == "":
+		return
+	var prev: int = int(last_run_combo_counts.get(combo_name, 0))
+	last_run_combo_counts[combo_name] = prev + 1
 
 # Back-compat for hamlet's existing call.
 func register_kill() -> void:

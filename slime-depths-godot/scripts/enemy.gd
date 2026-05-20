@@ -234,6 +234,16 @@ const ELITE_AFFIX_NAMES: Dictionary = {
 	"venom":  "VENOM",
 	"warded": "WARDED",
 }
+# iter-229 / Polish Team R2 — affix tooltip text. Surface the affix
+# rules in-game so the player learns "what does that cyan glow do"
+# without dying to discover it. main.gd._update_affix_tooltip reads
+# this dict when a hovered/proximate elite enemy is detected.
+const ELITE_AFFIX_DESCRIPTIONS: Dictionary = {
+	"frost":  "Slows you on contact (1.0s, 40% slower).",
+	"ember":  "Explodes on death — 2 damage in a 56px radius.",
+	"venom":  "Applies VENOM on contact — 4 dmg over 2.0s.",
+	"warded": "Takes -1 damage from all incoming hits (min 1).",
+}
 # Frost slow tuning.
 const ELITE_FROST_DURATION: float = 1.0
 const ELITE_FROST_MULTIPLIER: float = 0.6
@@ -260,6 +270,22 @@ const ELITE_WARDED_DR: int = 1
 # which affix just procced. Without the floater, status effects fire
 # silently and players have to trial-and-error which colored enemy
 # does what.
+# iter-229 / Polish Team R2 — build the display label that the hero's
+# take_damage(_, _, source_name) records so the death screen can show
+# "CAUSE OF DEATH: Frost Slime" rather than "(unknown)". Prepends the
+# affix when present (e.g. "Frost Slime", "Ember Wraith") so an elite
+# kill reads visibly different from its non-elite peer's contact death.
+func _affix_aware_source_name() -> String:
+	if enemy_type == null:
+		return ""
+	var base: String = str(enemy_type.display_name)
+	if base == "":
+		return ""
+	if elite_affix != "" and ELITE_AFFIX_NAMES.has(elite_affix):
+		var aname: String = str(ELITE_AFFIX_NAMES[elite_affix]).capitalize()
+		return "%s %s" % [aname, base]
+	return base
+
 func _apply_contact_affix() -> void:
 	if _hero == null or not is_instance_valid(_hero):
 		return
@@ -398,6 +424,13 @@ var _scatter_flames_cd: float = 0.0
 
 func _trigger_shatter_combo() -> void:
 	_shatter_cd = SHATTER_COMBO_COOLDOWN
+	# iter-229 / Polish Team R2 — bump the run-scope SHATTER counter
+	# for the death-screen "STATUS COMBOS FIRED" summary line. Guarded
+	# for headless tests that don't autoload GameState.
+	if Engine.has_singleton("GameState") or Engine.get_main_loop().root.has_node("/root/GameState"):
+		var gs: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameState")
+		if gs != null and gs.has_method("note_combo_fired"):
+			gs.note_combo_fired("shatter")
 	# Apply combo damage. take_hit handles the death path + tier
 	# feedback + damage number + audio so we get the full feedback
 	# stack for free.
@@ -462,6 +495,13 @@ func _trigger_kindle_spread() -> void:
 	# nothing reacted to).
 	if hit_count == 0:
 		return
+	# iter-229 / Polish Team R2 — bump the run-scope KINDLE counter.
+	# Single bump per spread event, not per ignited neighbor — the
+	# stat reads as "how many times you kindled" rather than total
+	# fires propagated.
+	var gs2: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameState")
+	if gs2 != null and gs2.has_method("note_combo_fired"):
+		gs2.note_combo_fired("kindle")
 	# Visual: warm-orange expanding ring centered on the corpse. Reads
 	# as "fire jumping outward." Slightly slower expansion than SHATTER
 	# (0.36 s vs 0.22 s) — gives more time to see the chain land.
@@ -1265,7 +1305,9 @@ func _tick_chase_contact(delta: float) -> void:
 		if _hero.has_method("take_damage"):
 			# iter-70 polish: pass our position so hero knockback is
 			# AWAY from us, not hero-facing-inversion fallback.
-			_hero.take_damage(t.contact_damage, global_position)
+			# iter-229: pass display_name so death screen can show
+			# "CAUSE OF DEATH: Slime" instead of "(unknown)".
+			_hero.take_damage(t.contact_damage, global_position, _affix_aware_source_name())
 			# iter-103: elite affix on-contact effects. Frost slows the
 			# hero; venom applies a DoT. Ember + warded fire elsewhere
 			# (_die and take_hit). Guarded by has_method so the call
@@ -1470,7 +1512,7 @@ func _bomber_detonate() -> void:
 		if d < BOMBER_EXPLODE_RADIUS:
 			if _hero.has_method("take_damage"):
 				# iter-70 polish: knockback away from the bomber blast center.
-				_hero.take_damage(enemy_type.contact_damage, global_position)
+				_hero.take_damage(enemy_type.contact_damage, global_position, _affix_aware_source_name())
 				# iter-103: bomber detonation also applies the affix on-hit.
 				_apply_contact_affix()
 	# Spawn an orange-red VFX. Reuse damage_number for a "BOOM" floater
@@ -2208,7 +2250,7 @@ func _apply_wraith_strike() -> void:
 		# (its post-teleport global_position). Sells the "I got flanked"
 		# moment visually — hero gets shoved forward, AWAY from the wraith
 		# behind them.
-		_hero.take_damage(WRAITH_STRIKE_DAMAGE, global_position)
+		_hero.take_damage(WRAITH_STRIKE_DAMAGE, global_position, _affix_aware_source_name())
 		# iter-103: wraith strike applies the affix on-hit.
 		_apply_contact_affix()
 		# Brief attack pose so the swing reads even if the player wasn't
@@ -2362,7 +2404,7 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				   and abs(final_to_hero.angle_to(_melee_aim)) < t.melee_cone \
 				   and _hero.has_method("take_damage"):
 					# iter-70 polish: knockback away from the attacker.
-					_hero.take_damage(t.melee_damage, global_position)
+					_hero.take_damage(t.melee_damage, global_position, _affix_aware_source_name())
 					# iter-103: telegraphed-melee swing applies the affix.
 					_apply_contact_affix()
 		MeleeState.SWING:
@@ -2750,7 +2792,11 @@ func _die() -> void:
 		if _hero != null and is_instance_valid(_hero):
 			var d_hero: float = _hero.global_position.distance_to(global_position)
 			if d_hero <= ELITE_EMBER_RADIUS and _hero.has_method("take_damage"):
-				_hero.take_damage(ELITE_EMBER_DAMAGE, global_position)
+				# iter-229: tag ember death AoE distinctly so the death
+				# screen attributes the kill to the explosion specifically
+				# rather than "(unknown)" — the ember enemy itself is dead
+				# at this point, so the contact path can't fire.
+				_hero.take_damage(ELITE_EMBER_DAMAGE, global_position, "Ember Burst")
 	died_at.emit(global_position)
 	Events.enemy_died.emit(global_position)
 	# Iter 148 — boss-defeated savor beat. Fired AFTER the generic
