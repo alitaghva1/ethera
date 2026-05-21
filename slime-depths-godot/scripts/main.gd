@@ -351,6 +351,16 @@ var _reaction_web_chips: Dictionary = {}  # combo_id (String) → Label
 var _reaction_web_acc: float = 0.0
 const REACTION_WEB_REFRESH_PERIOD: float = 1.0
 
+# Iter 239 / Fun Ideas Team R4 — floor modifier HUD chip strip. Top-
+# RIGHT corner of the HUD, one chip per active floor modifier. Only
+# rendered if active_floor_modifiers is non-empty (most runs = empty =
+# no HUD bloat). Preload as a Script constant to avoid editor global
+# class registration issues in headless test runs (same pattern as
+# ReactionWebScript above).
+const FloorModifiersScript: Script = preload("res://scripts/floor_modifiers.gd")
+var _floor_modifier_strip: HBoxContainer = null
+var _floor_modifier_chips: Dictionary = {}  # mod_id (String) → Label
+
 # Iter 160 — first-run tutorial prompt label. Lifecycle managed by
 # the tutorial state machine below. Hidden (modulate.a = 0) until
 # armed in _ready (only on first-ever run AND room 0).
@@ -807,6 +817,14 @@ func _ready() -> void:
 	# only changes on pickup so per-frame polling would be wasted work).
 	_build_reaction_web_chips()
 	_update_reaction_web()
+	# Iter 239 / Fun Ideas Team R4 — floor modifier HUD chip strip.
+	# One small chip per active floor modifier, rendered top-right.
+	# Built once + populated from the current GameState; the strip is
+	# hidden when no modifiers are active. Polled at 1 Hz via the
+	# REACTION_WEB_REFRESH_PERIOD ticker (the modifier set only changes
+	# between runs, so per-frame work would be wasted).
+	_build_floor_modifier_chips()
+	_update_floor_modifier_chips()
 	# iter-233 / Polish Team R3 — hero status chips. Tiny world-space
 	# panels above the hero showing active slow / venom timers. Built
 	# once in _ready, follows the hero via screen-space conversion each
@@ -6971,3 +6989,80 @@ func _show_boss_phase_banner(
 	tw2.tween_interval(1.2)
 	tw2.tween_property(lbl, "modulate:a", 0.0, 0.4)
 	tw2.tween_callback(layer.queue_free)
+
+# ── Iter 239 / Fun Ideas Team R4 — Floor Modifier HUD chip strip ──────
+# Top-right corner of the HUD, one small chip per active floor
+# modifier. Hidden entirely when active_floor_modifiers is empty (most
+# runs — the modifiers are an opt-in difficulty axis, not the default).
+# Tag-driven color per chip: damage=red, speed=cyan, hp=violet,
+# loot=gold, time=orange. Reinforces the catalog's "tag" field so the
+# player has a visual through-line from modal → HUD.
+func _build_floor_modifier_chips() -> void:
+	if _floor_modifier_strip != null and is_instance_valid(_floor_modifier_strip):
+		return
+	var ui_root: CanvasLayer = $UI
+	if ui_root == null:
+		return
+	_floor_modifier_strip = HBoxContainer.new()
+	_floor_modifier_strip.name = "FloorModifierStrip"
+	# Top-right anchor. Anchored to right edge with a 16 px inset so
+	# the chips don't kiss the viewport border. Bottom anchor 32 px so
+	# the strip is comfortably within the upper HUD band.
+	_floor_modifier_strip.anchor_left = 1.0
+	_floor_modifier_strip.anchor_right = 1.0
+	_floor_modifier_strip.anchor_top = 0.0
+	_floor_modifier_strip.anchor_bottom = 0.0
+	_floor_modifier_strip.offset_left = -460.0
+	_floor_modifier_strip.offset_top = 8.0
+	_floor_modifier_strip.offset_right = -16.0
+	_floor_modifier_strip.offset_bottom = 36.0
+	_floor_modifier_strip.add_theme_constant_override("separation", 6)
+	_floor_modifier_strip.alignment = BoxContainer.ALIGNMENT_END
+	_floor_modifier_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui_root.add_child(_floor_modifier_strip)
+	# One chip per catalog entry. We create a Label up-front for every
+	# possible modifier and toggle visibility in _update; this avoids
+	# rebuild churn when the active set changes (though that only
+	# happens between runs).
+	for entry in FloorModifiersScript.MODIFIER_CATALOG:
+		var mod_id: String = str(entry.get("id", ""))
+		var chip: Label = Label.new()
+		chip.name = "Mod_" + mod_id
+		chip.text = str(entry.get("label", mod_id))
+		chip.visible = false
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.add_theme_font_size_override("font_size", 11)
+		chip.add_theme_color_override("font_outline_color", Color(0.04, 0.02, 0.05, 0.92))
+		chip.add_theme_constant_override("outline_size", 1)
+		# Tag → color. Mirrors the catalog tag field for cross-screen
+		# consistency (modal can do the same colorization if it ever
+		# expands beyond the simple burnt-orange-when-active read).
+		var tag: String = str(entry.get("tag", ""))
+		var col: Color = _floor_modifier_color_for_tag(tag)
+		chip.add_theme_color_override("font_color", col)
+		_floor_modifier_strip.add_child(chip)
+		_floor_modifier_chips[mod_id] = chip
+
+# Tag → color mapping for the chip. Centralized so adding a new tag
+# means one new case here, not a hunt across the catalog.
+func _floor_modifier_color_for_tag(tag: String) -> Color:
+	match tag:
+		"damage": return Color(1.00, 0.45, 0.35)   # warm red
+		"speed":  return Color(0.55, 0.92, 1.00)   # cyan
+		"hp":     return Color(0.85, 0.55, 1.00)   # violet
+		"loot":   return Color(1.00, 0.85, 0.42)   # gold
+		"time":   return Color(1.00, 0.65, 0.40)   # orange
+		_:        return Color(0.92, 0.90, 0.84)   # default off-white
+
+# Update the chip strip from the current GameState.active_floor_modifiers.
+# Called once at _ready and (optionally) when a run begins; the active
+# set doesn't change mid-run so per-frame polling would be wasted work.
+func _update_floor_modifier_chips() -> void:
+	if _floor_modifier_chips.is_empty():
+		return
+	var active: Array = FloorModifiersScript.active_ids()
+	for mod_id in _floor_modifier_chips.keys():
+		var chip: Label = _floor_modifier_chips[mod_id]
+		if chip == null:
+			continue
+		chip.visible = mod_id in active

@@ -22,6 +22,11 @@ extends Control
 const DUNGEON_SCENE_PATH := "res://scenes/main.tscn"
 const SETTINGS_SCENE_PATH := "res://scenes/settings_screen.tscn"
 
+# Iter 239 / Fun Ideas Team R4 — FloorModifiers script preload. Same
+# pattern as main.gd / game_state.gd; preload to bypass headless-mode
+# class_name resolution flakiness.
+const FloorModifiers: Script = preload("res://scripts/floor_modifiers.gd")
+
 # Button hover scale tween parameters.
 const HOVER_SCALE := 1.05
 const HOVER_TWEEN_TIME := 0.12
@@ -255,11 +260,27 @@ var _transitioning: bool = false
 func _on_begin_pressed() -> void:
 	if _transitioning:
 		return
-	_transitioning = true
 	# iter-109: UI press cue. ui_press is a short downward chunk
 	# (420 → 260 Hz over 90 ms) so the player has audible confirmation
 	# the BEGIN actually committed before the scene change kicks in.
 	Audio.play_ui_cue("ui_press", -2.0)
+	# Iter 239 / Fun Ideas Team R4 — pre-run MODIFIERS modal. Pops up
+	# instead of going straight into the dungeon. The player can toggle
+	# 0-3 difficulty modifiers (HEAT WAVE / SWIFT FOES / etc.) for an
+	# additive ether-shard reward multiplier. CONFIRM finalizes the
+	# choice + walks through the original BEGIN flow. SKIP clears all
+	# modifiers and proceeds. CANCEL returns to the main menu without
+	# transitioning.
+	_show_modifiers_modal()
+
+# Iter 239 — actual transition into the dungeon. Pulled out of
+# _on_begin_pressed so the new modifiers modal can call it AFTER the
+# player confirms their pact selection. Exposed via the modal's
+# CONFIRM/SKIP buttons.
+func _commit_begin_and_enter_dungeon() -> void:
+	if _transitioning:
+		return
+	_transitioning = true
 	# BEGIN goes straight into the dungeon. RunState.start_floor() seeds
 	# room 0 + resets HP/kills so main.tscn reads a fresh
 	# current_room_config at _ready(). We start the floor BEFORE the
@@ -698,3 +719,167 @@ func _close_achievements_panel() -> void:
 	if _achievements_button != null:
 		_achievements_button.grab_focus()
 	Audio.play_ui_cue("ui_press", -4.0)
+
+# ── Iter 239 / Fun Ideas Team R4 — Pre-run Modifiers modal ────────────
+# Pops over the main menu when BEGIN is pressed. Lists the 5 catalog
+# entries with a toggle button each; shows the current ether multiplier
+# at the bottom; CONFIRM finalizes + walks the original BEGIN flow,
+# SKIP clears modifiers + proceeds, CANCEL returns to the menu.
+#
+# Pattern mirrors _show_upgrade_panel + _show_achievements_panel — full-
+# screen dim + centered VBox + scroll-friendly. Tested visually at
+# 1280×720; the 5 rows fit without scrolling but the layout is
+# scroll-tolerant if the catalog ever grows.
+var _modifiers_panel: Control = null
+var _modifiers_total_label: Label = null
+
+func _show_modifiers_modal() -> void:
+	if _modifiers_panel != null and is_instance_valid(_modifiers_panel):
+		return
+	_modifiers_panel = Control.new()
+	_modifiers_panel.name = "ModifiersPanel"
+	_modifiers_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_modifiers_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_modifiers_panel)
+	var dim: ColorRect = ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.78)
+	_modifiers_panel.add_child(dim)
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_modifiers_panel.add_child(center)
+	var box: VBoxContainer = VBoxContainer.new()
+	box.custom_minimum_size = Vector2(640, 0)
+	box.add_theme_constant_override("separation", 10)
+	center.add_child(box)
+	# Header — "PACT OF PUNISHMENT" framing, gold accent matching
+	# achievements panel for visual consistency.
+	var title: Label = Label.new()
+	title.text = "ENTER THE DEPTHS"
+	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
+	title.add_theme_font_size_override("font_size", 28)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var sub: Label = Label.new()
+	sub.text = "Bind yourself to a harsher path — earn more ether."
+	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
+	sub.add_theme_font_size_override("font_size", 14)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(sub)
+	# One row per modifier.
+	for entry in FloorModifiers.catalog():
+		box.add_child(_build_modifier_row(entry))
+	# Footer — running total ether multiplier display.
+	var spacer: Control = Control.new()
+	spacer.custom_minimum_size = Vector2(0, 8)
+	box.add_child(spacer)
+	_modifiers_total_label = Label.new()
+	_modifiers_total_label.text = ""
+	_modifiers_total_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.50))
+	_modifiers_total_label.add_theme_font_size_override("font_size", 18)
+	_modifiers_total_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_modifiers_total_label)
+	_refresh_modifiers_total_label()
+	# Button row.
+	var button_row: HBoxContainer = HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.add_theme_constant_override("separation", 14)
+	box.add_child(button_row)
+	var confirm_btn: Button = Button.new()
+	confirm_btn.text = "BEGIN"
+	confirm_btn.custom_minimum_size = Vector2(160, 38)
+	confirm_btn.pressed.connect(_on_modifiers_confirm)
+	button_row.add_child(confirm_btn)
+	var skip_btn: Button = Button.new()
+	skip_btn.text = "NO MODIFIERS"
+	skip_btn.custom_minimum_size = Vector2(160, 38)
+	skip_btn.pressed.connect(_on_modifiers_skip)
+	button_row.add_child(skip_btn)
+	var cancel_btn: Button = Button.new()
+	cancel_btn.text = "CANCEL"
+	cancel_btn.custom_minimum_size = Vector2(120, 38)
+	cancel_btn.pressed.connect(_on_modifiers_cancel)
+	button_row.add_child(cancel_btn)
+	confirm_btn.grab_focus()
+
+# Build a single modifier row: label / description / toggle button.
+# Tested layout: 220 + 260 + 100 px columns fit cleanly inside the
+# 640 px box width with 16 px of separator slack.
+func _build_modifier_row(entry: Dictionary) -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	var mod_id: String = str(entry.get("id", ""))
+	var is_active: bool = mod_id in GameState.active_floor_modifiers
+	# Label (gold-tinted, fixed 220 px column).
+	var name_label: Label = Label.new()
+	name_label.text = str(entry.get("label", mod_id))
+	name_label.custom_minimum_size = Vector2(220, 0)
+	name_label.add_theme_font_size_override("font_size", 16)
+	if is_active:
+		name_label.add_theme_color_override("font_color", Color(0.95, 0.55, 0.32))  # active = burnt orange
+	else:
+		name_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.66))
+	row.add_child(name_label)
+	# Description — autowrap, fills remaining width.
+	var desc_label: Label = Label.new()
+	desc_label.text = "%s   (+%d%% ether)" % [
+		str(entry.get("description", "")),
+		int(round(float(entry.get("ether_bonus", 0.0)) * 100.0))
+	]
+	desc_label.add_theme_font_size_override("font_size", 12)
+	desc_label.add_theme_color_override("font_color", Color(0.78, 0.78, 0.74))
+	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc_label.custom_minimum_size = Vector2(280, 0)
+	desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(desc_label)
+	# Toggle button.
+	var btn: Button = Button.new()
+	btn.text = "ACTIVE" if is_active else "INACTIVE"
+	btn.custom_minimum_size = Vector2(100, 32)
+	btn.pressed.connect(_on_modifier_toggle.bind(mod_id))
+	row.add_child(btn)
+	return row
+
+func _on_modifier_toggle(mod_id: String) -> void:
+	Audio.play_ui_cue("ui_press", -4.0)
+	FloorModifiers.toggle(mod_id)
+	# Cheap rebuild — the row count is small enough (5) that a full
+	# panel redraw isn't a perf concern, and rebuilding ensures every
+	# label's color + total field reflect the new state.
+	_close_modifiers_modal_internal()
+	_show_modifiers_modal()
+
+func _refresh_modifiers_total_label() -> void:
+	if _modifiers_total_label == null:
+		return
+	var mul: float = FloorModifiers.compute_ether_multiplier()
+	var pct: int = int(round((mul - 1.0) * 100.0))
+	if pct <= 0:
+		_modifiers_total_label.text = "Reward: 1.00× ether shards"
+	else:
+		_modifiers_total_label.text = "Reward: %.2f× ether shards  (+%d%%)" % [mul, pct]
+
+func _on_modifiers_confirm() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
+	_close_modifiers_modal_internal()
+	_commit_begin_and_enter_dungeon()
+
+func _on_modifiers_skip() -> void:
+	Audio.play_ui_cue("ui_press", -2.0)
+	FloorModifiers.clear_all()
+	_close_modifiers_modal_internal()
+	_commit_begin_and_enter_dungeon()
+
+func _on_modifiers_cancel() -> void:
+	Audio.play_ui_cue("ui_press", -4.0)
+	# Discard the player's choices on cancel — they explicitly said no.
+	FloorModifiers.clear_all()
+	_close_modifiers_modal_internal()
+	if begin_button != null:
+		begin_button.grab_focus()
+
+func _close_modifiers_modal_internal() -> void:
+	if _modifiers_panel != null and is_instance_valid(_modifiers_panel):
+		_modifiers_panel.queue_free()
+		_modifiers_panel = null
+	_modifiers_total_label = null

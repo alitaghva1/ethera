@@ -15,6 +15,13 @@
 #   3. The hero auto-queries the bonus on attack/blast
 extends Node
 
+# Iter 239 / Fun Ideas Team R4 — FloorModifiers script preload. Use a
+# Script constant rather than the class_name global so headless test
+# runs (which don't go through the editor's class registration) can
+# resolve the identifier. Same pattern as main.gd / hero.gd use for
+# ReactionWebScript + other sibling-script references.
+const FloorModifiers: Script = preload("res://scripts/floor_modifiers.gd")
+
 # ── Session metrics ──────────────────────────────────────────────────
 # session_kills: accumulates across runs forever (lifetime counter).
 # dungeon_runs: how many runs the player has STARTED (BEGIN pressed).
@@ -103,6 +110,16 @@ var ether_shards: int = 0
 # Lifetime accumulator — does NOT decrement on spending. Surface for
 # "total earned" stats / future achievements.
 var ether_lifetime_earned: int = 0
+
+# Iter 239 / Fun Ideas Team R4 — floor-wide modifiers (Pact of
+# Punishment lite). Array of mod_ids from FloorModifiers.MODIFIER_CATALOG.
+# Selected at the pre-run modal (main_menu.gd) BEFORE BEGIN finalizes,
+# cleared on start_dungeon_run() so each new run starts neutral.
+# Multiplier consumed by award_ether_shards via
+# FloorModifiers.compute_ether_multiplier(). NOT persisted in
+# save_to_dict — these are per-run choices, re-asked on every BEGIN
+# press (matches the Hades Pact flow).
+var active_floor_modifiers: Array[String] = []
 
 # Iter 220 / Beta M1.1 — Permanent upgrade tree state. 5-node Mirror-of-
 # Night-equivalent. Each entry is current level (0..max). Levels persist
@@ -1489,6 +1506,13 @@ func start_dungeon_run() -> void:
 	last_run_death_source = ""
 	last_run_biggest_hit = 0
 	last_run_combo_counts = {}
+	# iter-239 / Fun Ideas Team R4 — DO NOT clear active_floor_modifiers
+	# here. The pre-run modal (main_menu.gd) writes to the field BEFORE
+	# calling start_dungeon_run(), so a clear here would wipe the
+	# player's choices on the very transition that should commit them.
+	# Modifiers are cleared by main_menu when the player declines / when
+	# they exit back to the menu after a death, NOT mid-handoff.
+	#
 	# Reset HP carryover too — without this, a quit-mid-run could leave
 	# persisted_hp populated and the next run's hero would spawn at the
 	# saved HP value instead of full health.
@@ -1596,6 +1620,15 @@ func award_ether_shards(amount: int) -> void:
 	if amount <= 0:
 		return
 	var mul: float = 1.0 + modifier_total_f("ether_shard_drop_mul_f", 0.0)
+	# Iter 239 / Fun Ideas Team R4 — floor modifier ether-bonus
+	# accumulator. Multiplies on TOP of the existing ether_magnet (etc.)
+	# relic multiplier so the two systems compose: a player on
+	# THICKER_BLOOD + SWIFT_FOES with ether_magnet equipped gets the
+	# (1.25 × ether_magnet) × (1 + 0.25 + 0.15) shards. Additive WITHIN
+	# floor modifiers, multiplicative ACROSS systems — the simplest
+	# composition that doesn't compound the "yes I want everything"
+	# build into 5×+ output.
+	mul *= FloorModifiers.compute_ether_multiplier()
 	var final_amount: int = int(round(float(amount) * mul))
 	if final_amount <= 0:
 		return

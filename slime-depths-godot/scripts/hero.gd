@@ -20,6 +20,11 @@
 class_name Hero
 extends CharacterBody2D
 
+# Iter 239 / Fun Ideas Team R4 — FloorModifiers script preload. Same
+# pattern as main.gd / game_state.gd; the class_name global isn't
+# always resolved in headless test runs, so we explicitly preload.
+const FloorModifiers: Script = preload("res://scripts/floor_modifiers.gd")
+
 const SPEED              := 200.0
 const HERO_DRAW          := 64
 const ATTACK_RANGE       := 56
@@ -1951,6 +1956,17 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: St
 		return
 	if _iframes > 0.0:
 		return
+	# Iter 239 / Fun Ideas Team R4 — HEAT WAVE floor modifier scales
+	# INCOMING damage to the hero before iron_resolve / damage_taken_
+	# reduction land. Sits AFTER iframes (a parried/dodged hit is still
+	# a no-op) but BEFORE the absorption / mitigation chain so the
+	# heat-wave penalty composes correctly with iron_resolve + iron_skin.
+	# The mul is 1.25 (= +25% per the design spec); a zero-damage tick
+	# (e.g. status DoT with explicit amount 0) stays at 0. Float math
+	# rounds up via ceil so a 1-damage swing → 2 (else floor(1*1.25)=1
+	# would silently no-op the modifier on the smallest hits).
+	if amount > 0 and FloorModifiers.is_active("heat_wave"):
+		amount = int(ceil(float(amount) * FloorModifiers.HEAT_WAVE_DAMAGE_MUL))
 	# iron_resolve — the FIRST wound in a room is absorbed wholesale (no
 	# HP loss, no iframes set, just a floater cue). The flag auto-resets
 	# on room entry because every transition reloads main.tscn → fresh
