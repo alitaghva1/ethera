@@ -122,6 +122,16 @@ const ENEMY_TYPES := {
 	# hazards conceptually; hazards already only damage hero today so
 	# the flag is design clarity + future-proofing).
 	"moth":              preload("res://scenes/enemies/moth.tres"),
+	# Iter 238 / Expansion Team R4 — Tuskbrod (charger). Completes the
+	# shield/flying/charger missing-archetype trio (R2 = Bulwark, R3 =
+	# Moth, R4 = Tuskbrod). The first telegraphed line-dash enemy:
+	# 3-state machine (WANDER → TELEGRAPH → CHARGE) with a locked aim-
+	# ray Line2D showing the lane the charge will follow. Counterplay
+	# is to sidestep the lane during the ~1.0s telegraph window or
+	# parry the charge. HP 5 + 50 base speed (200 charging) = tank-class
+	# telegraphed melee that doesn't get ignored. Late-floor enemy
+	# (room_06 wave 1).
+	"tuskbrod":          preload("res://scenes/enemies/tuskbrod.tres"),
 }
 
 const HIT_STOP_SCALE    := 0.05

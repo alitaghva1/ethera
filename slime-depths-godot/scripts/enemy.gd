@@ -265,6 +265,48 @@ var _moth_dive_dir: Vector2 = Vector2.RIGHT
 # moths don't orbit in lockstep + a single moth visually commits to one
 # orbital direction the player can read.
 var _moth_orbit_sign: float = 1.0
+
+# Iter 238 / Expansion Team R4 — charger (Tuskbrod) state.
+#
+# Completes the missing-archetype trio (shield/flying/charger). 3-state
+# machine: WANDER (slow approach) → TELEGRAPH (~1.0s windup with locked
+# aim ray) → CHARGE (~0.5s straight-line lunge at 4× speed).
+#
+# State machine:
+#   WANDER     — approach hero at half move_speed (lumbering tank). Tick
+#                the windup cooldown; when in range + cooldown clear,
+#                enter TELEGRAPH.
+#   TELEGRAPH  — stop, face hero, lock aim direction. Sprite scales up +
+#                warm-red windup tint pulses. A bright red Line2D child
+#                appears showing the LANE the charge will follow — stays
+#                LOCKED at telegraph-start so a sidestepping hero can
+#                escape the path (the charger commits early). After
+#                CHARGER_WINDUP_DURATION elapse, enter CHARGE.
+#   CHARGE     — set velocity = locked_aim × move_speed × CHARGE_SPEED_MULT.
+#                Damage on contact at +1 above normal (high-impact slam).
+#                After CHARGER_CHARGE_DURATION, return to WANDER with
+#                stun. The aim ray hides during charge.
+#
+# Constants chosen for readability: a 1.0s telegraph is long enough for a
+# dodge or sidestep, short enough to feel decisive. A 0.5s charge at
+# 4× speed (200 px/s on a 50 px/s base) covers ~100 px — about three
+# hero-widths, threatening but not "wall-to-wall instant death."
+const CHARGER_WINDUP_DURATION: float = 1.0
+const CHARGER_CHARGE_DURATION: float = 0.5
+const CHARGER_RECOVERY_DURATION: float = 0.6
+const CHARGER_WANDER_SPEED_MULT: float = 0.5
+const CHARGER_CHARGE_SPEED_MULT: float = 4.0
+const CHARGER_TRIGGER_RANGE: float = 220.0    # within this distance → telegraph
+const CHARGER_CONTACT_DAMAGE_BONUS: int = 1   # +1 over enemy_type.contact_damage during charge
+const CHARGER_AIM_RAY_LENGTH: float = 360.0
+const CHARGER_AIM_RAY_WIDTH: float = 5.0
+const CHARGER_AIM_RAY_COLOR: Color = Color(1.25, 0.35, 0.25, 0.75)
+
+enum ChargerState { WANDER, TELEGRAPH, CHARGE, RECOVERY }
+var _charger_state: ChargerState = ChargerState.WANDER
+var _charger_timer: float = 0.0
+var _charger_aim: Vector2 = Vector2.RIGHT
+var _charger_aim_ray: Line2D = null
 # Iter 230 — last-known damage source position. Set transiently by
 # take_hit's 3rd optional arg so the shield damage-direction check can
 # decide FRONT vs FLANK. Fallback (no source given) keeps the legacy
@@ -817,6 +859,12 @@ func _ready() -> void:
 		# Stagger first dive so multiple moths in a wave don't all dive on
 		# the same frame.
 		_moth_dive_cooldown = MOTH_DIVE_INTERVAL * randf_range(0.5, 1.0)
+	# Iter 238 / Expansion Team R4 — charger (Tuskbrod) aim-ray Line2D.
+	# Built once at spawn so the show/hide path during the state machine
+	# is just an alpha toggle (no per-frame allocation). The line is
+	# invisible (alpha 0) by default and only fades in during TELEGRAPH.
+	if enemy_type.behavior == "charger":
+		_ensure_charger_aim_ray()
 
 # Iter 177 — outline shader applied at runtime so every enemy gets
 # the same silhouette definition the hero has had since iter-117.
@@ -1202,6 +1250,8 @@ func _physics_process(delta: float) -> void:
 			_tick_shield_walker(delta)
 		"flying_orbit":
 			_tick_flying_orbit(delta)
+		"charger":
+			_tick_charger(delta)
 		_:
 			_tick_chase_contact(delta)
 
@@ -3539,3 +3589,206 @@ func get_moth_state_for_test() -> int:
 func force_moth_dive_for_test() -> void:
 	_moth_dive_cooldown = 0.0
 	_enter_moth_dive()
+
+# ── Behavior: charger (Tuskbrod) ──────────────────────────────────────
+# Iter 238 / Expansion Team R4 — completes the shield/flying/charger
+# missing-archetype trio (R2 = shield_walker, R3 = flying_orbit, R4
+# = charger).
+#
+# State machine (4 states; recovery is collapsed into a brief stun
+# after the charge ends so the player gets a window to punish):
+#
+#   WANDER     — lumber toward hero at half move_speed. Reads as the
+#                lulled, eyes-down phase of the beast. When the hero
+#                comes within CHARGER_TRIGGER_RANGE, enter TELEGRAPH.
+#   TELEGRAPH  — stop, face hero, capture aim direction ONCE at entry
+#                so a sidestepping hero can escape the locked lane.
+#                Sprite tints red + scales up (same telegraph grammar
+#                the telegraphed_melee uses). The aim-ray Line2D fades
+#                in showing the LANE the charge will follow. After
+#                CHARGER_WINDUP_DURATION, enter CHARGE.
+#   CHARGE     — set velocity = aim × move_speed × 4.0. Contact damage
+#                = contact_damage + CHARGER_CONTACT_DAMAGE_BONUS (so
+#                a charge hit reads heavier than a body-bump). The
+#                aim-ray hides. After CHARGER_CHARGE_DURATION the
+#                charger transitions to RECOVERY (brief stun).
+#   RECOVERY   — stand still, breathe heavy. After CHARGER_RECOVERY_DURATION
+#                return to WANDER. The recovery gives the player a
+#                punish window: the charger is locked in place and
+#                cannot re-telegraph until WANDER resumes.
+#
+# Player counterplay: dodge sideways out of the aim-ray lane during
+# TELEGRAPH, OR parry the charge for a deflect window (parry already
+# exists in hero.gd — no special wiring needed; the charge hit goes
+# through take_damage which checks the parry window).
+func _tick_charger(delta: float) -> void:
+	var t: EnemyType = enemy_type
+	_contact_cd = max(0.0, _contact_cd - delta)
+	_hurt_anim_time = max(0.0, _hurt_anim_time - delta)
+	if _hero == null or not is_instance_valid(_hero):
+		velocity = Vector2.ZERO
+		sprite.play(&"idle")
+		_update_charger_aim_ray_visual(false)
+		return
+	var to_hero: Vector2 = _hero.global_position - global_position
+	var dist: float = to_hero.length()
+	sprite.flip_h = to_hero.x < 0
+	match _charger_state:
+		ChargerState.WANDER:
+			# Lumbering approach at half speed. Reuse the chase_contact
+			# separation + wall-slide pattern so a stack of two chargers
+			# doesn't stack into one silhouette.
+			if t.can_move() and dist > t.contact_range * 0.85:
+				var to_dir: Vector2 = to_hero.normalized()
+				var speed: float = _effective_move_speed() * CHARGER_WANDER_SPEED_MULT
+				var sep: Vector2 = _compute_separation_vector()
+				var intended: Vector2 = (to_dir + sep * SEPARATION_FORCE).normalized() * speed
+				velocity = _maybe_stuck_dodge(delta, intended)
+				sprite.play(&"walk")
+				move_and_slide()
+				_apply_wall_slide(intended)
+			else:
+				velocity = Vector2.ZERO
+				sprite.play(&"idle")
+			# Restore baseline sprite scale + tint in case we recently
+			# exited a TELEGRAPH/CHARGE state with modified visuals.
+			sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
+			sprite.modulate = _baseline_modulate()
+			_update_charger_aim_ray_visual(false)
+			# Enter telegraph when in trigger range.
+			if dist <= CHARGER_TRIGGER_RANGE:
+				_enter_charger_telegraph()
+		ChargerState.TELEGRAPH:
+			velocity = Vector2.ZERO
+			sprite.play(&"idle")
+			# Red windup tint pulses over the windup so the player can
+			# read "about to charge" — same grammar as telegraphed_melee
+			# but on a longer duration (1.0s vs 0.35s). Through the
+			# baseline so the copper tint stays readable underneath.
+			var wt: float = 1.0 - (_charger_timer / CHARGER_WINDUP_DURATION)
+			var base: Color = _baseline_modulate()
+			sprite.modulate = Color(
+				base.r,
+				base.g * (1.0 - wt * 0.7),
+				base.b * (1.0 - wt * 0.7),
+				base.a
+			)
+			# Visible scale pulse so the silhouette TENSES UP (1.0 → 1.18).
+			var sc: float = t.sprite_scale * (1.0 + 0.18 * wt)
+			sprite.scale = Vector2(sc, sc)
+			# Aim-ray stays LOCKED at telegraph-start — does not track
+			# the hero through the windup. This is the counterplay
+			# affordance: sidestep mid-windup to escape the lane.
+			_update_charger_aim_ray_visual(true)
+			_charger_timer -= delta
+			if _charger_timer <= 0.0:
+				_charger_state = ChargerState.CHARGE
+				_charger_timer = CHARGER_CHARGE_DURATION
+				sprite.play(&"attack")
+		ChargerState.CHARGE:
+			# Locked-velocity lunge along the captured aim direction.
+			velocity = _charger_aim * (_effective_move_speed() * CHARGER_CHARGE_SPEED_MULT)
+			sprite.play(&"attack")
+			move_and_slide()
+			# Body contact during charge — +1 damage bonus on top of
+			# the enemy_type contact_damage (so a charge hit reads as
+			# heavier than a regular bump).
+			if dist < t.contact_range and _contact_cd <= 0.0:
+				_contact_cd = t.contact_cooldown
+				if _hero.has_method("take_damage"):
+					var charge_dmg: int = t.contact_damage + CHARGER_CONTACT_DAMAGE_BONUS
+					_hero.take_damage(charge_dmg, global_position, _affix_aware_source_name())
+					_apply_contact_affix()
+			# Hide aim ray during the actual charge.
+			_update_charger_aim_ray_visual(false)
+			# If we hit a wall (collision occurred during move_and_slide),
+			# end the charge early so the charger doesn't keep grinding
+			# into the wall for the full duration.
+			if get_slide_collision_count() > 0:
+				_charger_timer = 0.0
+			_charger_timer -= delta
+			if _charger_timer <= 0.0:
+				_charger_state = ChargerState.RECOVERY
+				_charger_timer = CHARGER_RECOVERY_DURATION
+				velocity = Vector2.ZERO
+				sprite.modulate = _baseline_modulate()
+				sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
+		ChargerState.RECOVERY:
+			velocity = Vector2.ZERO
+			sprite.play(&"idle")
+			_charger_timer -= delta
+			if _charger_timer <= 0.0:
+				_charger_state = ChargerState.WANDER
+
+# Iter 238 — enter TELEGRAPH: capture the aim direction at this instant
+# (LOCKED for the entire windup) + set the timer. Locking aim early is
+# the counterplay affordance: the player can sidestep out of the lane.
+func _enter_charger_telegraph() -> void:
+	_charger_state = ChargerState.TELEGRAPH
+	_charger_timer = CHARGER_WINDUP_DURATION
+	if _hero != null and is_instance_valid(_hero):
+		var to_hero: Vector2 = _hero.global_position - global_position
+		if to_hero.length_squared() > 0.001:
+			_charger_aim = to_hero.normalized()
+		else:
+			_charger_aim = Vector2.RIGHT
+	sprite.play(&"attack")
+
+# Iter 238 — build the aim-ray Line2D as a child of the charger. Visible
+# only during TELEGRAPH; alpha-toggled rather than queue_free'd so the
+# state machine pays zero per-frame allocation cost.
+func _ensure_charger_aim_ray() -> void:
+	if _charger_aim_ray != null and is_instance_valid(_charger_aim_ray):
+		return
+	var line: Line2D = Line2D.new()
+	line.width = CHARGER_AIM_RAY_WIDTH
+	line.default_color = CHARGER_AIM_RAY_COLOR
+	# Two-point line — origin to forward. Endpoints overwritten every
+	# tick in _update_charger_aim_ray_visual to match the locked aim.
+	line.add_point(Vector2.ZERO)
+	line.add_point(Vector2(CHARGER_AIM_RAY_LENGTH, 0))
+	line.z_index = -1
+	# Start invisible — only TELEGRAPH shows it.
+	line.modulate.a = 0.0
+	add_child(line)
+	_charger_aim_ray = line
+
+# Iter 238 — refresh the aim-ray during the state machine. Visible flag
+# controls alpha (1.0 during TELEGRAPH, 0.0 otherwise). Rotation tracks
+# `_charger_aim` so the lane reads correctly even though aim is locked
+# at telegraph-start (rotation updates here only when the line is
+# visible — when hidden, rotation is moot).
+func _update_charger_aim_ray_visual(visible_flag: bool) -> void:
+	if _charger_aim_ray == null or not is_instance_valid(_charger_aim_ray):
+		return
+	if visible_flag:
+		_charger_aim_ray.modulate.a = 1.0
+		_charger_aim_ray.rotation = _charger_aim.angle()
+	else:
+		_charger_aim_ray.modulate.a = 0.0
+
+# Iter 238 — test helpers. Headless tests instantiate a Tuskbrod and
+# drive the state machine without simulating the full WANDER → TELEGRAPH
+# trigger range / windup duration. Mirrors the Bulwark + Moth helper
+# patterns from iter-230 / iter-234.
+func get_charger_state_for_test() -> int:
+	return int(_charger_state)
+
+func force_charger_telegraph_for_test() -> void:
+	_enter_charger_telegraph()
+
+func force_charger_charge_for_test() -> void:
+	# Skip the windup — go straight to CHARGE with aim locked at the
+	# current hero direction.
+	if _hero != null and is_instance_valid(_hero):
+		var to_hero: Vector2 = _hero.global_position - global_position
+		if to_hero.length_squared() > 0.001:
+			_charger_aim = to_hero.normalized()
+	_charger_state = ChargerState.CHARGE
+	_charger_timer = CHARGER_CHARGE_DURATION
+	sprite.play(&"attack")
+
+func is_charger_aim_ray_visible_for_test() -> bool:
+	if _charger_aim_ray == null or not is_instance_valid(_charger_aim_ray):
+		return false
+	return _charger_aim_ray.modulate.a > 0.5
