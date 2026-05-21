@@ -430,6 +430,25 @@ var _room: RoomConfig = null
 var _spawn_points: Array[Vector2] = []
 var _waves: Array = []
 
+# Iter 236 / Bug Team R4 — shared per-frame enemy snapshot. The audit
+# (risk #3, deferred twice) flagged dozens of `get_tree().get_nodes_in_group
+# ("enemies")` walks compounding per physics frame — at 30+ enemies in a
+# phase-3 Tyrant wave + summons, the AoE / separation / ricochet loops
+# each rebuild the same array. Single source of truth refreshed once per
+# `_process`, read via `get_enemy_snapshot()`. This sprint migrates ONLY
+# `enemy.gd::_compute_separation_vector` (the admitted O(n²) hot path) to
+# read through the snapshot — other call sites can migrate incrementally.
+var _enemies_snapshot: Array[Node] = []
+
+# Iter 236 — read-through accessor for the cached snapshot. Stays a simple
+# pass-through so callers don't have to know about the underlying array
+# type. If something queries before _process has run this frame (e.g. very
+# early _ready paths), the returned array is the most-recent snapshot
+# (empty on first frame). Callers that need full freshness can fall back
+# to get_tree().get_nodes_in_group() directly.
+func get_enemy_snapshot() -> Array[Node]:
+	return _enemies_snapshot
+
 # Iter 32 — branch modifier consumed from RunState.pending_branch at
 # _ready. Persists for the room's lifetime so _spawn_pedestal_offer can
 # bias tier weights at room clear. "" = no modifier active.
@@ -822,6 +841,19 @@ func _ready() -> void:
 			t.timeout.connect(func (): _start_wave(0))
 
 func _process(_delta: float) -> void:
+	# Iter 236 / Bug Team R4 — refresh the shared enemies snapshot ONCE
+	# per frame, before any consumer reads it. Per-physics-frame walkers
+	# (currently enemy.gd::_compute_separation_vector) read through
+	# get_enemy_snapshot() instead of re-walking the SceneTree group each
+	# tick. The fresh array is built from the still-canonical "enemies"
+	# group so any newly-spawned/destroyed enemy is reflected on the next
+	# frame. Cheap (one tree walk + Array typing) regardless of consumer
+	# count. Placed BEFORE the status-fade tick so even early-tick consumers
+	# see this frame's snapshot.
+	var grp: Array = get_tree().get_nodes_in_group("enemies")
+	_enemies_snapshot.clear()
+	for n in grp:
+		_enemies_snapshot.append(n)
 	# iter-119: tick the status-hint auto-fade. Uses get_process_delta_time
 	# directly so we don't have to rename `_delta` (kept underscored to
 	# preserve "param unused" intent for the existing _process body).

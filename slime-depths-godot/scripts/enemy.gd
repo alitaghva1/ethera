@@ -1269,7 +1269,22 @@ func _maybe_stuck_dodge(delta: float, intended: Vector2) -> Vector2:
 func _compute_separation_vector() -> Vector2:
 	var v: Vector2 = Vector2.ZERO
 	var n: int = 0
-	for e in get_tree().get_nodes_in_group("enemies"):
+	# Iter 236 / Bug Team R4 — consume main.gd's per-frame enemies snapshot
+	# instead of re-walking the SceneTree group every physics tick. At 30+
+	# enemies (phase-3 Tyrant + summons) the old `get_nodes_in_group` walk
+	# compounded across consumers (separation + AoE + ricochet) into dozens
+	# of tree walks per frame. Single source of truth now refreshes once
+	# per _process; we just read it here. Falls back to the direct group
+	# walk when no main scene exposes the snapshot (e.g. iter-224 test that
+	# instantiates enemies under a bare holder Node2D) — keeps the function
+	# usable outside the production scene graph.
+	var iterable: Array = []
+	var scene: Node = get_tree().current_scene
+	if scene != null and scene.has_method("get_enemy_snapshot"):
+		iterable = scene.call("get_enemy_snapshot")
+	else:
+		iterable = get_tree().get_nodes_in_group("enemies")
+	for e in iterable:
 		if e == self or not is_instance_valid(e):
 			continue
 		# Iter 191 — fix Godot 4 runtime crash. `bool(x)` constructor is
