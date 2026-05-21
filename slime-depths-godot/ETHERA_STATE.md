@@ -4,8 +4,32 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-235 = 4-team sprint Round 3 complete)
-Branch: `claude/wizard-kit-sprint-3` @ commit `6b57ff9` (50 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-239 = 4-team sprint Round 4 complete)
+Branch: `claude/wizard-kit-sprint-3` @ commit `faad364` (55 commits ahead of `main`)
+
+**Round 4 (iter-236..239)**:
+  • Bug Team R4 (iter-236): shipped the long-deferred shared enemy
+    snapshot in main.gd (refreshed once per _process), wired
+    surgically into enemy.gd's separation hot path. Plus a full save
+    round-trip test populating all 19 persisted fields, serializing,
+    wiping, loading, asserting equality. No save/load bugs surfaced.
+    Tests +2.
+  • Polish Team R4 (iter-237): death screen relics grouped by tier
+    (common/rare/legendary/mythic) with theme chip colors per relic.
+    Cursed pickup commit drama — slow-mo + violet flame burst + 1.5s
+    embed aura + "CURSED <name>" floater. Tests +1.
+  • Expansion Team R4 (iter-238): TUSKBROD charger enemy completes
+    the shield/flying/charger trio of missing AI patterns. 4-state
+    machine: WANDER → TELEGRAPH (red aim ray) → CHARGE (4× speed,
+    2 damage) → RECOVERY. HP 5, copper/red werewolf. Wired into
+    room_06 BROOD CHAMBER wave 2. Tests +1.
+  • Fun Ideas R4 (iter-239): FLOOR-WIDE MODIFIERS (Pact lite).
+    5 modifiers (HEAT WAVE / SWIFT FOES / THICKER BLOOD / DARKER
+    PATHS / CLOCKED) — pick any combination at run start for an
+    additive ether reward multiplier (1.0 → 2.10× max). Pre-run
+    modal in main_menu, HUD chip strip during runs. HEAT WAVE fully
+    wired to hero damage path; 4 others scaffolded with correct
+    multiplier math. Tests +1.
 
 **Round 3 (iter-232..235)**:
   • Bug Team R3 (iter-232): 3 coverage tests — migration v6/v7/v8,
