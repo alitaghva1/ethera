@@ -78,6 +78,24 @@ const CURSED_AURA_COLOR: Color = Color(0.55, 0.20, 0.65, 0.55)
 const CURSED_BADGE_BG: Color = Color(0.20, 0.08, 0.25, 0.90)
 const CURSED_BADGE_FG: Color = Color(0.95, 0.65, 1.0, 1.0)
 
+# iter-237 / Polish Team R4 — cursed COMMIT drama constants. The
+# pickup moment was anticlimactic in iter-235 (claim → curse silently
+# applied → outro tween). These constants drive a 0.4s-scaled-time
+# slow-mo (real-time 0.2s) + violet flame burst + 1.5s embedded aura
+# under the hero so the player feels the curse landing.
+#
+# Time-scale machinery: a SceneTreeTimer with ignore_time_scale=true
+# restores Engine.time_scale to 1.0 after CURSED_SLOWMO_REAL_TIME real
+# seconds, independent of the pedestal's queue_free lifetime. The
+# pedestal's outro tween (0.35s) ends well after the slowmo restore.
+const CURSED_SLOWMO_SCALE: float = 0.5
+const CURSED_SLOWMO_REAL_TIME: float = 0.2     # 0.4s scaled @ 0.5x = 0.2s real
+const CURSED_FLAME_PARTICLES: int = 24
+const CURSED_FLAME_LIFETIME: float = 0.8
+const CURSED_FLAME_COLOR: Color = Color(0.78, 0.30, 0.95, 1.0)
+const CURSED_EMBED_AURA_DUR: float = 1.5
+const CURSED_EMBED_AURA_COLOR: Color = Color(0.62, 0.22, 0.78, 0.85)
+
 # Cached visual refs for the cursed overlay so _claim / _dismiss can
 # tween them in parallel with the orb fade. Both null on a clean pickup.
 var _cursed_aura: PointLight2D = null
@@ -636,6 +654,23 @@ func _claim() -> void:
 			parent_node_curse.add_child(num)
 		else:
 			num.queue_free()
+		# iter-237 / Polish Team R4 — commit drama. Slow-mo + violet
+		# flame burst + 1.5s embedded aura under the hero. Plus a
+		# deep-violet "CURSED <NAME>" floater above the existing
+		# curse-effect floater so the player gets a two-line stack
+		# explaining what just happened. The drama helper handles the
+		# time-scale restore on its own SceneTreeTimer so the pedestal
+		# can queue_free below without leaking slow-mo.
+		var dramatic_label: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -172),
+			"CURSED " + curse_label,
+			CURSED_EMBED_AURA_COLOR,
+		)
+		if parent_node_curse != null:
+			parent_node_curse.add_child(dramatic_label)
+		else:
+			dramatic_label.queue_free()
+		_play_cursed_commit_drama()
 	# Spawn a pickup banner (damage-number-shaped). Yellow + bigger
 	# than damage numbers so it reads as a real beat.
 	var n: DamageNumber = DamageNumber.spawn(
@@ -807,3 +842,110 @@ func _build_cursed_overlay() -> void:
 	label.position = Vector2(-PILL_HALF_W, -PILL_HALF_H - 1)
 	label.size = Vector2(PILL_HALF_W * 2.0, PILL_HALF_H * 2.0 + 2)
 	badge.add_child(label)
+
+# iter-237 / Polish Team R4 — cursed-pickup commit drama.
+#
+# Hook point: called from _claim() AFTER the curse is applied + the
+# "+ <LABEL>" floater is spawned. Three layered effects so the moment
+# "feels embedded":
+#
+#   1. Engine slow-mo at CURSED_SLOWMO_SCALE (0.5) for 0.4s scaled time
+#      (= CURSED_SLOWMO_REAL_TIME real seconds). The restore SceneTreeTimer
+#      runs with ignore_time_scale=true so it fires reliably even though
+#      Engine.time_scale is mid-stretch.
+#   2. Violet flame burst at the HERO position (not the pedestal — the
+#      curse is landing ON the hero) using a CPUParticles2D one-shot.
+#      Lives ~0.8s real-time then queue_frees itself.
+#   3. Pulsing violet PointLight2D under the hero for 1.5s, signaling the
+#      curse is "embedded" into the build. Fades out via a tween.
+#
+# Defensive design: all spawned nodes are attached to the parent (main.gd
+# scene) — NOT the pedestal — because the pedestal queue_frees ~0.35s
+# after this call. Attaching to the parent keeps the burst and aura
+# alive past pedestal teardown.
+#
+# Hero lookup: scan for the first node in group "hero" (the same group
+# used by the on_body_entered handler above). If no hero is found
+# (test stubs, headless preview, transition windows), fall back to the
+# pedestal's global_position so the burst at least plays somewhere
+# visible.
+func _play_cursed_commit_drama() -> void:
+	# 1. Slow-mo. We do NOT participate in main.gd's _hit_stop_timer —
+	# that's tied to combat hit-stops and getting interleaved here would
+	# stomp on each other. Independent one-shot timer keeps the two
+	# systems decoupled.
+	Engine.time_scale = CURSED_SLOWMO_SCALE
+	# ignore_time_scale=true → counts in real seconds regardless of the
+	# slow-mo we just set. Without this, the restore would itself be
+	# slowed and the curse drama would stretch into the outro tween.
+	var restore_timer: SceneTreeTimer = get_tree().create_timer(
+		CURSED_SLOWMO_REAL_TIME, true, false, true,
+	)
+	restore_timer.timeout.connect(_restore_time_scale_after_curse)
+	# 2. Violet flame burst at the hero. Attach to parent so it
+	# outlives the pedestal. Hero may be missing in test/preview — the
+	# fallback to pedestal position keeps the call safe.
+	var hero_pos: Vector2 = global_position
+	var heroes: Array = get_tree().get_nodes_in_group("hero")
+	if heroes.size() > 0 and heroes[0] is Node2D:
+		hero_pos = (heroes[0] as Node2D).global_position
+	var burst: CPUParticles2D = CPUParticles2D.new()
+	burst.name = "CursedCommitBurst"
+	burst.position = hero_pos
+	burst.one_shot = true
+	burst.emitting = true
+	burst.explosiveness = 0.95
+	burst.amount = CURSED_FLAME_PARTICLES
+	burst.lifetime = CURSED_FLAME_LIFETIME
+	burst.spread = 180.0
+	burst.initial_velocity_min = 110.0
+	burst.initial_velocity_max = 170.0
+	burst.gravity = Vector2(0, -80)         # rises like flame
+	burst.scale_amount_min = 1.6
+	burst.scale_amount_max = 2.8
+	burst.color = CURSED_FLAME_COLOR
+	burst.z_index = 10                       # over the hero sprite
+	# Auto-cleanup so the scene doesn't accumulate dead particle nodes.
+	var burst_parent: Node = get_parent()
+	if burst_parent != null:
+		burst_parent.add_child(burst)
+		burst.get_tree().create_timer(CURSED_FLAME_LIFETIME + 0.3).timeout\
+			.connect(burst.queue_free)
+	else:
+		burst.queue_free()
+	# 3. Pulsing violet aura under the hero. PointLight2D so it tints
+	# the hero sprite + floor patch around them. Tween energy with a
+	# sine curve so it visibly throbs over the 1.5s "embedded" window,
+	# then fades to 0 and frees.
+	if burst_parent == null:
+		return
+	var embed_aura: PointLight2D = PointLight2D.new()
+	embed_aura.name = "CursedEmbedAura"
+	embed_aura.position = hero_pos
+	embed_aura.color = CURSED_EMBED_AURA_COLOR
+	embed_aura.energy = 0.0
+	embed_aura.texture_scale = 1.4
+	embed_aura.range_z_min = -1024
+	embed_aura.range_z_max = 1024
+	burst_parent.add_child(embed_aura)
+	# Pulse in for 0.18s, hold + throb for 1.1s (two pulses), then fade
+	# out for 0.22s. Total ~1.5s matches CURSED_EMBED_AURA_DUR.
+	var pulse_tween: Tween = embed_aura.create_tween()
+	pulse_tween.tween_property(embed_aura, "energy", 1.2, 0.18)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	pulse_tween.tween_property(embed_aura, "energy", 0.6, 0.30)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse_tween.tween_property(embed_aura, "energy", 1.2, 0.30)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse_tween.tween_property(embed_aura, "energy", 0.6, 0.30)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	pulse_tween.tween_property(embed_aura, "energy", 0.0, 0.42)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	pulse_tween.tween_callback(embed_aura.queue_free)
+
+# Single-purpose restore: snap Engine.time_scale back to 1.0. Lives as
+# a named method (not a lambda) so the test suite can verify the
+# slow-mo wiring via source-grep without depending on inline closure
+# text.
+func _restore_time_scale_after_curse() -> void:
+	Engine.time_scale = 1.0

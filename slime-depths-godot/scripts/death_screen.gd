@@ -355,6 +355,48 @@ func _rebuild_combat_summary() -> void:
 func hide_death() -> void:
 	visible = false
 
+# iter-237 / Polish Team R4 — relic showcase. Group owned_relics by
+# tier so the player reads "I built a heavy LEGENDARY run" or "five
+# RARES" at a glance instead of a flat name list. Each tier becomes a
+# header line in tier-color, then its relics list under it. Each relic
+# carries a leading theme-color bullet derived from the registry's
+# `themes` field — visually surfaces the player's actual build texture
+# (STORM-heavy, FLAME-heavy, multi-theme spread).
+#
+# Tier order: common → rare → legendary → mythic. Empty tiers are
+# skipped entirely (no empty header). Within a tier, relic order matches
+# acquisition order (owned_relics is append-only). Multi-theme relics
+# show the FIRST theme's color — picking one keeps the line tight and
+# the THEMES strip above already conveys the multi-theme totals.
+const TIER_DISPLAY_ORDER: Array[String] = ["common", "rare", "legendary", "mythic"]
+const TIER_HEADER_COLORS: Dictionary = {
+	# Same family as relic_icon.gd's TIER_COLORS so the death screen
+	# tier headers feel of-a-piece with the in-run HUD relic strip.
+	# Mythic is new here (relic_icon doesn't have it yet) — warm gold
+	# matches the iter-53 mythic acquisition palette.
+	"common":    Color(0.78, 0.80, 0.85, 1.0),
+	"rare":      Color(0.55, 0.78, 1.00, 1.0),
+	"legendary": Color(0.92, 0.55, 1.00, 1.0),
+	"mythic":    Color(1.00, 0.78, 0.36, 1.0),
+}
+const TIER_HEADER_LABEL: Dictionary = {
+	"common":    "COMMON",
+	"rare":      "RARE",
+	"legendary": "LEGENDARY",
+	"mythic":    "MYTHIC",
+}
+# Theme chip colors — mirrors the THEME_COLORS table in pedestal.gd
+# and the active-themes strip in _rebuild_themes_summary above. Keeping
+# the palette identical means a STORM build reads as the same blue here
+# as on the pedestal aura mid-run.
+const RELIC_THEME_CHIP_COLORS: Dictionary = {
+	"storm":  Color(0.55, 0.85, 1.00, 1.0),
+	"flame":  Color(1.00, 0.62, 0.30, 1.0),
+	"blood":  Color(0.90, 0.30, 0.36, 1.0),
+	"vow":    Color(1.00, 0.88, 0.50, 1.0),
+	"shadow": Color(0.72, 0.55, 0.92, 1.0),
+}
+
 func _rebuild_relics_list() -> void:
 	# Clear previous run's entries.
 	for child in relics_list.get_children():
@@ -373,20 +415,86 @@ func _rebuild_relics_list() -> void:
 		relics_list.add_child(none_lbl)
 		return
 	relics_title.visible = true
+	# Bucket owned relics by their registry tier. Unknown tier falls
+	# into "common" so a missing-data row still renders. Acquisition
+	# order within a tier is preserved (Dictionary iteration follows
+	# insertion order in Godot 4).
+	var by_tier: Dictionary = {}
+	for tier_id in TIER_DISPLAY_ORDER:
+		by_tier[tier_id] = []
 	for rid in owned:
 		var info: Dictionary = GameState.relic_info(rid)
-		var nm: String = info.get("name", rid)
-		# Bullet glyph (• U+2022) prefixed at gold, name in cream. A
-		# single Label with both colors would need BBCode; using one
-		# label is fine here since the bullet reads as part of the line.
-		var lbl: Label = Label.new()
-		lbl.text = "•  %s" % nm
-		lbl.add_theme_font_size_override("font_size", 14)
-		lbl.add_theme_color_override("font_color", Color(0.96, 0.85, 0.63, 1))
-		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
-		lbl.add_theme_constant_override("outline_size", 2)
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		relics_list.add_child(lbl)
+		var tier: String = str(info.get("tier", "common"))
+		if not by_tier.has(tier):
+			by_tier[tier] = []
+		by_tier[tier].append(rid)
+	# Render in TIER_DISPLAY_ORDER so a player who hit floor 4 sees
+	# mythic at the bottom (the rarest of their rewards) instead of in
+	# acquisition order interleaved with commons.
+	for tier_id in TIER_DISPLAY_ORDER:
+		var rids: Array = by_tier.get(tier_id, [])
+		if rids.is_empty():
+			continue
+		_append_tier_header(tier_id, rids.size())
+		for rid in rids:
+			_append_relic_row(rid)
+
+# Tier header row — small uppercase label tinted with the tier color,
+# followed by "× N" count so the player gets an immediate read on how
+# many of each rarity they collected. Same outline weight as the
+# REACHED / CAUSE lines so the death screen retains a single typographic
+# language.
+func _append_tier_header(tier_id: String, count: int) -> void:
+	var header: Label = Label.new()
+	header.text = "%s  ×%d" % [
+		str(TIER_HEADER_LABEL.get(tier_id, tier_id.to_upper())),
+		count,
+	]
+	header.add_theme_font_size_override("font_size", 13)
+	header.add_theme_color_override("font_color", TIER_HEADER_COLORS.get(tier_id, Color.WHITE))
+	header.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	header.add_theme_constant_override("outline_size", 2)
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	relics_list.add_child(header)
+
+# Single relic row inside a tier group. Each row is an HBoxContainer
+# holding a small theme-color chip Polygon2D (drawn through a
+# ColorRect for layout simplicity) plus the relic name label. The chip
+# color is derived from the first theme in info["themes"]; if the
+# relic has no themes (rare data edge), a neutral cream chip is used.
+func _append_relic_row(rid: String) -> void:
+	var info: Dictionary = GameState.relic_info(rid)
+	var nm: String = info.get("name", rid)
+	var themes_arr: Array = info.get("themes", [])
+	var chip_color: Color = Color(0.96, 0.85, 0.63, 1.0)   # neutral fallback
+	if themes_arr.size() > 0:
+		chip_color = RELIC_THEME_CHIP_COLORS.get(
+			str(themes_arr[0]),
+			Color(0.96, 0.85, 0.63, 1.0),
+		)
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	relics_list.add_child(row)
+	# Theme chip — tiny ColorRect (8×8) gives the row a visible
+	# color punch without needing a SubViewport or shader. We wrap
+	# it in a Control so the HBox can center-align vertically with
+	# the larger Label baseline.
+	var chip_wrap: Control = Control.new()
+	chip_wrap.custom_minimum_size = Vector2(10, 14)
+	row.add_child(chip_wrap)
+	var chip: ColorRect = ColorRect.new()
+	chip.color = chip_color
+	chip.position = Vector2(0, 3)
+	chip.size = Vector2(10, 10)
+	chip_wrap.add_child(chip)
+	var lbl: Label = Label.new()
+	lbl.text = nm
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", Color(0.96, 0.85, 0.63, 1))
+	lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	lbl.add_theme_constant_override("outline_size", 2)
+	row.add_child(lbl)
 
 func _has_game_state() -> bool:
 	# When the scene is run in isolation (no autoload registered) the
