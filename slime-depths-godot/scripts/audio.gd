@@ -35,15 +35,18 @@ const SOUND_CONFIGS := {
 	# Combat — hero side
 	"hero_swing":    { "freq_start": 620.0, "freq_end": 220.0, "duration": 0.09, "wave": "sin",    "gain": 0.40, "decay_pow": 1.6 },
 	"hero_blasted":  { "freq_start": 820.0, "freq_end": 160.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.8 },
-	# iter-95: was "hero_dodged" — dodge ability deleted, sound now plays
+	# iter-95: was "hero_dodged" — dodge ability deleted, sound played
 	# on the SHIELD raise + catch beats via the renamed hero_shielded signal.
-	# Iter 197 — upgraded to a Hades-style PARRY CHIME (was a noise puff
-	# at 220-360 Hz). Parry catch is timing-skill gated; rewarding it
-	# with a clean musical bell strike is the canonical "you nailed it"
-	# audio cue (Hades' clash-hit sound). 880 → 1320 Hz is an
-	# ascending perfect-fifth on a sine wave, 180 ms with linear decay
-	# so it RINGS rather than snaps.
-	"hero_shielded": { "freq_start": 880.0, "freq_end":1320.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.0 },
+	# iter-247: parry/shield folded into PERFECT DODGE; chime renamed
+	# accordingly (semantic role unchanged — the "you nailed it" musical
+	# bell strike on a successful timing-gated catch). Same waveform spec.
+	# Iter 197 — Hades-style chime (was a noise puff at 220-360 Hz).
+	# 880 → 1320 Hz is an ascending perfect-fifth on a sine wave, 180 ms
+	# with linear decay so it RINGS rather than snaps.
+	# Legacy "hero_shielded" alias retained in _streams dict so any in-
+	# flight call site (e.g. blood_tithe's soft-refusal "parry_chime"
+	# replacement) doesn't 404 — see _synthesize_all's alias block.
+	"perfect_dodge_chime": { "freq_start": 880.0, "freq_end":1320.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.0 },
 	# Iter 197 — dash whoosh. Pre-iter-197 dash_strike had golden
 	# afterimages (visual commitment) but no audio — the move felt
 	# weighted but silent. Rising 400 → 1200 Hz sine sweep over 200 ms
@@ -233,8 +236,8 @@ const SOUND_CONFIGS := {
 	# materializes above the hero. Distinct from pickup_claimed (which
 	# fires on CLAIM) and from boss_clear / room_clear (which fire on
 	# wave/room transitions). 660 → 1320 Hz is a perfect-fifth rise on
-	# a sine wave — the same musical interval used in hero_shielded
-	# (the parry catch chime), but pitched HIGHER + longer so the two
+	# a sine wave — the same musical interval used in perfect_dodge_chime
+	# (the perfect-dodge catch chime), but pitched HIGHER + longer so the two
 	# sit in distinct frequency registers. Reads as "good fortune"
 	# without competing with combat chime. Gain 0.55 — present but
 	# does not eclipse a kill cascade audio environment.
@@ -260,7 +263,8 @@ func _ready() -> void:
 	# entry + add a connect here, no gameplay-side edits.
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
-	Events.hero_shielded.connect(_on_hero_shielded)
+	# iter-247: hero_shielded renamed → hero_perfect_dodged.
+	Events.hero_perfect_dodged.connect(_on_hero_perfect_dodged)
 	Events.hero_damaged.connect(_on_hero_damaged)
 	Events.hero_died.connect(_on_hero_died)
 	Events.enemy_hit.connect(_on_enemy_hit)
@@ -291,6 +295,16 @@ func _ready() -> void:
 func _synthesize_all() -> void:
 	for id in SOUND_CONFIGS:
 		_streams[id] = _synthesize(SOUND_CONFIGS[id])
+	# iter-247 — back-compat aliases. The parry/shield system collapsed
+	# into PERFECT DODGE; the chime asset is now called "perfect_dodge_chime"
+	# but a couple of legacy call sites (notably blood_tithe's soft-refusal
+	# branch in hero.gd) reference "parry_chime" + "hero_shielded" by name.
+	# Rather than touch every call site, alias the same stream so the calls
+	# resolve without 404. Future cleanup pass can rename the call sites and
+	# delete the aliases.
+	if _streams.has("perfect_dodge_chime"):
+		_streams["hero_shielded"] = _streams["perfect_dodge_chime"]
+		_streams["parry_chime"]   = _streams["perfect_dodge_chime"]
 
 # Build one AudioStreamWAV from a config dict. Generates raw 16-bit PCM
 # samples by hand: pitch-swept oscillator × amplitude decay. The result
@@ -402,8 +416,12 @@ func _on_hero_blasted(world_pos: Vector2, _aim: Vector2) -> void:
 	# Played -4 dB so it accents without out-shouting the blast itself.
 	_play("blast_muzzle", world_pos, -4.0)
 
-func _on_hero_shielded(world_pos: Vector2) -> void:
-	_play("hero_shielded", world_pos, -6.0)
+func _on_hero_perfect_dodged(world_pos: Vector2) -> void:
+	# iter-247: was _on_hero_shielded. Plays the renamed perfect-dodge
+	# chime via the same stream (the SOUND_CONFIGS entry is now keyed
+	# "perfect_dodge_chime"; the legacy "hero_shielded" stream alias in
+	# _synthesize_all means the old key still resolves to the same audio).
+	_play("perfect_dodge_chime", world_pos, -6.0)
 
 func _on_hero_damaged(world_pos: Vector2) -> void:
 	_play("hero_damaged", world_pos, 0.0)

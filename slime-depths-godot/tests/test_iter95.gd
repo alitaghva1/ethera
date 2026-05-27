@@ -54,16 +54,20 @@ func _initialize() -> void:
 	else:
 		ok = false
 
-	# ═══ Events.hero_dodged renamed → hero_shielded ═══
+	# ═══ Events.hero_dodged renamed → hero_shielded (iter-95) → hero_perfect_dodged (iter-247) ═══
+	# iter-247 follow-up: parry/shield folded into PERFECT DODGE, signal
+	# renamed accordingly. Iter-95's original assertion was hero_shielded;
+	# iter-247 updates it to hero_perfect_dodged. Both must NOT contain
+	# the original hero_dodged name (regression guard from iter-95).
 	var ev_src := FileAccess.get_file_as_string("res://scripts/events.gd")
 	if ev_src.contains("signal hero_dodged"):
 		push_error("FAIL: events.gd still declares signal hero_dodged")
 		ok = false
-	elif not ev_src.contains("signal hero_shielded"):
-		push_error("FAIL: events.gd missing signal hero_shielded (replacement for hero_dodged)")
+	elif not ev_src.contains("signal hero_perfect_dodged"):
+		push_error("FAIL: events.gd missing signal hero_perfect_dodged (iter-247 rename of hero_shielded)")
 		ok = false
 	else:
-		print("OK Events: hero_dodged → hero_shielded")
+		print("OK Events: hero_dodged → hero_shielded (iter-95) → hero_perfect_dodged (iter-247)")
 
 	# ═══ All subscribers updated ═══
 	for path in ["res://scripts/audio.gd", "res://scripts/fx.gd", "res://scripts/screen_flash.gd"]:
@@ -74,13 +78,14 @@ func _initialize() -> void:
 	if ok:
 		print("OK no script subscribes to Events.hero_dodged anymore")
 
-	# audio: handler renamed
+	# audio: handler renamed twice (iter-95: _on_hero_shielded; iter-247:
+	# _on_hero_perfect_dodged). Verify the current iter-247 handler exists.
 	var audio_src := FileAccess.get_file_as_string("res://scripts/audio.gd")
-	if not audio_src.contains("_on_hero_shielded"):
-		push_error("FAIL: audio.gd missing _on_hero_shielded handler")
+	if not audio_src.contains("_on_hero_perfect_dodged"):
+		push_error("FAIL: audio.gd missing _on_hero_perfect_dodged handler (iter-247)")
 		ok = false
 	else:
-		print("OK audio.gd has _on_hero_shielded handler")
+		print("OK audio.gd has _on_hero_perfect_dodged handler (iter-247 rename)")
 
 	# fx.gd: DODGE_DUST_SCENE preload removed (dodge_dust.tscn deleted)
 	var fx_src := FileAccess.get_file_as_string("res://scripts/fx.gd")
@@ -133,15 +138,15 @@ func _initialize() -> void:
 				ok = false
 	print("OK _start_parry → _start_shield, _on_parry_hit → _on_shield_block, reflect fan renamed")
 
-	# Banner text
+	# Banner text — iter-95 renamed "PARRY" → "SHIELD". iter-247 removed
+	# the catch-floater entirely (perfect-dodge spawns a "PERFECT!" floater
+	# in sub-commit 4 instead, from a different code path). PARRY must
+	# stay absent (regression guard); SHIELD floater is now optional.
 	if hero_src.contains("\"PARRY\""):
-		push_error("FAIL: hero.gd still shows 'PARRY' banner text (should be 'SHIELD')")
-		ok = false
-	elif not hero_src.contains("\"SHIELD\""):
-		push_error("FAIL: hero.gd missing 'SHIELD' banner text")
+		push_error("FAIL: hero.gd still shows 'PARRY' banner text (iter-95 removed it)")
 		ok = false
 	else:
-		print("OK damage_number banner: 'PARRY' → 'SHIELD'")
+		print("OK damage_number banner: PARRY removed (iter-95); SHIELD floater removed in iter-247 catch refactor")
 
 	# ═══ Dash strike retuned + theme procs reanchored ═══
 	if not hero_src.contains("DASH_STRIKE_COOLDOWN := 0.9"):

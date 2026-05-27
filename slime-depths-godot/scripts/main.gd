@@ -277,7 +277,7 @@ enum WaveState { PRE, ACTIVE, CLEAR, COMPLETE, DEAD }
 
 # Iter 225 / Polish Team — ability cooldown chip strip. Code-built so
 # we don't need a main.tscn edit. Four small labels (LMB sword, RMB
-# blast, Q parry, SHIFT dash) sit in a horizontal row just below the
+# blast, SHIFT dash, R active) sit in a horizontal row just below the
 # ActiveRelicLabel (y≈148). Each chip:
 #   • Hidden when its cooldown <= 0.0 (the "ready" state — the player
 #     doesn't need to be told an instant-ready ability is ready).
@@ -637,7 +637,7 @@ enum TutorialState {
 	WAIT_ATTACK,     # show "ATTACK — LEFT MOUSE" until attack pressed
 	WAIT_BLAST,      # iter 223 — RMB blast (added in M4 tutorial extension)
 	WAIT_DASH,       # show "DASH — SHIFT" until dash strike pressed
-	WAIT_SHIELD,     # iter 223 — Q parry/shield
+	WAIT_SHIELD,     # iter 223 — shield/parry (removed in iter-247, kept enum for save-compat)
 	WAIT_PICKUP,     # show "PICK UP RELIC — Walk to glowing pedestal"
 	DONE,            # short fade-out then OFF + persist completion
 }
@@ -924,7 +924,10 @@ func _ready() -> void:
 	# iter-119's _process_status_fade carries the hint off-screen over
 	# HINT_FADE_DELAY (5 s) + HINT_FADE_DURATION (1 s).
 	if not GameState.has_seen_controls_hint:
-		status_label.text = "LMB swing  ·  RMB blast  ·  Q shield  ·  SHIFT dash"
+		# iter-247: combat verbs collapsed to 4 (SWORD / BLAST / DODGE /
+		# ACTIVE). Shield input removed — parry folded into PERFECT DODGE
+		# on the dash's last-0.10s window. Hint reflects the new layout.
+		status_label.text = "LMB swing  ·  RMB blast  ·  SHIFT dash  ·  R active"
 		GameState.has_seen_controls_hint = true
 		SaveSystem.save_now()
 	else:

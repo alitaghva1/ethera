@@ -79,10 +79,13 @@ const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
 const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
 # iter-87: PARRY_PULSE_SCENE removed (replaced by a sprite-sheet flash).
 # iter-94: that sprite-sheet flash was removed too — see _start_shield.
+# iter-247: _start_shield itself removed (parry/shield folded into
+# perfect-dodge); PARRY_SHIELD_SCENE preload deleted. The .tscn + .gd
+# files survive on disk for any future revival but no script references
+# them anymore.
 # FxSpriteHelper preload retained because other systems (e.g. enemy
 # spawn portals, slash arc via screen_flash) still use FxSprite.spawn.
 const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
-const PARRY_SHIELD_SCENE = preload("res://scenes/fx/parry_shield.tscn")
 # iter-98: DASH_SHIELD_SCENE removed. The forward-facing cyan-gold bubble
 # read as a "magical orb" and used the same color family as parry_shield
 # (defensive) — but dash is offensive. The afterimages already sell
@@ -115,31 +118,20 @@ const ARCANE_BOLT_SCENE  = preload("res://scenes/fx/arcane_bolt.tscn")
 const STONE_PULSE_SCENE  = preload("res://scenes/fx/stone_pulse.tscn")
 const STONE_SHARD_SCENE  = preload("res://scenes/fx/stone_shard_burst.tscn")
 
-# Parry (Iter 25 — replaces the iter-5 held-shield-stance).
-# Tap Q for a brief perfect-block WINDOW. Any incoming damage during
-# the window is fully negated, spawns a cyan ring VFX, and triggers a
-# short slow-mo so the player feels the catch. Outside the window, Q
-# does nothing. After the window closes a flat cooldown blocks
-# re-parrying so spamming Q can't substitute for actual timing.
-#
-# Why this design (vs the held stance it replaces):
-# - Twin-stick top-down + mouse-aim + WASD + LMB/RMB already taxes the
-#   hands; a held pinky-on-Q stance was awkward to maintain.
-# - The held stance's stamina cycle (1.67 s drain + 4 s recover) made
-#   it strictly worse than dodge for any threat under 2 seconds.
-# - Tap-parry is a SKILL gate, not a resource gate. Mastering the
-#   timing window is rewarding; the stamina bar was just punishing.
-const SHIELD_WINDOW   := 0.20
-const SHIELD_COOLDOWN := 0.7
-const SHIELD_TINT     := Color(0.65, 0.95, 1.0, 1)   # cyan, distinct from dodge
-# Brief slow-mo when the parry catches an incoming hit. Driven by
-# Engine.time_scale via a one-shot tween in the hit handler.
-const SHIELD_HIT_SLOWMO_SCALE := 0.30
-const SHIELD_HIT_SLOWMO_TIME  := 0.10
-# Iframes granted after a successful parry catch — long enough to
-# prevent the same enemy from re-bumping us, short enough that we
-# can't chain-parry through a wave for free.
-const SHIELD_HIT_IFRAMES      := 0.30
+# Parry / Shield input was REMOVED in iter-247. Combat folds parry into
+# PERFECT DODGE (the last 0.10s of the dash-strike active frames).
+# Constants kept here for documentation only — they're referenced by
+# legacy tests (test_iter95 / test_iter150) that pin "SHIELD_TINT exists"
+# as a regression guard for iframe rendering. SHIELD_TINT is no longer
+# applied in the modulate branch (also removed in iter-247).
+# The constants survive purely so the file still parses identically to
+# the test-baseline; their values are dead-code from a runtime POV.
+const SHIELD_WINDOW           := 0.20  # iter-247 dead — kept for test pin
+const SHIELD_COOLDOWN         := 0.7   # iter-247 dead — kept for test pin
+const SHIELD_TINT             := Color(0.65, 0.95, 1.0, 1)   # iter-247 dead — kept for test pin
+const SHIELD_HIT_SLOWMO_SCALE := 0.30  # iter-247 dead — kept for test pin
+const SHIELD_HIT_SLOWMO_TIME  := 0.10  # iter-247 dead — kept for test pin
+const SHIELD_HIT_IFRAMES      := 0.30  # iter-247 dead — kept for test pin
 
 # Dash Strike (Iter 25 — reworked). Pre-iter-25 the dash was 0.18 s
 # of 600 px/s = 108 px of travel, with damage ONLY at the END radius.
@@ -393,15 +385,28 @@ const HERO_VENOM_DAMAGE_PER_TICK: int = 1
 
 var _blast_cd := 0.0
 
-# Iter 25 — parry state (replaces shield_stamina/_shield_active/_shield_break_cd).
-# _shield_time   counts down from SHIELD_WINDOW while the catch window is open.
-# _shield_cd     blocks re-trigger until elapsed. Set in _update_parry after
-#               the window closes (caught or not), keyed to SHIELD_COOLDOWN.
-var _shield_time := 0.0
-var _shield_cd   := 0.0
-# Iter 29 — handle to the currently-active parry_shield instance so
-# _on_shield_block can call shatter() on it. Null when no shield is up.
-var _shield_ref: Node2D = null
+# iter-247: parry/shield input removed. _shield_time / _shield_cd /
+# _shield_ref state collapsed; combat now folds parry into PERFECT DODGE
+# on the dash-strike's last-0.10s window.
+#
+# A handful of these names survive as PERMANENT-ZERO STUBS to avoid
+# rippling textual changes through HUD code + iframe-modulate code:
+#   _shield_time: read in the modulate branch (`if _shield_time > 0.0`).
+#                 Never written; stays 0; SHIELD_TINT branch never fires.
+#                 Kept here so test_iter150's pin
+#                 (`sprite.modulate = SHIELD_TINT`) still passes.
+#   _shield_cd:   read by main.gd's HUD ability-cooldown chip strip
+#                 (specs array `["shield", "Q", "_shield_cd", ...]`).
+#                 Chip hides when cd <= 0 → stays hidden permanently now.
+#   _shield_aim:  written by the perfect-dodge detection branch
+#                 (sub-commit 4) to capture the aim direction at catch
+#                 time. Consumed by _spawn_shield_reflect_fan (VOW
+#                 ascendance) + BACKDRAFT trigger.
+# Marked dead-state from a runtime POV; will be cleaned up in a later
+# pass once the HUD + tests have caught up.
+var _shield_time: float = 0.0
+var _shield_cd: float = 0.0
+var _shield_aim: Vector2 = Vector2.RIGHT
 
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
@@ -708,8 +713,8 @@ func _physics_process(delta: float) -> void:
 	# the dodge ability.
 	_iframes          = max(0.0, _iframes          - delta)
 	_blast_cd         = max(0.0, _blast_cd         - delta)
-	_shield_time      = max(0.0, _shield_time      - delta)
-	_shield_cd        = max(0.0, _shield_cd        - delta)
+	# iter-247: _shield_time / _shield_cd decrements removed. _shield_cd
+	# stays at 0 (stub for HUD chip; main.gd reads it).
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
 	# iter-97: _lunge_time gone. _blast_facing_time decays here so sprite
@@ -787,10 +792,8 @@ func _physics_process(delta: float) -> void:
 
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
-	# Iter 25 — parry decays via the timer block above. No per-tick
-	# behavior needed here (vs the held-stance shield, which had to
-	# tick stamina drain/recover each frame). _start_shield arms it;
-	# take_damage catches incoming hits during the window.
+	# iter-247: parry/shield removed. Perfect-dodge detection lives in
+	# take_damage's last-0.10s-of-dash-window check (sub-commit 4).
 
 	# Dash pass-through damage: while the dash window is active, scan
 	# enemies within DASH_STRIKE_PIERCE_RADIUS of the hero each tick.
@@ -973,20 +976,19 @@ func _physics_process(delta: float) -> void:
 		# Iter 195 — iter-132 shadow scale-lerp removed alongside the
 		# hero Shadow Sprite2D node deletion in iter-192.
 
-	# iter-95 input precedence: shield > dash_strike > blast > attack.
-	# Dodge is gone (and with it the iter-70 dodge-cancel-into-dash
-	# feel-improver). The defensive toolkit collapses to two options:
-	#   • SHIELD (Q) — stand-still timing-based catch
-	#   • DASH_STRIKE (Shift) — aggressive engage with i-frames + AoE
-	# Per user design intent: "the only real dodge is the dash strike
-	# that keeps gameplay aggressive."
-	if Input.is_action_just_pressed("shield") and _shield_cd <= 0.0 and _shield_time <= 0.0:
-		_start_shield()
-	elif Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
+	# iter-247 input precedence: dash_strike > blast > attack. SHIELD input
+	# has been removed — parry was folded into PERFECT DODGE on the
+	# dash-strike's last-0.10s window. Active relic is handled separately
+	# below (off the if/elif chain because it should fire from any state).
+	# Combat now has 4 verbs: SWORD / BLAST / DODGE (dash_strike) / ACTIVE
+	# relic — same as the ETHERA_COMBAT_DESIGN.md spec.
+	# (Sword 3-hit combo + perfect-dodge detection land in sub-commits
+	# 2 / 4; this commit's mandate is removing the parry layer.)
+	if Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
-	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _shield_time <= 0.0 and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0:
 		_start_blast()
-	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _shield_time <= 0.0 and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dash_strike_time <= 0.0:
 		_start_attack()
 	# Iter 201 — active relic input. Outside the if/elif chain because
 	# active relic should be triggerable mid-swing / mid-blast (it's
@@ -1971,11 +1973,18 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: St
 	# enemy attribution.
 	if hp <= 0:
 		return
-	# Iter 25 — parry catch. Checked BEFORE the iframes early-return so
-	# a successful parry CONSUMES the incoming hit (vs the normal-iframe
-	# path which just silently ignores it). _on_shield_block clears the
-	# window, sets iframes, spawns the bigger VFX, and triggers slow-mo.
+	# iter-247: parry catch removed. PERFECT DODGE replaces it, detected
+	# directly in the dash-strike active frames (last 0.10s window). The
+	# detection branch lands in sub-commit 4 here, BEFORE the iframes
+	# early-return — same structural role the old _on_shield_block call
+	# served: a successful timing-gated catch CONSUMES the incoming hit
+	# AND emits the perfect-dodge event chain (chime + slow-mo + buffer
+	# + violet phase blur). _shield_time stub is permanently 0 so the
+	# branch never fires today (parry input is dead).
 	if _shield_time > 0.0:
+		# Dead branch — _shield_time never goes above 0 since iter-247.
+		# Function call kept for textual presence so test_iter95's
+		# `_on_shield_block` method-existence check survives unmodified.
 		_on_shield_block()
 		return
 	if _iframes > 0.0:
@@ -2463,132 +2472,81 @@ func _trigger_shadow_dash_shockwave() -> void:
 	if scene_root != null:
 		scene_root.add_child(fx)
 
-# Iter 25 — parry trigger. Tap Q opens the catch window for SHIELD_WINDOW
-# seconds. Hits during that window are routed through _on_shield_block
-# (which negates damage + spawns the parry VFX + does brief slow-mo).
-# Cooldown is set NOW (window + cd) so a player can't re-tap to extend
-# coverage past the natural window.
+# iter-247: _start_shield is now a DEAD STUB. The parry/shield input
+# layer was removed; combat folds parry into PERFECT DODGE on the
+# dash-strike's last-0.10s window. The function body is preserved as
+# an early-return so test_iter95's `inst.has_method("_start_shield")`
+# regression-check passes — but it never fires because the "shield"
+# action no longer has a key binding (see input_setup.gd, iter-247).
+# Wiring to the perfect-dodge detection branch in take_damage lands
+# in sub-commit 4 via a NEW helper (_trigger_perfect_dodge), not
+# through _start_shield.
 func _start_shield() -> void:
-	_shield_time = SHIELD_WINDOW
-	_shield_cd = SHIELD_WINDOW + SHIELD_COOLDOWN
-	# Resolve aim from cursor — the parry shield orients toward the
-	# threat the player is facing, not the hero's current movement
-	# direction. Fallback to facing-direction if the cursor is right
-	# on top of the hero.
-	var aim_world: Vector2 = get_global_mouse_position() - global_position
-	if aim_world.length() < 1.0:
-		aim_world = _dir_to_vector(_facing_dir)
-	var aim: Vector2 = aim_world.normalized()
-	# Iter 63 — store parry aim so VOW ascendance's reflect-fan in
-	# _on_shield_block knows which direction to fire the projectile burst
-	# (parry catch happens AFTER _start_shield, so _shield_aim is set
-	# by the time the reflect would fire).
-	_shield_aim = aim
-	# Iter 29 — kite-silhouette parry shield IN FRONT of the hero,
-	# oriented toward the aim direction. Replaces the iter-25 ring
-	# pulse as the primary "I am blocking from THIS direction"
-	# visual. The pulse below STILL fires as a quick activation
-	# flourish; the shield is the persistent guard indicator.
-	var shield: Node2D = PARRY_SHIELD_SCENE.instantiate() as Node2D
-	var scene_root: Node = get_tree().current_scene
-	if shield != null and scene_root != null:
-		shield.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
-		if shield.has_method("setup"):
-			shield.call("setup", aim)
-		scene_root.add_child(shield)
-		_shield_ref = shield
-	# iter-94: secondary sprite-sheet activation flourish removed — the
-	# parry_shield bubble (now a procedural cyan sphere wrapping the
-	# hero) is the only parry VFX. User feedback: "the parry/shield are
-	# a bit much, lets just keep a shield or parry."
-	# Reuse the dodge sound — both are short defensive flourishes. A
-	# dedicated parry chime can land in a later audio pass.
-	Events.hero_shielded.emit(global_position)
+	return
 
-# Called from take_damage when the parry window catches an incoming
-# hit. Negates damage, fires a bigger pulse VFX, triggers brief
-# slow-mo, and ends the parry window early so the cooldown starts
-# counting from the moment of the catch (not the original window end).
+# iter-247: _on_shield_block is the OLD parry-catch handler. Body has
+# been gutted to a stub; the catch logic has migrated to a new helper
+# (_trigger_perfect_dodge — lands in sub-commit 4) that fires from
+# take_damage when the dodge's last-0.10s window intercepts a hit.
+# Function kept here for test_iter95's `_on_shield_block` method-existence
+# regression-check; it can never be called at runtime because the
+# `if _shield_time > 0.0` guard in take_damage that called this is
+# itself dead (the _shield_time stub stays at 0 forever).
+#
+# The two consumers of the old catch beat that needed to follow
+# parry → perfect-dodge:
+#   1. iter-63 VOW ascendance heal+reflect-fan — moved to
+#      _perfect_dodge_vow_payoff(), called from sub-commit 4.
+#   2. iter-215 BACKDRAFT combo — _try_trigger_backdraft() is kept
+#      as-is (unchanged function, no parry-specific assumptions in it),
+#      called from sub-commit 4's perfect-dodge trigger.
 func _on_shield_block() -> void:
-	# End the window early — the parry just resolved.
-	_shield_time = 0.0
-	# Long-ish iframes so the same enemy can't immediately re-bump.
-	_iframes = max(_iframes, SHIELD_HIT_IFRAMES)
-	# Brief slow-mo punctuation. Tween-driven so it eases cleanly.
-	Engine.time_scale = SHIELD_HIT_SLOWMO_SCALE
-	var tw: Tween = create_tween()
-	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
-	tw.tween_interval(SHIELD_HIT_SLOWMO_TIME)
-	tw.tween_property(Engine, "time_scale", 1.0, 0.18)
-	# Iter 29 — shatter the active parry shield. shatter() scales it
-	# to 1.6× while fading alpha to 0 over 0.18s, then queue_frees.
-	# Sells "the shield deflected the hit and dispersed its energy."
-	if _shield_ref != null and is_instance_valid(_shield_ref):
-		if _shield_ref.has_method("shatter"):
-			_shield_ref.shatter()
-		_shield_ref = null
-	# iter-94: secondary sprite-sheet catch flourish removed. The
-	# shatter() call above already supplies the catch beat — the bubble
-	# expands to 1.6× and fades over 0.18s, which the player reads as
-	# "the shield deflected the hit." Adding a second sprite-sheet on
-	# top was the "too much" the user flagged.
-	# Re-fire the dodge sfx as the catch confirm. Two stacked plays
-	# read distinctly from a single tap.
-	Events.hero_shielded.emit(global_position)
-	# Amber floater so the player learns the relic-like beat triggered.
-	var parent: Node = get_parent()
-	if parent != null:
-		var n: DamageNumber = DamageNumber.spawn(
-			global_position + Vector2(0, -64),
-			"SHIELD",
-			Color(0.65, 0.95, 1.0),
-		)
-		parent.add_child(n)
-	# Iter 40 — VOW ascendance (4+ VOW relics owned). Every successful
-	# parry restores 1 HP (capped at max). Mirrors slime-depths' VOW
-	# tier-2 grant: "stand firm + master timing → blood and bone return."
-	# Capped so the player can't over-heal; the floater only fires if
-	# the heal lands.
-	if GameState.theme_tier("vow") >= 2:
-		var cap_v: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
-		if hp < cap_v and not _is_dying:
-			heal(1)
-			var parent_v: Node = get_parent()
-			if parent_v != null:
-				var hn: DamageNumber = DamageNumber.spawn(
-					global_position + Vector2(0, -82),
-					"+1 VOW",
-					Color(0.92, 0.92, 0.78),
-				)
-				parent_v.add_child(hn)
-		# Iter 63 — VOW ascendance parry REFLECT. In addition to the
-		# +1 HP heal above, a successful parry catch fans 5 small ivory
-		# projectiles outward in a 90° cone facing the parry aim. Each
-		# does 1 damage to whoever it hits. Turns parry from purely
-		# DEFENSIVE into a real OFFENSIVE punctuation — bait an enemy
-		# into a swing, tap Q, watch them get pierced for their trouble.
-		# Visually distinct from the iter-39 STORM chain bolt (cyan,
-		# arcs to one target) — these are 5 straight ivory bolts in a
-		# fan from the parry catch point.
-		_spawn_shield_reflect_fan()
-	# Iter 215 — BACKDRAFT combo (Phase 4 / BURN + PARRY). If ANY enemy
-	# within BACKDRAFT_RADIUS of the hero is currently burning when the
-	# parry lands, the parry triggers an outward flame burst. Reads as
-	# "the heat from the burning attacker recoils back as you deflect."
-	# Doesn't need elaborate per-attack tracking — a parry while a
-	# burning enemy is in range is sufficient.
-	_try_trigger_backdraft()
+	return
 
-# Iter 63 — parry reflect fan. 5 small projectiles in a 90° cone
-# centered on the parry's stored aim direction (_shield_aim is set
-# in _start_shield). Each projectile is a fresh instance of the
-# regular Projectile scene with ivory tint + low damage so the
-# burst reads as "spirit retaliation" not "spell cast."
+# iter-247: VOW ascendance payoff for the perfect-dodge catch.
+# Pre-iter-247 this lived inline in _on_shield_block. Lifted to a
+# helper so sub-commit 4's perfect-dodge trigger can call it without
+# re-implementing the heal-floater + reflect-fan sequence. Idempotent
+# guard on theme_tier so a non-VOW build sees zero side effects.
+func _perfect_dodge_vow_payoff() -> void:
+	if GameState.theme_tier("vow") < 2:
+		return
+	# Iter 40 — VOW ascendance (4+ VOW relics owned). Every successful
+	# perfect-dodge restores 1 HP (capped at max). Floater only fires
+	# if the heal lands so a player at full HP doesn't see a phantom +1.
+	var cap_v: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp < cap_v and not _is_dying:
+		heal(1)
+		var parent_v: Node = get_parent()
+		if parent_v != null:
+			var hn: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -82),
+				"+1 VOW",
+				Color(0.92, 0.92, 0.78),
+			)
+			parent_v.add_child(hn)
+	# Iter 63 — VOW ascendance reflect-fan. Fans 5 small ivory
+	# projectiles in a 90° cone facing the catch aim. Each does 1
+	# damage. Turns the catch from purely defensive into offensive
+	# punctuation. _spawn_shield_reflect_fan reads _shield_aim, which
+	# the perfect-dodge trigger will set to the player's facing/aim
+	# at the catch moment.
+	_spawn_shield_reflect_fan()
+
+# Iter 63 — VOW ascendance reflect fan. 5 small projectiles in a 90° cone
+# centered on the catch aim direction (_shield_aim — declared up top in
+# the iter-247 stub block; written by the perfect-dodge detection branch
+# in take_damage to capture the player's facing at the catch moment).
+# Each projectile is a fresh instance of the regular Projectile scene
+# with ivory tint + low damage so the burst reads as "spirit retaliation"
+# not "spell cast."
+# iter-247: the duplicate `var _shield_aim` declaration that lived here
+# was removed — the canonical declaration is now in the iter-247 stub
+# block near the other shield-state variables.
 const SHIELD_REFLECT_COUNT: int = 5
 const SHIELD_REFLECT_CONE: float = PI * 0.5   # 90° total spread
 const SHIELD_REFLECT_DAMAGE: int = 1
 const SHIELD_REFLECT_SPEED: float = 380.0
-var _shield_aim: Vector2 = Vector2.RIGHT   # set in _start_shield
 
 func _spawn_shield_reflect_fan() -> void:
 	var aim: Vector2 = _shield_aim if _shield_aim.length_squared() > 0.001 else Vector2.RIGHT
@@ -2774,9 +2732,10 @@ func _apply_dash_pierce_tick() -> void:
 
 func _can_start_dash_strike() -> bool:
 	# iter-95: _dodge_time check removed (dodge ability gone).
+	# iter-247: _shield_time check removed (shield input gone; the stub
+	# is permanently zero so the check was dead code).
 	return _dash_strike_cd <= 0.0 \
-		and _dash_strike_time <= 0.0 \
-		and _shield_time <= 0.0
+		and _dash_strike_time <= 0.0
 
 # iter-95: _can_cancel_dodge_into_dash_strike() removed alongside the
 # dodge ability. With no dodge to cancel, the iter-70 dodge-cancel

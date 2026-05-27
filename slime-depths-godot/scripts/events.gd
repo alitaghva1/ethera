@@ -19,10 +19,15 @@ signal hero_damaged(world_pos: Vector2)                  # hero takes a hit
 # spot offscreen threats. DoT ticks / hazards with unknown sources
 # don't fire this — the directional cue would be misleading.
 signal hero_damage_directional(source_pos: Vector2, hero_pos: Vector2)
-# iter-95: dodge ability deleted; renamed signal carries the SHIELD beat
-# (window raised + catch resolved). Same payload, same audio + screen
-# flash subscribers as the old hero_dodged signal.
-signal hero_shielded(world_pos: Vector2)                 # hero raised shield OR caught a hit
+# iter-95: dodge ability deleted; renamed signal carried the SHIELD beat
+# (window raised + catch resolved).
+# iter-247: parry/shield folded into PERFECT DODGE. Signal renamed to
+# hero_perfect_dodged — same payload, fires at the moment the dodge's
+# last-0.10s window catches an incoming hit. Subscribers (audio chime,
+# screen wash, BACKDRAFT combo, VOW ascendance heal+reflect) survive the
+# rename intact; the trigger site moved from _on_shield_block to the
+# perfect-dodge detection branch in take_damage.
+signal hero_perfect_dodged(world_pos: Vector2)           # perfect-dodge catch (last 0.10s of dash window)
 signal hero_attacked(world_pos: Vector2, aim: Vector2)   # sword swing started
 signal hero_blasted(world_pos: Vector2, aim: Vector2)    # blast spell cast
 signal hero_stepped(world_pos: Vector2)                  # hero footstep tick (every ~26px walked)

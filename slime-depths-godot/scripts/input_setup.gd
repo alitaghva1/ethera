@@ -10,14 +10,15 @@
 #   move_right   D
 #   attack       Left mouse button
 #   blast        Right mouse button (added Iter 3 — ranged spell)
-#   shield       Q (Iter 5 → renamed from parry in iter-95)
 #   dash_strike  Shift (Iter 5 — burst + AoE slash; iter-95 made it the
 #                only defensive movement option after dodge was removed)
 #   interact     E (added Iter 2 — talk to NPCs, advance dialogue)
 #
 # iter-95: dodge binding (Space) deleted along with the dodge ability.
-# The defensive toolkit is now shield (timing-based catch) + dash_strike
-# (movement-based engage with i-frames). Space remains unbound.
+# iter-247: shield binding (Q) deleted — parry/shield folded into PERFECT
+# DODGE on the dash_strike active frames (the last 0.10s of the 0.24s
+# window). Combat now has 4 verbs: SWORD / BLAST / DODGE / ACTIVE relic.
+# Q remains unbound; pressing it does nothing.
 extends Node
 
 func _ready() -> void:
@@ -25,7 +26,9 @@ func _ready() -> void:
 	_bind_key("move_down",   KEY_S)
 	_bind_key("move_left",   KEY_A)
 	_bind_key("move_right",  KEY_D)
-	_bind_key("shield",      KEY_Q)
+	# iter-247: shield/parry input removed. The defensive toolkit
+	# collapses to dash_strike + perfect-dodge (timing-gated on the
+	# last 0.10s of the dash window). See ETHERA_COMBAT_DESIGN.md §5.
 	_bind_key("dash_strike", KEY_SHIFT)
 	_bind_key("interact",    KEY_E)
 	# Iter 201 — active relic key. Triggers SOUL SURGE (and any future

@@ -100,7 +100,9 @@ func _ready() -> void:
 	# means no risk of duplicate connections, but we still defensively
 	# avoid re-connecting if something weird happens.
 	Events.hero_damaged.connect(_on_hero_damaged)
-	Events.hero_shielded.connect(_on_hero_shielded)
+	# iter-247: hero_shielded renamed → hero_perfect_dodged. Same payload,
+	# fires from the perfect-dodge catch branch in hero.gd::take_damage.
+	Events.hero_perfect_dodged.connect(_on_hero_perfect_dodged)
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
 	Events.enemy_died.connect(_on_enemy_died)
@@ -292,11 +294,14 @@ func _on_hero_damaged(_world_pos: Vector2) -> void:
 	_damage_tween.tween_property(_damage_vignette, "modulate:a", 0.0, 0.28)\
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
-func _on_hero_shielded(_world_pos: Vector2) -> void:
-	# iter-95: was _on_hero_dodged. The dodge ability is gone — this
-	# brief cyan flash now reinforces the SHIELD raise + catch beats
-	# (parry_shield.gd's bubble visual is the primary feedback; the
-	# flash sells the i-frame moment in the player's peripheral vision).
+func _on_hero_perfect_dodged(_world_pos: Vector2) -> void:
+	# iter-95: was _on_hero_dodged. iter-247: parry/shield folded into
+	# perfect-dodge; subscriber renamed and now fires on the perfect-dodge
+	# catch (last 0.10s of dash window). The cyan flash sells the
+	# i-frame moment in the player's peripheral vision — paired with the
+	# main violet phase blur + violet vignette pulse spawned by hero.gd
+	# itself. (Future polish: retint this flash to violet to match the
+	# new theme; cyan kept for v1 so the test bed isn't disrupted.)
 	_flash(Color(0.5, 0.85, 1.0, 0.15), 0.15)
 
 func _on_hero_attacked(world_pos: Vector2, aim: Vector2) -> void:

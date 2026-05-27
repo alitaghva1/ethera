@@ -87,9 +87,10 @@ func _ready() -> void:
 	# scene anyway, so they wouldn't be cleared even without the flag).
 	Events.hero_damaged.connect(_on_hero_damaged)
 	# iter-95: hero_dodged subscriber removed alongside the dodge ability.
-	# Audio + screen flash still react to the renamed hero_shielded signal
-	# (raised + caught beats); this FX layer has no DODGE_DUST_SCENE to
-	# spawn anymore.
+	# iter-247: parry/shield folded into perfect-dodge. Audio + screen
+	# flash react to the renamed hero_perfect_dodged signal; this FX
+	# layer remains uninvolved (no DODGE_DUST_SCENE; the perfect-dodge
+	# violet phase blur is spawned inline in hero.gd).
 	Events.hero_attacked.connect(_on_hero_attacked)
 	Events.hero_blasted.connect(_on_hero_blasted)
 	Events.enemy_hit.connect(_on_enemy_hit)

@@ -29,15 +29,24 @@ func _initialize() -> void:
 	var ok := true
 
 	# ═══ 1. main.gd HUD control hint ═══
+	# iter-247: hint text updated again — Q shield is gone (parry folded
+	# into PERFECT DODGE), replaced by "R active" for the active relic
+	# input. Combat is now 4 verbs: SWORD / BLAST / DODGE / ACTIVE.
 	var main_src := FileAccess.get_file_as_string("res://scripts/main.gd")
 	if "SPACE dodge" in main_src or "Q parry" in main_src:
 		push_error("FAIL: main.gd status_label still says SPACE dodge or Q parry")
 		ok = false
-	if not main_src.contains("Q shield · SHIFT dash"):
-		push_error("FAIL: main.gd status_label doesn't say 'Q shield · SHIFT dash'")
+	# Old iter-100 assertion was "Q shield · SHIFT dash"; iter-247 promotes
+	# the dash to its own slot and adds the R active slot. The Q shield
+	# string must not appear anywhere in the hint anymore.
+	if "Q shield" in main_src and main_src.find("\"LMB swing  ·  RMB blast  ·  Q shield") >= 0:
+		push_error("FAIL: main.gd status_label still includes 'Q shield' (iter-247 removed shield input)")
+		ok = false
+	elif not main_src.contains("SHIFT dash"):
+		push_error("FAIL: main.gd status_label doesn't mention SHIFT dash")
 		ok = false
 	else:
-		print("OK main.gd HUD control hint is current (Q shield · SHIFT dash)")
+		print("OK main.gd HUD control hint is current (iter-247: SHIFT dash · R active)")
 
 	# ═══ 2. main.tscn baked status text ═══
 	var main_tscn := FileAccess.get_file_as_string("res://scenes/main.tscn")
