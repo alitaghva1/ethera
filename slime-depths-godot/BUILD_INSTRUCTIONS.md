@@ -15,7 +15,10 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (36 tests)
+# Full audit (40 tests — 36 baseline + 4 added by iter-247..250
+# combat redesign: removes parry input, adds sword 3-hit combo, blast
+# windup commitment, and perfect-dodge mechanic. See
+# ETHERA_COMBAT_DESIGN.md.)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -32,12 +35,17 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter240_modal_polish test_iter241_modifier_modal \
          test_iter242_soul_gem test_iter242_loop_constants \
          test_iter243_phase1_feel test_iter244_phase2_visual \
-         test_iter245_phase3_hud test_iter246_phase4_juice; do
+         test_iter245_phase3_hud test_iter246_phase4_juice \
+         test_iter248_combo test_iter249_blast_windup \
+         test_iter250_perfect_dodge; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 36 should print PASS / OK.
+All 40 should print PASS / OK. (The 40th test for "BACKDRAFT migration"
+is folded into test_iter250_perfect_dodge's `BACKDRAFT trigger wired
+from perfect-dodge` assertion — no separate file needed since the
+function is unchanged; only the caller moved.)
 
 ## Export presets (set up in Godot editor)
 
@@ -128,7 +136,10 @@ jobs:
                    tests/test_iter238_tuskbrod tests/test_iter239_floor_modifiers \
                    tests/test_iter240_modal_polish tests/test_iter241_modifier_modal \
                    tests/test_iter242_soul_gem tests/test_iter242_loop_constants \
-                   tests/test_iter243_phase1_feel tests/test_iter244_phase2_visual; do
+                   tests/test_iter243_phase1_feel tests/test_iter244_phase2_visual \
+                   tests/test_iter245_phase3_hud tests/test_iter246_phase4_juice \
+                   tests/test_iter248_combo tests/test_iter249_blast_windup \
+                   tests/test_iter250_perfect_dodge; do
               godot --headless --script "$t.gd" || exit 1
           done
 ```

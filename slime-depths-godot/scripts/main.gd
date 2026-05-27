@@ -444,7 +444,10 @@ const THEME_TOOLTIP_DESC: Dictionary = {
 	},
 	"vow": {
 		"resonance": "+1 damage taken reduction",
-		"ascendance": "each shield catch restores 1 HP",
+		# iter-251: shield input collapsed into PERFECT DODGE in iter-247.
+		# VOW T2 payoff (heal +1 + reflect-fan) now fires on perfect-dodge
+		# instead of parry catch — text reflects the new mechanic.
+		"ascendance": "each perfect dodge restores 1 HP + fans reflect bolts",
 	},
 	"shadow": {
 		# iter-95/96: dodge ability removed, theme procs reanchored to
@@ -914,8 +917,11 @@ func _ready() -> void:
 	# once in _ready, follows the hero via screen-space conversion each
 	# _process tick. Hidden when no statuses are active.
 	_build_hero_status_chips()
-	# iter-95: dodge removed, parry renamed to shield. Defensive toolkit
-	# is now SHIELD (Q, timing catch) + DASH (Shift, mobility + i-frames).
+	# iter-95: dodge removed, parry renamed to shield. iter-247: shield
+	# input layer collapsed into PERFECT DODGE — the parry-catch happens
+	# automatically in the last 0.10s of a dash. Combat now has 4 verbs:
+	# SWORD (LMB, 3-hit combo) / BLAST (RMB, 0.1s windup) / DODGE
+	# (SHIFT, 0.6s cd) / ACTIVE (R).
 	#
 	# iter-123: first-time-only controls hint. Show the brief tutorial
 	# ONCE per save profile; after that the hint never re-appears across

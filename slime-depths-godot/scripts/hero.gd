@@ -3037,16 +3037,19 @@ func _spawn_shield_reflect_fan() -> void:
 		host.add_child(p)
 
 # ── Iter 215 / Phase 4 — Hero-side status combos ─────────────────────
-# BACKDRAFT (BURN + PARRY) and RIME_TRAIL (SLOW + DASH-THROUGH) live
-# here because they fire on HERO actions, not enemy state transitions.
-# Enemy-side combos (SHATTER, KINDLE_SPREAD, PETRIFY, SCATTER_FLAMES)
-# stay in enemy.gd.
+# BACKDRAFT (BURN + PERFECT DODGE) and RIME_TRAIL (SLOW + DASH-THROUGH)
+# live here because they fire on HERO actions, not enemy state
+# transitions. Enemy-side combos (SHATTER, KINDLE_SPREAD, PETRIFY,
+# SCATTER_FLAMES) stay in enemy.gd.
 
-# BACKDRAFT — if a burning enemy is within BACKDRAFT_RADIUS when the
-# parry catches, a flame burst radiates outward, applying 1 damage +
-# 1 s burn to all enemies in BACKDRAFT_RADIUS. Verb: "the heat of the
-# parried attacker recoils." Cooldown comes for free from the parry
-# system — you can't parry every 0.4 s.
+# BACKDRAFT — if a burning enemy is within BACKDRAFT_RADIUS when a
+# PERFECT DODGE fires, a flame burst radiates outward, applying 1
+# damage + 1 s burn to all enemies in BACKDRAFT_RADIUS. Verb: "the
+# heat of the would-be attacker recoils as you phase past."
+# iter-247/250: trigger migrated from `_on_shield_block` (parry catch)
+# to `_trigger_perfect_dodge`. The combo itself is unchanged — the
+# function is called from the new path, the firing conditions (burning
+# enemy in range) are identical.
 const BACKDRAFT_RADIUS: float = 96.0
 const BACKDRAFT_DAMAGE: int = 1
 const BACKDRAFT_BURN_DURATION: float = 1.0
