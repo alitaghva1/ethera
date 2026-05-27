@@ -567,6 +567,64 @@ var _wave_fade_tween: Tween = null
 var _hit_stop_timer := 0.0
 var _death_screen: Node = null
 
+# iter-246 / Director Phase 4 — per-room XP bar + mid-room boon pedestal.
+# The VS heartbeat at room scale: every kill advances a thin gold bar
+# along the bottom of the HUD. When it fills, a SINGLE common-tier boon
+# pedestal materializes above the hero — a free per-room reward that
+# layers on top of the existing end-of-room pedestal-choice flow.
+#
+# Reward economy:
+#   1 XP per regular enemy kill
+#   3 XP per elite (elite_affix != "")
+#   8 XP per boss
+# Cap per room: 12 XP. A normal room fills the bar to ~0.7-1.0× depending
+# on density. A packed wave can overshoot — the boon spawns once per
+# room regardless (sentinel `_boon_spawned_this_room`).
+const ROOM_XP_CAP: int = 12
+const ROOM_XP_PER_KILL: int = 1
+const ROOM_XP_PER_ELITE: int = 3
+const ROOM_XP_PER_BOSS: int = 8
+const ROOM_XP_BAR_HEIGHT: float = 6.0
+# Gold fill, dark trough. Matches the soul_gem palette so the
+# per-kill micro-loop (gem flies in) and the per-XP macro-loop (bar
+# advances) read as the same "you killed something" theme color.
+const ROOM_XP_BAR_FILL: Color = Color(0.95, 0.78, 0.36, 0.88)
+const ROOM_XP_BAR_TROUGH: Color = Color(0.10, 0.08, 0.06, 0.55)
+const ROOM_XP_BAR_FLASH: Color = Color(1.0, 0.96, 0.78, 1.0)
+var _room_xp: int = 0
+var _boon_spawned_this_room: bool = false
+# The XP bar is a CanvasLayer-mounted pair: trough (full width, dark) +
+# fill (anchored left, animated width). Built lazily on first use so the
+# bar is absent in non-combat scenes (hamlet / menu).
+var _xp_bar_trough: ColorRect = null
+var _xp_bar_fill: ColorRect = null
+var _xp_fill_tween: Tween = null
+
+# iter-246 / Director Phase 4 — boss-defeated cinematic extension.
+# Phase 4 EXTENDS iter-148's slow-mo from 0.6 s to 0.9 s + adds a
+# gold-rain CPUParticles2D upward-drifting burst at the boss position
+# + a brief Camera2D zoom-in tween. Constants here so tests can
+# verify the bump landed (1.8 s = slow-mo time * inv_time_scale).
+const BOSS_DEATH_HIT_STOP_TIME_PHASE4: float = 0.9
+const BOSS_DEATH_CAM_ZOOM_PEAK: Vector2 = Vector2(1.08, 1.08)
+const BOSS_DEATH_GOLD_RAIN_COUNT: int = 30
+const BOSS_DEATH_GOLD_RAIN_LIFETIME: float = 1.5
+
+# iter-246 / Director Phase 4 — RESONANCE stinger overlay state. Built
+# lazily by _fire_resonance_stinger. A full-screen warm wash + center
+# banner tweens up over 600 ms then fades. Per-theme flavor text
+# defined in RESONANCE_FLAVOR; tier 1 = RESONANCE, tier 2 = ASCENDANCE.
+var _resonance_overlay: ColorRect = null
+var _resonance_banner: Label = null
+var _resonance_tween: Tween = null
+const RESONANCE_FLAVOR: Dictionary = {
+	"storm":  { 1: "STORM RESONANCE — your bolts chain",  2: "STORM ASCENDANCE — every dodge erupts" },
+	"flame":  { 1: "FLAME RESONANCE — embers cling",      2: "FLAME ASCENDANCE — heat radiates from you" },
+	"blood":  { 1: "BLOOD RESONANCE — the vow takes hold", 2: "BLOOD ASCENDANCE — clears restore the wound" },
+	"vow":    { 1: "VOW RESONANCE — the binding holds",   2: "VOW ASCENDANCE — first strike absorbed" },
+	"shadow": { 1: "SHADOW RESONANCE — you stalk between heartbeats", 2: "SHADOW ASCENDANCE — flanks invite the killing stroke" },
+}
+
 # Iter 160 — first-run tutorial state machine. Runs only on the very
 # first room of the very first run (GameState.has_completed_tutorial
 # = false). Each step gates on a specific input the player must
@@ -818,6 +876,14 @@ func _ready() -> void:
 	_update_kills()
 	_update_room_label()
 	_rebuild_relic_strip()
+	# iter-246 / Director Phase 4 — per-room XP bar build + reset. Each
+	# room scene runs its own _ready so this resets the bar to empty +
+	# the boon-spawned sentinel back to false. The bar is built lazily
+	# on the first kill in case the room has zero spawns (treasure /
+	# shrine rooms) — _build_xp_bar idempotently no-ops on subsequent
+	# calls. We DO reset state here so any in-flight visuals from the
+	# previous room don't leak across.
+	_reset_room_xp()
 	# Iter 225 / Polish Team — build the ability cooldown chip strip.
 	# Programmatic injection (Polish-team rule: no .tscn edits). Strip
 	# is hidden one-by-one per chip whenever the ability is ready, so
@@ -3932,6 +3998,32 @@ func _on_wave_cleared() -> void:
 		elif _room != null and _room_had_boss():
 			is_big = true
 		FloorClearBurst.spawn(self, is_big)
+		# iter-246 / Director Phase 4 — first-clear-per-save ether shard
+		# bonus. Adds a long-tail completion arc for new players: each
+		# room's display_name is recorded the FIRST time it's cleared on
+		# this save and won't pay out again. Boss rooms (is_last_room) get
+		# the 75-shard payout; everything else gets 25. The award flows
+		# through GameState.award_ether_shards which already respects the
+		# ether_magnet relic multiplier + floor_modifier multiplier.
+		var room_name: String = (_room.display_name if _room != null else "")
+		var is_boss_room: bool = (_room != null and _room.is_last_room) or _room_had_boss()
+		var first_clear_amount: int = GameState.try_award_first_clear_bonus(room_name, is_boss_room)
+		if first_clear_amount > 0:
+			# Center banner via DamageNumber.spawn at room center —
+			# slightly above hero so it doesn't collide with the
+			# pedestal cluster about to materialize. Uses the diamond
+			# glyph for ether shards (matches the icon used elsewhere
+			# in the game's HUD currency display).
+			var ban_pos: Vector2 = Vector2(640.0, 280.0)
+			if is_instance_valid(hero):
+				ban_pos = hero.global_position + Vector2(0, -120)
+			var bn: DamageNumber = DamageNumber.spawn(
+				ban_pos,
+				"%s CLEARED · +%d ◇" % [room_name, first_clear_amount],
+				Color(1.0, 0.92, 0.55),
+			)
+			if bn != null:
+				add_child(bn)
 		# Iter 178 — shorter status copy + a soft floor-darkening vignette
 		# while the offer is up. Pre-iter-178 the long instructional
 		# string ("Choose a relic · walk near and press [E]") competed
@@ -4214,6 +4306,14 @@ func _spawn_pact_altar() -> void:
 	add_child(altar)
 
 func _spawn_pedestal_offer(count: int) -> void:
+	# iter-246 / Director Phase 4 — VS chest 1-1-3-1-5 grammar. Note
+	# THIS pedestal-offer spawn in GameState so the first-3-rare-bias
+	# logic below knows where in the sequence we are. note_pedestal_
+	# offer_spawned returns the 1-based offer number (1 = first ever
+	# this run, 2 = second, …). Reset to 0 on start_dungeon_run.
+	# Capture BEFORE the offer rolls so the bias targets the current
+	# offer correctly.
+	var this_offer_number: int = GameState.note_pedestal_offer_spawned()
 	# Bucket all unowned relics by tier so the roller can pick a tier
 	# first then draw from that tier's pool. Drawing-without-replacement
 	# within the offer prevents duplicates among the 3 pedestals.
@@ -4260,6 +4360,34 @@ func _spawn_pedestal_offer(count: int) -> void:
 	var room_idx: int = RunState.current_room_index if RunState.current_room_index >= 0 else 0
 	room_idx = clampi(room_idx, 0, TIER_WEIGHTS_BY_ROOM.size() - 1)
 	var weights: Dictionary = TIER_WEIGHTS_BY_ROOM[room_idx]
+	# iter-246 / Director Phase 4 — first-3 rare-biased pedestal pattern
+	# (VS chest 1-1-3-1-5 grammar). For the first 3 pedestal offers of
+	# the run AND only on floor 1 (room_idx < 3, the iter-207 7-room
+	# layout has rooms 1-3 on floor 1), override the tier weights to
+	# RARE-or-better. Players hit the addictive expectation early —
+	# 3 of 3 first picks are good — then variance kicks in. Floor 2+
+	# uses the standard TIER_WEIGHTS_BY_ROOM ramp untouched.
+	#
+	# Override weights: 60% rare, 35% legendary, 5% mythic on floor 1
+	# (mythic_weight on floor 1 normally is 0; this is a one-time
+	# carrot — the only way to get a mythic on floor 1 in the iter-246
+	# game). Common is zeroed via the biased pool below.
+	if this_offer_number <= GameState.PEDESTAL_FIRST_3_BIAS_LIMIT and room_idx < 3:
+		weights = { "common": 0.0, "rare": 60.0, "legendary": 35.0, "mythic": 5.0 }
+		# Defensive: if every rare+ relic is owned, the _weighted_tier_pick
+		# helper returns "" because total weight evaluates to 0, and the
+		# offer falls back to common via the inner draw. Walk the by_tier
+		# pool: if rare/legendary/mythic ALL empty (extreme deep run), let
+		# common come back into the mix by leaving by_tier["common"]
+		# populated. Otherwise lock common out so the rare-biased intent
+		# is honored.
+		var any_rare_or_better: bool = (
+			not (by_tier["rare"] as Array).is_empty()
+			or not (by_tier["legendary"] as Array).is_empty()
+			or not (by_tier["mythic"] as Array).is_empty()
+		)
+		if any_rare_or_better:
+			by_tier["common"] = []
 	# Roll up to `count` distinct relics, each from a tier-weighted draw.
 	var picks: Array[String] = []
 	for i in range(count):
@@ -4701,6 +4829,14 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# something" floor across all tiers.
 	if GameState.RELIC_REGISTRY.has(_name):
 		_play_tier_pickup_audio(_name, _world_pos)
+	# iter-246 / Director Phase 4 — RESONANCE build-moment stinger.
+	# The grant has just happened (pedestal.gd called GameState.grant_relic
+	# before emitting). Walk the 5 themes; for any whose tier just
+	# crossed a previously-unseen threshold, fire the full-screen
+	# warm-wash + brass sweep + center banner. Shrine pickups skip
+	# the theme check (they're stat grants, not themed relics).
+	if GameState.RELIC_REGISTRY.has(_name):
+		_check_resonance_stinger()
 	# Iter 72 — spawn the celebratory pickup banner (480-px frame,
 	# theme-colored border, ~3.35 s standard / ~5.5 s + mythic wash).
 	# Shrine pickups aren't in RELIC_REGISTRY so the registry check
@@ -5009,6 +5145,34 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	GameState.register_run_kill()
 	RunState.register_kill()
 	_update_kills()
+	# iter-246 / Director Phase 4 — per-room XP bar advance. Walk the
+	# enemies group to find a still-instance-valid emitter at the same
+	# world_pos (the enemy node has not yet been freed at this point;
+	# died_at.emit fires inside _on_death_animation_finished before
+	# queue_free). From it we read is_boss + elite_affix to award the
+	# correct tier. The match-by-position is robust to multiple died_at
+	# fires in the same frame because we filter `not is_dying_finalized`
+	# OR we just take the nearest. Boss path also fires Events.boss_died
+	# which we hook separately for the cinematic.
+	var xp: int = ROOM_XP_PER_KILL
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not (e is Enemy):
+			continue
+		if not is_instance_valid(e):
+			continue
+		var en: Enemy = e as Enemy
+		# Pick the dying enemy at the same position. died_at fires
+		# from within the dying node which is still alive in the tree.
+		if en.global_position.distance_squared_to(world_pos) > 4.0:
+			continue
+		# is_boss check via enemy_type. Elite affix check on the enemy
+		# directly. Boss > elite > regular precedence.
+		if en.enemy_type != null and en.enemy_type.is_boss:
+			xp = ROOM_XP_PER_BOSS
+		elif en.elite_affix != "":
+			xp = ROOM_XP_PER_ELITE
+		break
+	_advance_room_xp(xp)
 	var n: DamageNumber = DamageNumber.spawn(world_pos + Vector2(0, -36), "+1", Color(1, 0.95, 0.7))
 	add_child(n)
 	# iter-83 immersion pass: persistent blood mark on the floor at the
@@ -5079,8 +5243,90 @@ func _on_hero_swing_connected(hit_count: int, any_crit: bool = false) -> void:
 # unconditionally set here regardless of an existing tiny stop).
 func _on_boss_died(_world_pos: Vector2, _boss_name: String) -> void:
 	Engine.time_scale = BOSS_DEATH_TIME_SCALE
-	_hit_stop_timer = BOSS_DEATH_HIT_STOP_TIME
+	# iter-246 / Director Phase 4 — extended boss-death cinematic.
+	# Base slow-mo bumped from 0.6 s to 0.9 s (PHASE4 constant) so the
+	# "wait, did I—" beat lingers longer before the floor clear banner
+	# breaks the spell. Real-time duration = 0.9 / 0.35 = ~2.57 s of
+	# wall-clock slow-mo at BOSS_DEATH_TIME_SCALE.
+	_hit_stop_timer = BOSS_DEATH_HIT_STOP_TIME_PHASE4
 	FX.shake(BOSS_DEATH_SHAKE_AMP, BOSS_DEATH_SHAKE_TIME)
+	# iter-246 / Director Phase 4 — ascendant gold-rain burst at boss
+	# position. CPUParticles2D with negative gravity so the gold motes
+	# DRIFT UP rather than fall — encodes the "the boss's essence rises"
+	# narrative beat that distinguishes a boss kill from a regular one.
+	# One-shot emission; queue_free after the lifetime + 1 s safety
+	# margin so the node doesn't linger.
+	_spawn_boss_gold_rain(_world_pos)
+	# iter-246 / Director Phase 4 — camera punch-in. Briefly zoom the
+	# Camera2D from its current zoom to BOSS_DEATH_CAM_ZOOM_PEAK (1.08x)
+	# and back over the slow-mo window. Reads as "focus tightens on
+	# the moment." Restores baseline zoom on tween completion so the
+	# wave-clear handoff has a clean state.
+	_punch_camera_for_boss_death()
+
+# iter-246 / Director Phase 4 — gold-rain burst on boss death. Spawned
+# as a child of `self` so it inherits the dungeon scene transform
+# (world coords) and survives slow-mo (CPUParticles2D respects
+# Engine.time_scale unless explicit one_shot+process_mode tweaks).
+# Negative gravity makes the motes ascend; emission radius 60 px gives
+# a chunky-not-dense burst.
+func _spawn_boss_gold_rain(world_pos: Vector2) -> void:
+	var burst: CPUParticles2D = CPUParticles2D.new()
+	burst.name = "BossGoldRain"
+	burst.global_position = world_pos
+	burst.amount = BOSS_DEATH_GOLD_RAIN_COUNT
+	burst.lifetime = BOSS_DEATH_GOLD_RAIN_LIFETIME
+	burst.one_shot = true
+	burst.explosiveness = 0.55
+	burst.spread = 60.0
+	burst.gravity = Vector2(0, -40)
+	burst.initial_velocity_min = 40.0
+	burst.initial_velocity_max = 110.0
+	burst.scale_amount_min = 1.5
+	burst.scale_amount_max = 3.0
+	burst.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
+	burst.emission_sphere_radius = 60.0
+	# Gold gradient — bright gold to faded amber over the lifetime.
+	burst.color = Color(1.0, 0.86, 0.42, 1.0)
+	var grad: Gradient = Gradient.new()
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.92, 0.55, 1.0),
+		Color(1.0, 0.78, 0.30, 0.85),
+		Color(0.85, 0.55, 0.20, 0.0),
+	])
+	grad.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	burst.color_ramp = grad
+	add_child(burst)
+	burst.emitting = true
+	# Auto-free after lifetime + safety margin so the orphan node
+	# doesn't accumulate across sequential boss fights.
+	var t: SceneTreeTimer = get_tree().create_timer(BOSS_DEATH_GOLD_RAIN_LIFETIME + 1.0)
+	t.timeout.connect(func ():
+		if is_instance_valid(burst):
+			burst.queue_free()
+	)
+
+# iter-246 / Director Phase 4 — camera punch-in for boss death. Tweens
+# the Camera2D.zoom property from 1.0 → 1.08 → 1.0 over the slow-mo
+# window. Targets the active camera (either the hero's child or the
+# scene's $Camera2D) — defensive get so we don't crash if the camera
+# graph differs.
+func _punch_camera_for_boss_death() -> void:
+	var cam: Camera2D = null
+	if is_instance_valid(hero):
+		cam = hero.get_node_or_null("Camera2D") as Camera2D
+	if cam == null:
+		cam = get_node_or_null("Camera2D") as Camera2D
+	if cam == null:
+		return
+	# Real-wall-clock duration: hit-stop timer at slow-mo scale = ~2.57 s.
+	# Use a short up + slow down so the punch reads as deliberate.
+	var base_zoom: Vector2 = cam.zoom
+	var tw: Tween = create_tween()
+	tw.tween_property(cam, "zoom", BOSS_DEATH_CAM_ZOOM_PEAK, 0.18)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(cam, "zoom", base_zoom, 0.55)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
 
 # Iter 155 — directional damage indicator. Paint a brief red bar
 # along the screen edge nearest the damage source so the player can
@@ -5637,6 +5883,216 @@ func _update_kills() -> void:
 				Audio._play("kill_milestone", pos, 1.0)
 	_prev_kills = _kills
 
+# ── iter-246 / Director Phase 4 — XP bar, boon pedestal, resonance ───
+#
+# Per-room XP bar: a thin gold bar at the bottom of the UI that fills
+# as enemies die. When it hits 100% a boon pedestal materializes above
+# the hero. The bar is built lazily on first XP advance so non-combat
+# scenes (hamlet / menu) don't pay the cost. Mounted on the existing
+# $UI CanvasLayer at the bottom edge of the viewport.
+const XP_BAR_BOTTOM_OFFSET: float = 6.0
+const XP_BAR_WIDTH_FALLBACK: float = 1280.0
+
+func _build_xp_bar() -> void:
+	if _xp_bar_trough != null and is_instance_valid(_xp_bar_trough):
+		return
+	var ui_layer: CanvasLayer = get_node_or_null("UI") as CanvasLayer
+	if ui_layer == null:
+		return
+	var w: float = XP_BAR_WIDTH_FALLBACK
+	var vp: Viewport = get_viewport()
+	if vp != null:
+		w = vp.get_visible_rect().size.x
+	var trough: ColorRect = ColorRect.new()
+	trough.name = "XpBarTrough"
+	trough.color = ROOM_XP_BAR_TROUGH
+	trough.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	trough.anchor_left = 0.0
+	trough.anchor_top = 1.0
+	trough.anchor_right = 1.0
+	trough.anchor_bottom = 1.0
+	trough.offset_left = 0.0
+	trough.offset_top = -ROOM_XP_BAR_HEIGHT - XP_BAR_BOTTOM_OFFSET
+	trough.offset_right = 0.0
+	trough.offset_bottom = -XP_BAR_BOTTOM_OFFSET
+	ui_layer.add_child(trough)
+	_xp_bar_trough = trough
+	var fill: ColorRect = ColorRect.new()
+	fill.name = "XpBarFill"
+	fill.color = ROOM_XP_BAR_FILL
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Fill is parented under trough so the anchor_left=0 + anchor_right
+	# slider technique works: set anchor_right based on xp fraction.
+	fill.anchor_left = 0.0
+	fill.anchor_top = 0.0
+	fill.anchor_right = 0.0
+	fill.anchor_bottom = 1.0
+	fill.offset_left = 0.0
+	fill.offset_top = 0.0
+	fill.offset_right = 0.0
+	fill.offset_bottom = 0.0
+	trough.add_child(fill)
+	_xp_bar_fill = fill
+
+# Add `delta_xp` to the per-room counter, animate the fill bar, and
+# trigger the mid-room boon when the counter crosses 100%. `delta_xp`
+# is the awarded amount (1/3/8 for regular/elite/boss). Clamps the
+# total to ROOM_XP_CAP so a packed wave doesn't visually skip the bar.
+func _advance_room_xp(delta_xp: int) -> void:
+	if delta_xp <= 0:
+		return
+	_build_xp_bar()
+	var prev_frac: float = clampf(float(_room_xp) / float(ROOM_XP_CAP), 0.0, 1.0)
+	_room_xp = mini(ROOM_XP_CAP, _room_xp + delta_xp)
+	var new_frac: float = clampf(float(_room_xp) / float(ROOM_XP_CAP), 0.0, 1.0)
+	# Animate the fill width via anchor_right tween.
+	if _xp_bar_fill != null and is_instance_valid(_xp_bar_fill):
+		if _xp_fill_tween != null and _xp_fill_tween.is_valid():
+			_xp_fill_tween.kill()
+		_xp_bar_fill.anchor_right = prev_frac
+		_xp_fill_tween = create_tween()
+		_xp_fill_tween.tween_property(_xp_bar_fill, "anchor_right", new_frac, 0.25)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Cross-100% — trigger the boon ONCE per room.
+	if not _boon_spawned_this_room and _room_xp >= ROOM_XP_CAP:
+		_spawn_mid_room_boon()
+
+# When the XP bar fills, spawn a single common-tier relic pedestal
+# above the hero. The pedestal does NOT pause the action — combat
+# continues, the player can choose to claim or ignore. Visual / audio
+# cues: gold flash on the bar, banner above hero, brass chime.
+func _spawn_mid_room_boon() -> void:
+	if _boon_spawned_this_room:
+		return
+	_boon_spawned_this_room = true
+	# Pick a common-tier unowned relic. Falls back to rare if every
+	# common is already owned (unlikely on a fresh build but possible
+	# on a long deep run).
+	var common_pool: Array[String] = []
+	var rare_pool: Array[String] = []
+	for rid in GameState.RELIC_REGISTRY.keys():
+		if GameState.has_relic(rid):
+			continue
+		var info: Dictionary = GameState.relic_info(rid)
+		var tier: String = str(info.get("tier", "common"))
+		if tier == "common":
+			common_pool.append(rid)
+		elif tier == "rare":
+			rare_pool.append(rid)
+	var pool: Array[String] = common_pool if not common_pool.is_empty() else rare_pool
+	if pool.is_empty():
+		# Owns literally every common+rare. Skip the boon — no relic to grant.
+		return
+	var pick: String = pool[randi() % pool.size()]
+	var ped: Pedestal = PEDESTAL_SCENE.instantiate()
+	# Spawn above hero (-120 px). If the spot is off-screen / off-arena,
+	# fall back to the room center.
+	var spawn_pos: Vector2 = Vector2(640, 384)
+	if is_instance_valid(hero):
+		spawn_pos = hero.global_position + Vector2(0, -120)
+	ped.global_position = spawn_pos
+	ped.relic_id = pick
+	add_child(ped)
+	# Bar flash — punch fill color to bright cream then settle back.
+	if _xp_bar_fill != null and is_instance_valid(_xp_bar_fill):
+		var prev_color: Color = ROOM_XP_BAR_FILL
+		_xp_bar_fill.color = ROOM_XP_BAR_FLASH
+		var ct: Tween = create_tween()
+		ct.tween_property(_xp_bar_fill, "color", prev_color, 0.45).set_trans(Tween.TRANS_QUAD)
+	# Brass-like chime.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("boon_unlocked", spawn_pos, 1.0)
+	# Floater banner above hero.
+	var banner_pos: Vector2 = spawn_pos + Vector2(0, -36)
+	var banner: DamageNumber = DamageNumber.spawn(banner_pos, "BOON", Color(1.0, 0.92, 0.55))
+	if banner != null:
+		add_child(banner)
+
+# Reset XP state on room enter — called from the room-load path (see
+# _ready / _on_load_room_complete). Resets the bar fill via anchor and
+# clears the spawned-sentinel so next room earns its own boon.
+func _reset_room_xp() -> void:
+	_room_xp = 0
+	_boon_spawned_this_room = false
+	if _xp_bar_fill != null and is_instance_valid(_xp_bar_fill):
+		_xp_bar_fill.anchor_right = 0.0
+		_xp_bar_fill.color = ROOM_XP_BAR_FILL
+
+# RESONANCE stinger — fired when the player crosses a new theme_tier
+# threshold for the first time this run (per GameState.note_theme_tier_
+# for_stinger). 600 ms full-screen warm wash + center banner + brass
+# chime. Constructed lazily on first use so non-combat scenes don't
+# carry the overhead.
+const RESONANCE_FLASH_DURATION: float = 0.6
+const RESONANCE_FLASH_COLOR: Color = Color(1.0, 0.82, 0.45, 0.42)
+
+func _fire_resonance_stinger(theme: String, tier: int) -> void:
+	if not RESONANCE_FLAVOR.has(theme):
+		return
+	var flavors: Dictionary = RESONANCE_FLAVOR[theme]
+	var text: String = String(flavors.get(tier, ""))
+	if text == "":
+		return
+	# Build the overlay + banner lazily.
+	var ui_layer: CanvasLayer = get_node_or_null("UI") as CanvasLayer
+	if ui_layer == null:
+		return
+	if _resonance_overlay == null or not is_instance_valid(_resonance_overlay):
+		var overlay: ColorRect = ColorRect.new()
+		overlay.name = "ResonanceOverlay"
+		overlay.color = RESONANCE_FLASH_COLOR
+		overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		overlay.anchor_left = 0.0
+		overlay.anchor_top = 0.0
+		overlay.anchor_right = 1.0
+		overlay.anchor_bottom = 1.0
+		overlay.modulate = Color(1, 1, 1, 0)
+		ui_layer.add_child(overlay)
+		_resonance_overlay = overlay
+	if _resonance_banner == null or not is_instance_valid(_resonance_banner):
+		var banner: Label = Label.new()
+		banner.name = "ResonanceBanner"
+		banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		banner.add_theme_font_size_override("font_size", 26)
+		banner.add_theme_color_override("font_color", Color(1.0, 0.96, 0.78, 1.0))
+		banner.add_theme_color_override("font_outline_color", Color(0.10, 0.06, 0.04, 0.95))
+		banner.add_theme_constant_override("outline_size", 4)
+		banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		banner.anchor_left = 0.0
+		banner.anchor_top = 0.0
+		banner.anchor_right = 1.0
+		banner.anchor_bottom = 1.0
+		banner.offset_top = -40.0
+		banner.modulate = Color(1, 1, 1, 0)
+		ui_layer.add_child(banner)
+		_resonance_banner = banner
+	_resonance_banner.text = text
+	# Kill any in-flight tween + ramp up the wash + banner together.
+	if _resonance_tween != null and _resonance_tween.is_valid():
+		_resonance_tween.kill()
+	_resonance_overlay.modulate = Color(1, 1, 1, 0)
+	_resonance_banner.modulate = Color(1, 1, 1, 0)
+	_resonance_tween = create_tween().set_parallel(true)
+	# Snap up over 150 ms, hold ~150 ms, fade over 300 ms (RESONANCE_FLASH_DURATION total).
+	_resonance_tween.tween_property(_resonance_overlay, "modulate:a", 1.0, 0.15)
+	_resonance_tween.tween_property(_resonance_overlay, "modulate:a", 0.0, 0.45).set_delay(0.15)
+	_resonance_tween.tween_property(_resonance_banner, "modulate:a", 1.0, 0.15)
+	_resonance_tween.tween_property(_resonance_banner, "modulate:a", 0.0, 0.45).set_delay(0.15)
+	# Brass-stinger audio.
+	if Audio != null and Audio.has_method("_play"):
+		var pos: Vector2 = hero.global_position if is_instance_valid(hero) else Vector2.ZERO
+		Audio._play("resonance_stinger", pos, 1.0)
+
+# Polled from pickup_claimed handler — walks the 5 themes and fires
+# the stinger for any whose tier just crossed a previously-unseen
+# threshold. Called AFTER GameState.grant_relic on a successful pickup.
+func _check_resonance_stinger() -> void:
+	for theme in ["storm", "flame", "blood", "vow", "shadow"]:
+		var fired_tier: int = GameState.note_theme_tier_for_stinger(theme)
+		if fired_tier > 0:
+			_fire_resonance_stinger(theme, fired_tier)
+
 # Shared scale + modulate flash helper. Pivot is set to the label's
 # center so the scale animates symmetrically (default Control pivot is
 # top-left, which makes the scale visually pull DOWN and RIGHT — wrong
@@ -5690,11 +6146,16 @@ func _update_room_label() -> void:
 	# the first 2-3s of every room you saw the same number twice.
 	room_label.text = _room.display_name
 	if room_progress_label != null:
-		# Iter 193 batch 3 — roman numerals for the room chip. Atmospheric
-		# manuscript-style read instead of "ROOM 3 / 6" debug-text feel.
-		# Using a middle dot separator instead of slash for tighter
-		# tracking. Same alpha + same Cinzel font from cycle 3 batch 3.
-		room_progress_label.text = "%s  ·  %s" % [_to_roman(idx), _to_roman(total)]
+		# iter-246 / Director Phase 4 — drop the "/ total" suffix so the
+		# chip stops producing the room-7 roman remnant the user flagged
+		# in the latest screenshot (the iter-207 7-room layout produced a
+		# persistent stale glyph that read as a stat panel). The chip now
+		# displays JUST the current room ordinal in roman; the room name
+		# banner already carries narrative weight. The `total` local
+		# stays computed so future re-introduction of the X/Y form is a
+		# one-line edit.
+		var _suppress_total: int = total  # silence unused-warning on `total`
+		room_progress_label.text = _to_roman(idx)
 
 # Iter 193 batch 3 — roman numeral helper for the room chip.
 # Standard greedy conversion. Capped at MMM (3000) which is far more

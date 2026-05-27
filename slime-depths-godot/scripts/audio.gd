@@ -218,6 +218,27 @@ const SOUND_CONFIGS := {
 	"chest_open":    { "freq_start": 280.0, "freq_end": 720.0, "duration": 0.20, "wave": "sin",    "gain": 0.46, "decay_pow": 1.6 },
 	"shrine_pray":   { "freq_start": 660.0, "freq_end":1980.0, "duration": 0.42, "wave": "sin",    "gain": 0.40, "decay_pow": 1.0 },
 	"boss_clear":    { "freq_start": 220.0, "freq_end":1100.0, "duration": 0.70, "wave": "sin",    "gain": 0.65, "decay_pow": 1.0 },
+	# iter-246 / Director Phase 4 — RESONANCE build-moment stinger.
+	# Fires on the first cast of a new theme tier (storm tier 1, storm
+	# tier 2, etc.) — see main.gd::_check_resonance_stinger. A broad
+	# brass-like ascending sweep that says "the threads are coming
+	# together." 220 → 880 Hz over 600 ms with linear decay so the
+	# tone RINGS rather than snaps. Gain 0.65 is louder than ordinary
+	# pickup_legendary (0.60) so a player who just hit 3+ of a theme
+	# feels it land HEAVIER than the relic-claim chime that spawned
+	# the moment. Sine to keep musicality at high frequencies.
+	"resonance_stinger": { "freq_start": 220.0, "freq_end": 880.0, "duration": 0.60, "wave": "sin", "gain": 0.65, "decay_pow": 1.0 },
+	# iter-246 / Director Phase 4 — mid-room boon pedestal unlock chime.
+	# Fires when the per-room XP bar fills to 100% and a boon pedestal
+	# materializes above the hero. Distinct from pickup_claimed (which
+	# fires on CLAIM) and from boss_clear / room_clear (which fire on
+	# wave/room transitions). 660 → 1320 Hz is a perfect-fifth rise on
+	# a sine wave — the same musical interval used in hero_shielded
+	# (the parry catch chime), but pitched HIGHER + longer so the two
+	# sit in distinct frequency registers. Reads as "good fortune"
+	# without competing with combat chime. Gain 0.55 — present but
+	# does not eclipse a kill cascade audio environment.
+	"boon_unlocked":     { "freq_start": 660.0, "freq_end":1320.0, "duration": 0.32, "wave": "sin", "gain": 0.55, "decay_pow": 1.2 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is

@@ -62,6 +62,33 @@ var last_run_combo_counts: Dictionary = {}
 # damage" + "your biggest moment of flow."
 var best_combo_this_run: int = 0
 
+# iter-246 / Director Phase 4 — pedestal-offer counter for the first-3
+# rare-biased pattern (VS chest 1-1-3-1-5 grammar). Incremented in
+# main.gd::_spawn_pedestal_offer for every pedestal handed to the
+# player. Reset to 0 in start_dungeon_run so each fresh run gets the
+# guaranteed early dopamine pattern. The bias only applies while this
+# counter is below PEDESTAL_FIRST_3_BIAS_LIMIT (3); after that the
+# normal TIER_WEIGHTS_BY_ROOM table takes over.
+var _pedestal_offers_this_run: int = 0
+
+# iter-246 / Director Phase 4 — per-save record of "first time this
+# room cleared" events. Keyed by RoomConfig.display_name so the bonus
+# fires exactly once per save per room across all runs. Migrated to
+# save_version 9. Surfaced as a +25 / +75 (boss) ether shard payout
+# the FIRST time a new player clears each room — converts the long
+# tail of unlock progression into a visible milestone.
+var floor_clear_bonuses_claimed: Array[String] = []
+
+# iter-246 / Director Phase 4 — theme-tier stinger memo. Tracks the
+# highest tier we've ALREADY shown a stinger for, per theme. Whenever
+# GameState.theme_tier(name) advances past the recorded mark, main.gd
+# fires the full-screen stinger + brass sweep. Cleared on
+# start_dungeon_run so each run can re-discover its themes from zero.
+# Not persisted — purely intra-run state.
+var _theme_tier_seen: Dictionary = {
+	"storm": 0, "flame": 0, "blood": 0, "vow": 0, "shadow": 0,
+}
+
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
 # tree_exiting hook when leaving the dungeon scene alive; reset to -1
@@ -1304,13 +1331,22 @@ func save_to_dict() -> Dictionary:
 		"motion_reduction": motion_reduction,
 		"text_scale": text_scale,
 		"colorblind_mode": colorblind_mode,
+		# iter-246 / Director Phase 4 — persistent list of room
+		# display_names whose first-clear bonus has already paid out.
+		# Saved across sessions so the per-room bonus is truly
+		# one-time-per-save (not per-run). Stored as Array[String]
+		# (JSON serializes cleanly).
+		"floor_clear_bonuses_claimed": floor_clear_bonuses_claimed,
 	}
 
 # Current save schema version. Bump when fields are added/removed in a
 # breaking way; add a corresponding migration step in _migrate_save_dict.
 # Iter 218 / Beta M0.F — extracted as a constant so `_migrate_save_dict`
 # can target it explicitly and tests can introspect.
-const SAVE_VERSION_CURRENT: int = 8
+# iter-246 / Director Phase 4 — bumped 8 → 9 to introduce
+# floor_clear_bonuses_claimed (new per-save list of room
+# display_names whose first-clear payout has been claimed).
+const SAVE_VERSION_CURRENT: int = 9
 
 # Iter 218 / Beta M0.F — Save migration foundation. The audit found
 # save_version was written but never read on load — any future schema
@@ -1390,6 +1426,17 @@ func _migrate_save_dict(d: Dictionary) -> Dictionary:
 		if not d.has("colorblind_mode"):
 			d["colorblind_mode"] = "none"
 		from_version = 8
+	# v8 → v9: iter-246 / Director Phase 4 — introduced the per-save
+	# floor_clear_bonuses_claimed list (first-clear ether shard payout
+	# memo, keyed by RoomConfig.display_name). Pre-v9 saves default
+	# to empty: the existing player gets to re-experience the
+	# first-clear payout on their next run through each room, which
+	# is the desired upgrade behavior (it's a long-tail completion
+	# carrot, not a permanent loss).
+	if from_version < 9:
+		if not d.has("floor_clear_bonuses_claimed"):
+			d["floor_clear_bonuses_claimed"] = []
+		from_version = 9
 	# Future versions: add `if from_version < N:` block here.
 	d["save_version"] = SAVE_VERSION_CURRENT
 	return d
@@ -1474,6 +1521,17 @@ func load_from_dict(d: Dictionary) -> void:
 				fresh_ach.append(ach)
 	unlocked_achievements = fresh_ach
 
+	# iter-246 / Director Phase 4 — floor_clear_bonuses_claimed list.
+	# JSON returns untyped Array; rebuild as Array[String] element-by-
+	# element, skipping non-strings (defensive against hand-edited saves).
+	var loaded_bonuses: Variant = d.get("floor_clear_bonuses_claimed", [])
+	var fresh_bonuses: Array[String] = []
+	if loaded_bonuses is Array:
+		for room_name in loaded_bonuses:
+			if room_name is String:
+				fresh_bonuses.append(room_name)
+	floor_clear_bonuses_claimed = fresh_bonuses
+
 # ── Session API ──────────────────────────────────────────────────────
 func start_dungeon_run() -> void:
 	# Iter 23 — promote the PREVIOUS run's kill count to best_run_kills
@@ -1517,6 +1575,19 @@ func start_dungeon_run() -> void:
 	# alongside the other intra-run summary stats so each fresh run
 	# starts at 0 regardless of how big the prior run's streak got.
 	best_combo_this_run = 0
+	# iter-246 / Director Phase 4 — reset the pedestal-offer counter so
+	# the first 3 pedestals of THIS run get the rare-biased pattern
+	# (VS chest 1-1-3-1-5 grammar). Without this, a fresh run wouldn't
+	# trigger the early-dopamine bias.
+	_pedestal_offers_this_run = 0
+	# iter-246 / Director Phase 4 — reset the theme-tier stinger memo
+	# so each run can re-discover its STORM / FLAME / BLOOD / VOW /
+	# SHADOW thresholds. Tier 0 = "never shown a stinger for this
+	# theme in this run." The map is constructed by key list so adding
+	# a new theme just requires the new key here.
+	_theme_tier_seen = {
+		"storm": 0, "flame": 0, "blood": 0, "vow": 0, "shadow": 0,
+	}
 	# iter-239 / Fun Ideas Team R4 — DO NOT clear active_floor_modifiers
 	# here. The pre-run modal (main_menu.gd) writes to the field BEFORE
 	# calling start_dungeon_run(), so a clear here would wipe the
@@ -1667,6 +1738,61 @@ func spend_ether_shards(amount: int) -> bool:
 		return false
 	ether_shards -= amount
 	return true
+
+# iter-246 / Director Phase 4 — pedestal-offer counter API. main.gd calls
+# this once per pedestal cluster spawn so GameState can drive the
+# first-3-rare-biased pattern (VS chest 1-1-3-1-5 grammar). Returns the
+# 1-based offer number (1 = first ever this run, 2 = second, etc.) so
+# the caller can branch on it. Cheap, intentionally not persisted —
+# resets on start_dungeon_run.
+const PEDESTAL_FIRST_3_BIAS_LIMIT: int = 3
+
+func note_pedestal_offer_spawned() -> int:
+	_pedestal_offers_this_run += 1
+	return _pedestal_offers_this_run
+
+# iter-246 / Director Phase 4 — read-only access to the offer counter.
+# Returns the COUNT of offers already spawned this run (0 before the
+# first one). Used by the first-3-rare-biased logic in main.gd's
+# pedestal-spawn helper to decide whether to force a minimum tier.
+func pedestal_offers_this_run() -> int:
+	return _pedestal_offers_this_run
+
+# iter-246 / Director Phase 4 — first-clear room bonus. Returns the
+# ether-shard amount to award if this is the first clear ever (this
+# save) of the named room, or 0 if already claimed. is_last_room
+# bumps the payout from FIRST_CLEAR_BONUS to FIRST_CLEAR_BONUS_BOSS
+# so the player feels the boss room's narrative weight at the meta
+# layer. Records the room as claimed on success.
+const FIRST_CLEAR_BONUS: int = 25
+const FIRST_CLEAR_BONUS_BOSS: int = 75
+
+func try_award_first_clear_bonus(room_display_name: String, is_boss_room: bool) -> int:
+	if room_display_name == "":
+		return 0
+	if room_display_name in floor_clear_bonuses_claimed:
+		return 0
+	floor_clear_bonuses_claimed.append(room_display_name)
+	var amount: int = FIRST_CLEAR_BONUS_BOSS if is_boss_room else FIRST_CLEAR_BONUS
+	award_ether_shards(amount)
+	return amount
+
+# iter-246 / Director Phase 4 — RESONANCE build-moment stinger gate.
+# Returns the highest theme_tier we've NEVER fired a stinger for, or 0
+# if the current tier doesn't exceed the recorded mark. Records the
+# new mark on success so the same threshold doesn't fire twice in a
+# row. Called from main.gd whenever owned_relics changes (on pickup).
+# Returns 0 if the recorded mark is already ≥ current — caller should
+# treat 0 as "no stinger needed."
+func note_theme_tier_for_stinger(theme: String) -> int:
+	if not _theme_tier_seen.has(theme):
+		return 0
+	var current_tier: int = theme_tier(theme)
+	var seen_tier: int = int(_theme_tier_seen.get(theme, 0))
+	if current_tier <= seen_tier:
+		return 0
+	_theme_tier_seen[theme] = current_tier
+	return current_tier
 
 # ── Relic API ────────────────────────────────────────────────────────
 func has_relic(id: String) -> bool:
