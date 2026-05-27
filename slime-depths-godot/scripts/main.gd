@@ -1203,14 +1203,19 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 		Vector2(w, h),
 		Vector2(-w, h),
 	])
-	# Slight vertical gradient (lighter at top, darker at bottom) so
-	# the slab doesn't read as a single flat color. vertex_colors
-	# expects clockwise from top-left.
-	var side_top: Color = Color(0.22, 0.20, 0.26, 1.0)
-	var side_bot: Color = Color(0.13, 0.12, 0.16, 1.0)
+	# Iter 244 — Director Phase 2. Pre-iter-244 the side gradient was
+	# Color(0.22, 0.20, 0.26) → Color(0.13, 0.12, 0.16) which carried a
+	# subtle purple-magenta tint. Combined with the warm-cream top_edge
+	# Color(0.58, 0.50, 0.40) and brownish top_face Color(0.38, 0.34,
+	# 0.40), wall slabs read as wooden furniture in the user playtest.
+	# New colors are neutral stone (no purple, no warm-brown) so the
+	# slabs LOOK like raised stone, matching the iter-30 chiseled-stone
+	# grammar. The slight vertical gradient stays for depth.
+	var side_top: Color = Color(0.42, 0.38, 0.36, 1.0)
+	var side_bot: Color = Color(0.22, 0.20, 0.18, 1.0)
 	side_face.vertex_colors = PackedColorArray([side_top, side_top, side_bot, side_bot])
 	body.add_child(side_face)
-	# TOP FACE — lighter stone, catches the overhead light.
+	# TOP FACE — lighter neutral stone, catches the overhead light.
 	var top_face: Polygon2D = Polygon2D.new()
 	top_face.polygon = PackedVector2Array([
 		Vector2(-w, -h),
@@ -1218,17 +1223,21 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 		Vector2(w, -h + top_face_h),
 		Vector2(-w, -h + top_face_h),
 	])
-	top_face.color = Color(0.38, 0.34, 0.40, 1.0)
+	# Iter 244 — top face shifted from warm-purple to a cool stone-grey
+	# that reads as carved limestone catching ambient light, not wood.
+	top_face.color = Color(0.48, 0.44, 0.42, 1.0)
 	body.add_child(top_face)
-	# HIGHLIGHT — thin warm-cream pinstripe along the very top edge.
-	# Sub-px width via antialias so it reads as a beveled rim, not a
-	# painted stripe.
+	# HIGHLIGHT — thin neutral-stone pinstripe along the very top edge.
+	# Iter 244 — retinted from warm-cream tan Color(0.58, 0.50, 0.40)
+	# to neutral chiseled-stone highlight Color(0.62, 0.58, 0.54). Sub-px
+	# width via antialias so it reads as a beveled rim, not a painted
+	# stripe — same iter-30 chiseled-stone grammar as the new pillar.
 	var top_edge: Line2D = Line2D.new()
 	top_edge.points = PackedVector2Array([
 		Vector2(-w + 2, -h + 0.5), Vector2(w - 2, -h + 0.5),
 	])
 	top_edge.width = 1.5
-	top_edge.default_color = Color(0.58, 0.50, 0.40, 0.85)
+	top_edge.default_color = Color(0.62, 0.58, 0.54, 0.85)
 	top_edge.antialiased = true
 	body.add_child(top_edge)
 	# SEAM — 1 px dark line at the top-face/side-face junction. This
@@ -1281,7 +1290,9 @@ func _build_interior_wall(r: Rect2) -> StaticBody2D:
 				Vector2(-1.6, 0), Vector2(0, -1.3),
 			])
 			rivet.position = Vector2(rivet_x, rivet_y)
-			rivet.color = Color(0.62, 0.50, 0.34, 0.85)
+			# Iter 244 — retinted from warm-bronze to stone-grey so the
+			# rivet reads as a chiseled stud, not brass furniture hardware.
+			rivet.color = Color(0.56, 0.52, 0.48, 0.85)
 			body.add_child(rivet)
 			rivet_x += seam_spacing
 	# Iter 188 batch 2 — sarcophagus character. User direction: "Rework
@@ -1434,7 +1445,18 @@ func _apply_biome_palette(biome: String) -> void:
 		_biome_wall_color = BIOME_WALL_COLOR[biome] as Color
 	else:
 		_biome_wall_color = CHROME_WALL_STONE_COLOR
-const CHROME_WALL_TOP_HIGHLIGHT: Color = Color(0.48, 0.42, 0.32, 0.85)
+# Iter 244 — Director Phase 2. Pre-iter-244 the perimeter wall TOP
+# highlight was Color(0.48, 0.42, 0.32, 0.85) — a warm tan that traced
+# a continuous rectangle around the whole playfield. User playtest read
+# it as a "UI border" frame, NOT carved stone — the seam between wall
+# and floor looked like the edge of a HUD panel. Retinted to neutral
+# stone Color(0.62, 0.58, 0.54, 0.85) so the seam reads as "the
+# chiseled top edge of the perimeter wall mass catching ambient light,"
+# matching the iter-30 chiseled-stone grammar used on pillars + slabs.
+# (Could also drop the line entirely; the user's instruction allows
+# either. Re-tinting keeps the perimeter shape readable for "where am
+# I in the room" while eliminating the UI-border read.)
+const CHROME_WALL_TOP_HIGHLIGHT: Color = Color(0.62, 0.58, 0.54, 0.85)
 const CHROME_INNER_SHADOW_DARK: Color = Color(0, 0, 0, 0.55)
 const CHROME_INNER_SHADOW_CLEAR: Color = Color(0, 0, 0, 0)
 # Iter 183 item 3 — alpha 0.65 → 0.80 to push the corner darkness as
@@ -2456,8 +2478,13 @@ const MATERIAL_CLUSTER_POSITIONS: Array[Vector2] = [
 func _spawn_material_story_clusters() -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = (RunState.current_room_index + 1) * 12289 + GameState.dungeon_runs * 23 + 79
-	# Pick 2-3 cluster positions
-	var num: int = rng.randi_range(2, 3)
+	# Iter 244 — Director Phase 2. Pre-iter-244 we spawned 2-3 clusters per
+	# room (set in iter-209). User playtest showed the floor petal/material
+	# clusters competing visually with hero, enemies, and the central
+	# hazard for attention. -50% cluster density (now 1-2 per room) keeps
+	# the storytelling read ("corruption seeped in HERE") while halving
+	# the noise floor that's competing with gameplay sprites.
+	var num: int = rng.randi_range(1, 2)
 	var pool: Array[Vector2] = MATERIAL_CLUSTER_POSITIONS.duplicate()
 	for i in range(num):
 		if pool.is_empty():
@@ -4255,7 +4282,23 @@ func _spawn_pedestal_offer(count: int) -> void:
 	var center_x: float = 640.0
 	var y: float = 384.0
 	var spacing: float = 200.0
+	# Iter 244 — Director Phase 2. Pre-iter-244 the offer cluster was
+	# centered at (640, 384) — the room center. On the slow-zone room the
+	# CENTER PEDESTAL spawned ON TOP OF the cursed font hazard: the player
+	# had to stand IN the slow zone to claim it, and the altar ring
+	# overlapped the hazard's rays. Reward placement now checks for any
+	# hazard within 80 px of the cluster center; if one is present, shift
+	# the entire offer (pedestals + dais + header + later vignette) UPWARD
+	# by 120 px so all 3 pedestals sit above the hazard. The hazard stays
+	# put — only the reward relocates. See _pedestal_offer_y_offset below.
+	var hazard_offset_y: float = _pedestal_offer_y_offset(Vector2(center_x, y))
+	y += hazard_offset_y
 	var start_x: float = center_x - spacing * (n - 1) / 2.0
+	# Iter 244 — fade central hazards visually to 30% alpha while the
+	# offer is active so the cursed font doesn't visually compete with
+	# the relic cards. Gameplay effect is unchanged; this is purely the
+	# diegetic "backseat" cue. Restored in _resolve_room_pickup.
+	_fade_central_hazards_for_offer(Vector2(center_x, 384.0), 0.3)
 	# Iter 192 batch 3 — ritual framing. Spawn the dais + header BEFORE
 	# the pedestals so they sit underneath / above the offering cluster
 	# (tree order = draw order at same z). Frees on offer dismiss via
@@ -4277,6 +4320,96 @@ func _spawn_pedestal_offer(count: int) -> void:
 		if CursedPickup.should_offer_cursed(pick_tier, null):
 			ped.cursed_curse_id = CursedPickup.pick_curse_id(null)
 		add_child(ped)
+
+# Iter 244 — Director Phase 2. If a hazard (slow zone, fire jet, spike
+# pit, etc.) sits within 80 px of the pedestal cluster center, shift the
+# entire cluster UP by 120 px so the player doesn't have to stand IN the
+# hazard to claim the central relic. Returns the y offset to apply (0.0
+# if no hazard nearby, -120.0 if a hazard is close).
+#
+# Detection: walks _room.hazard_positions (Array[Vector2]) and checks
+# Euclidean distance from each to the proposed cluster center. The 80 px
+# threshold matches the slow zone's outer halo radius (44) + ~half a
+# pedestal width — anything closer than that would overlap visually.
+#
+# The threshold is conservative; if it produces false positives the
+# easiest tune is to drop to 60 px (only OVERLAPPING hazards trigger
+# the shift). 80 px catches "adjacent" hazards as well.
+const PEDESTAL_OFFER_HAZARD_THRESHOLD: float = 80.0
+const PEDESTAL_OFFER_HAZARD_OFFSET_Y: float = -120.0
+
+func _pedestal_offer_y_offset(cluster_center: Vector2) -> float:
+	if _room == null:
+		return 0.0
+	# _room.hazard_positions is the canonical list of hazard spawn points
+	# at room-load time. We don't need to query live Area2D children
+	# because hazard layout is fixed per room.
+	for hp in _room.hazard_positions:
+		if cluster_center.distance_to(hp) <= PEDESTAL_OFFER_HAZARD_THRESHOLD:
+			return PEDESTAL_OFFER_HAZARD_OFFSET_Y
+	return 0.0
+
+# Iter 244 — fade hazard visuals to a low alpha while the offer is
+# active. The hazard's gameplay effect is unchanged (the Area2D still
+# slows the hero, the fire still burns); only the modulate.a tween is
+# applied so the visuals BACKSEAT during reward presentation. Restored
+# in _resolve_room_pickup. Stored hazards are tracked in
+# _offer_faded_hazards so the restore knows which children to retarget.
+var _offer_faded_hazards: Array = []
+const OFFER_HAZARD_FADE_DURATION: float = 0.35
+
+func _fade_central_hazards_for_offer(reference_center: Vector2, target_alpha: float) -> void:
+	_offer_faded_hazards.clear()
+	# Walk direct children looking for hazard Area2D nodes that sit
+	# inside the central zone. Hazard scenes are added via
+	# _spawn_hazards() as direct children of Main.
+	for child in get_children():
+		if not (child is Area2D):
+			continue
+		# We identify hazard nodes by class names matching our hazard
+		# scenes. SlowZone is the most-relevant target for the current
+		# room layout; spike_pit / fire_jet / lightning_rod are also
+		# faded if they sit near the cluster center.
+		var c: Node = child as Node
+		var script: Script = c.get_script() as Script
+		if script == null:
+			continue
+		var script_path: String = script.resource_path
+		# Match any script under scripts/ that's a known hazard type.
+		var is_hazard: bool = (
+			script_path.find("slow_zone") >= 0
+			or script_path.find("spike_pit") >= 0
+			or script_path.find("fire_jet") >= 0
+			or script_path.find("lightning_rod") >= 0
+		)
+		if not is_hazard:
+			continue
+		var cn: CanvasItem = child as CanvasItem
+		if cn == null:
+			continue
+		# Only fade hazards within a generous 160 px of the reference
+		# center — leaves perimeter hazards (rare) at full alpha.
+		var hpos: Vector2 = (child as Node2D).global_position
+		if reference_center.distance_to(hpos) > 160.0:
+			continue
+		_offer_faded_hazards.append(cn)
+		var tw: Tween = create_tween()
+		tw.tween_property(cn, "modulate:a", target_alpha, OFFER_HAZARD_FADE_DURATION)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+# Iter 244 — restore hazard visuals after the offer resolves (player
+# claimed a relic OR dismissed the offer). Tweens each faded hazard's
+# modulate.a back to 1.0 over the same duration as the dim-down.
+func _restore_central_hazards_after_offer() -> void:
+	if _offer_faded_hazards.is_empty():
+		return
+	for cn in _offer_faded_hazards:
+		if cn == null or not is_instance_valid(cn):
+			continue
+		var tw: Tween = create_tween()
+		tw.tween_property(cn, "modulate:a", 1.0, OFFER_HAZARD_FADE_DURATION)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_offer_faded_hazards.clear()
 
 # Iter 192 batch 3 — ritual framing for the relic offer. Two components:
 #   A) A faint stone dais (Polygon2D ellipse) UNDER the pedestal row
@@ -4485,6 +4618,10 @@ func _resolve_room_pickup() -> void:
 	# (or the offer otherwise resolved). The room returns to its normal
 	# brightness for the walk-to-door beat.
 	_dismiss_offer_vignette()
+	# Iter 244 — Director Phase 2. Restore any hazards that were dimmed
+	# during the offer presentation. Symmetric counterpart of
+	# _fade_central_hazards_for_offer in _spawn_pedestal_offer.
+	_restore_central_hazards_after_offer()
 	# Iter 219 / Beta M1.0 — award Ether Shards on room resolution. The
 	# award fires HERE (after the pickup) rather than on wave-clear so a
 	# player who skips the relic pedestal (rare but possible) still gets

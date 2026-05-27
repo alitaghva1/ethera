@@ -59,13 +59,19 @@ script = ExtResource("1_script")
 ; texture_scale 2.4 → 2.85 produces visibly distinct warm islands
 ; surrounded by deeper cool dark, the Hades "lit-by-fire" feel
 ; (ChatGPT critique #4: "lighting lacks drama despite having torches").
+; Iter 244 — Director Phase 2. Pre-iter-244 texture_scale was 2.85
+; (iter-183). User playtest showed the warm pools were too tight given
+; the dim ambient — readability suffered in the gap between two torches.
+; +25% → 3.56 widens each warm pool so torch islands overlap more,
+; giving the floor a continuous lit / partially-lit gradient instead of
+; "torch bright spot → cool dark corridor → next bright spot."
 [node name="PointLight2D" type="PointLight2D" parent="."]
 color = Color(1, 0.58, 0.28, 1)
 energy = 1.95
 range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("torch_grad_tex")
-texture_scale = 2.85
+texture_scale = 3.56
 ; iter-109: shadows on. Pillars (and any future LightOccluder2D-bearing
 ; node) now cast a long pillar-shaped shadow across the floor when
 ; this torch is behind them. The flat-darkened scene reads as a
