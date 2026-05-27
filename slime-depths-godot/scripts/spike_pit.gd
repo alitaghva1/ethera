@@ -25,6 +25,10 @@ const SPIKE_DAMAGE: int = 1
 # damage number so the player sees CAUSE and EFFECT in one beat.
 const SPIKE_FLASH_TIME: float = 0.10
 
+# Iter 253 / Wave 3 — hazard reactivity. With fire_pool → burning_spikes
+# (DOT burn); with slow_zone → submerged_spikes (slow status).
+var hazard_kind: String = "spike_pit"
+
 var _hero: Node2D = null
 var _hero_inside: bool = false
 var _tick_timer: float = 0.0
@@ -41,6 +45,8 @@ var _spike_base_color: Color = Color(0.78, 0.74, 0.66, 1)
 @onready var _danger_halo: Polygon2D = $DangerHalo
 
 func _ready() -> void:
+	# Iter 253 — join the "hazards" group for HazardInteractions pairing.
+	add_to_group("hazards")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	# Collect spike refs — pedestal-style group lookup would be over-

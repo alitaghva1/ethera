@@ -19,6 +19,12 @@ extends Area2D
 # being totally helpless — the player can still strafe / kite.
 const SLOW_MULTIPLIER: float = 0.5
 
+# Iter 253 / Wave 3 — hazard reactivity. The HazardInteractions autoload
+# pairs nodes in the "hazards" group by reading `hazard_kind` on each.
+# String here matches the registry key in MIXING_MATRIX so a slow_zone
+# + fire_jet overlap spawns the boiling_acid mix.
+var hazard_kind: String = "slow_zone"
+
 var _hero: Node2D = null
 var _hero_inside: bool = false
 
@@ -48,6 +54,10 @@ const PROXIMITY_BOOST_MIN: float = 0.0  # no boost at or past radius
 var _proximity_factor: float = 0.0
 
 func _ready() -> void:
+	# Iter 253 — join the "hazards" group so HazardInteractions can pair
+	# us against other hazards for mix detection. No-op if already in
+	# the group (Godot dedupes).
+	add_to_group("hazards")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 

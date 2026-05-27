@@ -30,6 +30,7 @@ Events="*res://scripts/events.gd"
 FX="*res://scripts/fx.gd"
 ScreenFlash="*res://scripts/screen_flash.gd"
 Audio="*res://scripts/audio.gd"
+HazardInteractions="*res://scripts/hazard_interactions.gd"
 
 [debug]
 

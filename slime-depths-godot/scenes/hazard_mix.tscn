@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3hazardmix0001"]
+
+[ext_resource type="Script" path="res://scripts/hazard_mix.gd" id="1_script"]
+
+; Iter 253 / Wave 3 — HazardMix scene.
+;
+; Thin wrapper around hazard_mix.gd; the script builds all visual
+; children (disc Polygon2D + per-kind particles + chain arcs) at _ready
+; based on mix_kind. That keeps the matrix easily extensible — adding
+; a sixth reaction is one match-case in the script, no scene tree edits.
+;
+; HazardInteractions autoload instantiates this scene, sets mix_kind /
+; radius / lifetime fields BEFORE add_child (so _ready picks them up),
+; then parents it under current_scene at the overlap centroid.
+
+[node name="HazardMix" type="Node2D"]
+script = ExtResource("1_script")
+z_index = 2

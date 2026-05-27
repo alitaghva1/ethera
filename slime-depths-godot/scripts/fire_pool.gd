@@ -17,6 +17,14 @@ const POOL_TICK_INTERVAL: float = 0.4
 const POOL_LIFETIME: float = 2.0
 const POOL_RADIUS: float = 22.0
 
+# Iter 253 / Wave 3 — hazard reactivity. Fire pools double as hazards
+# from the matrix's POV: pool + spike_pit → burning_spikes (enemy DOT),
+# pool + fire_jet → greater_fire (this pool grows bigger / hotter /
+# longer). The hazard_kind string + "hazards" group join below let the
+# HazardInteractions autoload pair fire pools with the static hazards
+# despite fire pools being dynamic spawns from FLAME-ascendance kills.
+var hazard_kind: String = "fire_pool"
+
 # Iter 61 — per-instance _life lets callers spawn shorter-lived pools
 # (e.g. melee swing connect creates a brief 0.6s mini-pool vs the
 # 2.0s kill pool). Set BEFORE add_child to override the default.
@@ -55,6 +63,10 @@ func _ready() -> void:
 	# Iter 61 — join "fire_pools" group so tests / future systems can
 	# find all active pools without walking the scene tree by parent.
 	add_to_group("fire_pools")
+	# Iter 253 — also join "hazards" so HazardInteractions can pair fire
+	# pools against static hazards (spike pits, fire jets) for the
+	# burning_spikes + greater_fire mixes.
+	add_to_group("hazards")
 	# Detection shape — circle radius 22.
 	var shape: CollisionShape2D = CollisionShape2D.new()
 	var circle: CircleShape2D = CircleShape2D.new()

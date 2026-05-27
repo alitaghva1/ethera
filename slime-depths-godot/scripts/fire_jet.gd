@@ -34,6 +34,11 @@ const COLUMN_HEIGHT: float = 88.0
 # Phase offset (0..1, fraction of full cycle) so a row of jets staggers.
 var phase: float = 0.0
 
+# Iter 253 / Wave 3 — hazard reactivity. Identifies this hazard to the
+# HazardInteractions autoload so a fire_jet next to a slow_zone spawns
+# boiling_acid, next to a fire_pool spawns greater_fire.
+var hazard_kind: String = "fire_jet"
+
 var _t: float = 0.0
 var _is_on: bool = false
 var _hero: Node2D = null
@@ -75,6 +80,9 @@ const FLAME_WOBBLE_FREQ_HZ: float = 18.0      # how fast vertices wiggle
 const FLAME_WOBBLE_PHASE_STRIDE: float = 1.37
 
 func _ready() -> void:
+	# Iter 253 — join the "hazards" group so HazardInteractions can pair
+	# us against other hazards for mix detection.
+	add_to_group("hazards")
 	body_entered.connect(_on_body_entered)
 	body_exited.connect(_on_body_exited)
 	# iter-85 — cache the base polygon shape for FlameBody + FlameHalo

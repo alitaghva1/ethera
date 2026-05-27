@@ -29,6 +29,11 @@ const DAMAGE_PER_STRIKE: int = 1
 var interval: float = 3.0
 var phase: float = 0.0  # 0..1 fraction of full cycle offset at spawn
 
+# Iter 253 / Wave 3 — hazard reactivity. Pairing key for HazardInteractions
+# — a lightning_rod over a slow_zone spawns electrified_font (mob soft-
+# stun + damage).
+var hazard_kind: String = "lightning_rod"
+
 var _t: float = 0.0
 var _state: String = "idle"  # "idle" | "telegraph" | "strike"
 
@@ -46,6 +51,8 @@ var _state: String = "idle"  # "idle" | "telegraph" | "strike"
 var _idle_t: float = 0.0
 
 func _ready() -> void:
+	# Iter 253 — join the "hazards" group for HazardInteractions pairing.
+	add_to_group("hazards")
 	var cycle_total: float = interval
 	_t = clampf(phase, 0.0, 1.0) * cycle_total
 	# Keep a faint outline glimmer in idle so the player sees the ring
