@@ -53,6 +53,53 @@ const AttackFeel = preload("res://scripts/attack_feel.gd")
 # class_name registration in enemy.gd's load order).
 const FxSpriteCls = preload("res://scripts/fx_sprite.gd")
 
+# Iter 257 / Wave 6 — per-kind death decal. Spawned at the end of
+# _die() so when an enemy falls it leaves a PERSISTENT visible mark
+# matching its identity: a slime splat is green, a skeleton leaves
+# scattered bone shards, an ember leaves warm ash, casters leave dark
+# ash piles, spectral foes leave ghost-mist with violet pips, generic
+# melee mortals leave blood pools. Decals fade over 6-8s — additive
+# to the iter-83 BloodMark (which still spawns from main.gd's
+# _on_enemy_died handler, providing a uniform splat underneath).
+# Identifies the enemy by enemy_type.display_name (lower-cased,
+# spaces→underscores) so the .tres files stay un-touched. Falls back
+# to "blood" for any unmapped display_name.
+const CORPSE_DECAL_SCENE: PackedScene = preload("res://scenes/corpse_decal.tscn")
+const DEATH_DECAL_KIND_MAP: Dictionary = {
+	# Slime — irregular green splat splash.
+	"slime":             "slime",
+	# Ember-family — warm scorched-ash piles (smoldering remains).
+	"ember":             "ember",
+	"ember_bomber":      "ember",
+	"ember_tyrant":      "ember",
+	# Skeletal — bone-shard scatter with dust under-layer.
+	"skel":              "skeleton",
+	"skeleton":          "skeleton",
+	"armored_skeleton":  "skeleton",
+	"bone_summoner":     "skeleton",
+	# Spectral / wraith / incorporeal — pale ghost-mist + violet pips.
+	"rogue_wraith":      "bone",
+	"spectral_priest":   "bone",
+	"bulwark":           "bone",  # armored ghost — fits spectral palette
+	"moth":              "bone",  # ethereal flyer
+	# Casters — dark soot pile (robes burned away).
+	"wiz":               "ash",
+	"wizard":            "ash",
+	"priest":            "ash",
+	"dreadmage":         "ash",
+	"archer":            "ash",
+	"glyph_warden":      "ash",
+	"bonecap":           "ash",
+	# Melee mortals + corporeal beasts — red blood pool.
+	"lancer":            "blood",
+	"orc":               "blood",
+	"werewolf":          "blood",
+	"crypt_spider":      "blood",
+	"broodmother":       "blood",
+	"iron_revenant":     "blood",
+	"tuskbrod":          "blood",
+}
+
 # Iter 15 — spawn-in window. Newly-spawned enemies fade from a bright
 # red translucent ghost to full opacity over SPAWN_IN_DURATION seconds.
 # During this window: no AI, no take_hit, velocity locked to zero. This
@@ -3114,6 +3161,63 @@ func _die() -> void:
 	# enemy.
 	if _burn_remaining > 0.0:
 		_trigger_kindle_spread()
+	# Iter 257 / Wave 6 — drop a persistent identity-matched decal on the
+	# floor at the death spot. Slime → green splat, skeleton → bone shards,
+	# ember → warm ash, casters → soot pile, spectral → ghost mist + pips,
+	# everything else → blood pool. Parented to the scene root (not self)
+	# so the decal SURVIVES this enemy's queue_free at death_duration end;
+	# the decal handles its own lifetime + fade-out tween. Defensive guards
+	# for headless / no-current-scene paths in tests.
+	_spawn_corpse_decal()
+
+# Iter 257 — pick the decal kind from this enemy's display_name (looked
+# up in DEATH_DECAL_KIND_MAP). The mapping uses the normalized form of
+# display_name (lowercased, spaces → underscores) so a .tres declaring
+# "Bone Summoner" → "bone_summoner" matches the existing main.gd
+# ENEMY_TYPES key convention. Returns "blood" for any unmapped enemy
+# so death always leaves a visible mark.
+func _death_decal_kind() -> String:
+	if enemy_type == null:
+		return "blood"
+	var name_raw: String = str(enemy_type.display_name)
+	if name_raw == "":
+		return "blood"
+	var key: String = name_raw.to_lower().replace(" ", "_")
+	if DEATH_DECAL_KIND_MAP.has(key):
+		return DEATH_DECAL_KIND_MAP[key]
+	return "blood"
+
+# Iter 257 — instantiate + parent the corpse decal at the enemy's
+# global position. Parented to the SCENE ROOT (or get_parent fallback)
+# so the decal outlives this enemy when it queue_frees at the end of
+# its death animation. The decal handles its own lifetime + alpha
+# fade-out tween — fire-and-forget.
+func _spawn_corpse_decal() -> void:
+	if CORPSE_DECAL_SCENE == null:
+		return
+	var decal_node: Node = CORPSE_DECAL_SCENE.instantiate()
+	if decal_node == null:
+		return
+	# Set kind BEFORE add_child so _ready can read it for visual build.
+	decal_node.set("kind", _death_decal_kind())
+	# Parent to the scene root so the decal survives this enemy's
+	# queue_free. Fall back to get_parent() (room node) if for some
+	# reason current_scene is null — headless tests can hit that path.
+	var host: Node = null
+	var tree: SceneTree = get_tree()
+	if tree != null:
+		host = tree.current_scene
+	if host == null:
+		host = get_parent()
+	if host == null:
+		# Last-resort: drop the decal on the floor (free immediately —
+		# something is very wrong with the scene tree).
+		decal_node.queue_free()
+		return
+	host.add_child(decal_node)
+	# Position AFTER add_child so global_position lands correctly.
+	if decal_node is Node2D:
+		(decal_node as Node2D).global_position = global_position
 
 # ── Behavior: glyph_warden ────────────────────────────────────────────
 # Iter 72 — conjurer / trap-layer. Kites the hero at WARDEN_KEEP_DIST

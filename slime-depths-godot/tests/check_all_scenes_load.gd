@@ -33,6 +33,8 @@ const SCENES_TO_LOAD: Array[String] = [
 	"res://scenes/hazards/slow_zone.tscn",
 	# iter-242 / Loop Tightening LEVER 1 — per-kill soul gem collectible.
 	"res://scenes/soul_gem.tscn",
+	# iter-257 / Wave 6 — persistent enemy death decals.
+	"res://scenes/corpse_decal.tscn",
 ]
 
 func _initialize() -> void:
