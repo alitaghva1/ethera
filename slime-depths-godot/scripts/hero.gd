@@ -105,6 +105,19 @@ const HIT_IFRAMES        := 0.55
 
 # Blast spell (Iter 3) — RMB ranged projectile.
 const BLAST_COOLDOWN     := 0.55
+# iter-249 — BLAST WINDUP COMMITMENT. Per ETHERA_COMBAT_DESIGN.md §2:
+# blast is the "ranged commit verb." 0.10s windup before the projectile
+# fires (off-hand glows violet during windup, projectile spawns at fire),
+# 0.30s recovery during which only DODGE can cancel (not sword). Total
+# commitment = 0.40s.
+# Pre-iter-249 blast was instant + 0.18s recovery (`_attack_live`); the
+# new commitment trades reaction time for the "deliberate cast" feel
+# that distinguishes blast from sword.
+const BLAST_WINDUP_TIME: float = 0.10
+const BLAST_RECOVERY_TIME: float = 0.30
+# Off-hand glow color — violet "magic gathering" hue. Tweens alpha 0→1
+# during the 0.10s windup, free's on fire.
+const BLAST_GLOW_COLOR: Color = Color(0.65, 0.40, 1.0, 1.0)
 # Iter 42 — multi-shot spread step. Angular offset (radians) between
 # adjacent projectiles in a multi-shot. ~14° = noticeable spread that
 # still lets all projectiles hit a clumped group at melee-blast range.
@@ -433,6 +446,20 @@ const HERO_VENOM_TICK_INTERVAL: float = 0.5   # tick every 0.5s
 const HERO_VENOM_DAMAGE_PER_TICK: int = 1
 
 var _blast_cd := 0.0
+# iter-249 — BLAST WINDUP state. _blast_windup_time decrements in
+# _physics_process; when it hits 0 (from > 0), _resolve_blast_fire()
+# runs the actual projectile spawn. _blast_locked stays true through
+# windup + recovery; the input precedence chain reads it to block
+# sword/attack inputs (only DODGE can cancel the commit). _blast_aim /
+# _blast_resonance_active capture the aim + arcane_resonance state at
+# PRESS time so a mid-windup mouse-move doesn't redirect the shot.
+var _blast_windup_time: float = 0.0
+var _blast_locked: bool = false
+var _blast_aim: Vector2 = Vector2.RIGHT
+var _blast_resonance_active: bool = false
+# Handle to the off-hand glow polygon so we can free it on fire (the
+# tween scales alpha 0→1 over the windup; on fire we just queue_free).
+var _blast_glow_ref: Polygon2D = null
 
 # iter-247: parry/shield input removed. _shield_time / _shield_cd /
 # _shield_ref state collapsed; combat now folds parry into PERFECT DODGE
@@ -816,6 +843,19 @@ func _physics_process(delta: float) -> void:
 					take_damage(0, global_position)
 	if _attack_live <= 0.0:
 		_is_attacking = false
+		# iter-249: clear _blast_locked when the attack lifetime fully
+		# elapses (covers windup + recovery in _start_blast's path —
+		# _attack_live is set to BLAST_WINDUP_TIME + BLAST_RECOVERY_TIME).
+		_blast_locked = false
+	# iter-249 — BLAST WINDUP TIMER. Decrement; when transitioning from
+	# > 0 to <= 0, fire the projectile. Done as a separate tracked
+	# transition (rather than `if windup <= 0 fire`) so it fires once,
+	# at the moment of windup completion. The _blast_windup_time being
+	# > 0 is the gate for "press happened, projectile pending."
+	if _blast_windup_time > 0.0:
+		_blast_windup_time = max(0.0, _blast_windup_time - delta)
+		if _blast_windup_time <= 0.0:
+			_resolve_blast_fire()
 	# Iter 19 — windowed melee damage. _start_attack arms the pending
 	# strike + cached aim/range; when the windup timer expires here,
 	# we run the actual hit scan. Keeps damage timing aligned with the
@@ -1047,18 +1087,23 @@ func _physics_process(delta: float) -> void:
 	# iter-248 — HEAVY HIT (combo_index == 2) is COMMITTED: only DODGE can
 	# interrupt its recovery. The `_combo_committed` flag is set in
 	# _start_attack when the heavy fires; it stays true until the heavy's
-	# recovery ends (cleared when _attack_cd hits 0 in the next branch
-	# below or by combo_window timeout reset).
+	# recovery ends.
+	# iter-249 — BLAST is COMMITTED during windup + recovery. Only DODGE
+	# can break out (dash_strike branch comes first and doesn't read
+	# _blast_locked); sword/attack input is blocked by the _blast_locked
+	# guard. The lock clears when _attack_live drains to 0 in the
+	# decrement block earlier in _physics_process.
 	if Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
-	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0 and not _combo_committed:
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0 and not _combo_committed and not _blast_locked:
 		_start_blast()
-	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dash_strike_time <= 0.0 and not _blast_locked:
+		# iter-249: _blast_locked added. Pre-iter-249 sword could cancel
+		# blast recovery (blast set _is_attacking + _attack_live = 0.18,
+		# and _attack_cd was independent so sword could fire at end of
+		# its own cd window). Now blast's commitment is explicit.
 		# (No _combo_committed guard here — _attack_cd already gates this
-		# to the end of the heavy's recovery. The next press will start
-		# the next combo, which is fine; if the player chained press
-		# during heavy recovery they'd get the next press converted to
-		# combo index 0 since the window expired.)
+		# to the end of the heavy's recovery.)
 		_start_attack()
 	# Iter 201 — active relic input. Outside the if/elif chain because
 	# active relic should be triggerable mid-swing / mid-blast (it's
@@ -1805,20 +1850,22 @@ func _apply_aim_assist(aim: Vector2) -> Vector2:
 	return snap_dir
 
 func _start_blast() -> void:
+	# iter-249 — BLAST WINDUP COMMITMENT. Pre-iter-249 this fired the
+	# projectile inline at press time + locked _attack_live for 0.18s of
+	# recovery. Now: press starts a 0.10s windup (off-hand glows violet);
+	# at windup end, _resolve_blast_fire spawns the actual projectile;
+	# the hero stays locked for an additional 0.30s recovery (only DODGE
+	# can cancel — see input precedence chain). Total commitment = 0.40s.
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
 	var aim := aim_world.normalized()
-	# Iter 70 — light aim assist. If the cursor is within AIM_ASSIST_CONE
-	# of an enemy AND that enemy is within AIM_ASSIST_RANGE, snap aim
-	# to point exactly at that enemy. Compensates for mouse precision in
-	# mid-combat — the player "feels" their shots are responsive without
-	# the snap being so aggressive that intentional misses (e.g. shooting
-	# past an enemy to break a pot) become impossible. Skips entirely if
-	# no enemy qualifies, so a player who aims into empty space still
-	# shoots the empty space.
+	# Iter 70 — light aim assist applied at PRESS time. Re-aiming mid-
+	# windup doesn't change the shot direction (the windup IS the
+	# commitment) — design intent.
 	aim = _apply_aim_assist(aim)
-	# Iter 17 — swift_focus reduces blast cooldown.
+	# Iter 17 — swift_focus reduces blast cooldown. _blast_cd locks the
+	# next press; covers windup + recovery + a beat to prevent press-spam.
 	_blast_cd = BLAST_COOLDOWN * (1.0 + GameState.modifier_total_f("blast_cooldown_mul", 0.0))
 	_facing_dir = _vector_to_dir_idx(aim)
 	# iter-97: blast facing window. JS reference (hero.js:1413-1420):
@@ -1833,14 +1880,80 @@ func _start_blast() -> void:
 	# Reuse the attack animation as a cast gesture for now.
 	sprite.frame = 0
 	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
-	_attack_live = ATTACK_SWING_TIME
+	# iter-249 — _attack_live now covers windup + recovery so the cast
+	# anim + planted-feet (ATTACK_MOVE_SPEED_MUL) and _is_attacking gate
+	# read consistently through the entire commitment.
+	_attack_live = BLAST_WINDUP_TIME + BLAST_RECOVERY_TIME
 	_is_attacking = true
+	# iter-249 — commit lock. The input precedence chain reads this to
+	# block sword/attack inputs (only DODGE can cancel — the
+	# _can_start_dash_strike already passes during blast since it
+	# doesn't check _blast_locked). Cleared when _attack_live finishes
+	# decaying (in _physics_process's attack-live branch).
+	_blast_locked = true
+	# iter-249 — capture aim + resonance state at press time. arcane_
+	# resonance counter bumps NOW so the proc lands on the press, not
+	# the fire (so a player counting hits still gets the every-4th
+	# rhythm correctly even with the 0.10s windup added).
+	_blast_aim = aim
 	# Iter 17 — arcane_resonance: every 4th blast deals double damage.
-	# Counter is post-incremented so the 4th cast (counter == 4 after
-	# increment) is the lucky one. Resets implicitly on run start since
-	# the hero is re-instantiated for each new scene load.
 	_blast_counter += 1
-	var resonance_active: bool = GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0
+	_blast_resonance_active = GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0
+	# iter-249 — spawn the off-hand violet glow polygon. Parented to
+	# the hero (follows the body during a moving cast), positioned at
+	# the off-hand approximate offset. Alpha tweens 0→1 over windup;
+	# _blast_glow_ref tracks the node so _resolve_blast_fire can
+	# free it cleanly on fire.
+	_spawn_blast_offhand_glow()
+	# iter-249 — arm the windup timer. _physics_process decrements +
+	# calls _resolve_blast_fire when it hits 0.
+	_blast_windup_time = BLAST_WINDUP_TIME
+
+# iter-249 — spawn the off-hand violet glow during blast windup. Built
+# as a small Polygon2D parented to the hero so it tracks body motion
+# during the cast. Alpha tweens 0 → 1 over BLAST_WINDUP_TIME so the
+# player sees the glow gathering before the projectile fires. Freed on
+# fire in _resolve_blast_fire (the tween outlives the glow node only
+# if it gets re-armed; we kill the previous reference defensively).
+const BLAST_GLOW_RADIUS: float = 9.0
+const BLAST_GLOW_OFFSET: Vector2 = Vector2(8, -22)  # slightly right + chest height
+func _spawn_blast_offhand_glow() -> void:
+	# Defensive: kill any stale glow from a previous interrupted cast.
+	if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+		_blast_glow_ref.queue_free()
+	var glow: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 16
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * BLAST_GLOW_RADIUS)
+	glow.polygon = pts
+	glow.color = BLAST_GLOW_COLOR
+	glow.modulate = Color(1, 1, 1, 0.0)  # start invisible; alpha tweens up
+	glow.position = BLAST_GLOW_OFFSET
+	glow.z_index = 2
+	add_child(glow)
+	_blast_glow_ref = glow
+	# Tween alpha 0 → 1 over the windup. parented to the glow so a stop-
+	# free at fire time cleans up the tween too.
+	var tw: Tween = glow.create_tween()
+	tw.tween_property(glow, "modulate:a", 1.0, BLAST_WINDUP_TIME)
+
+# iter-249 — called from _physics_process when _blast_windup_time hits
+# 0 from > 0. This is the "fire" frame — spawn the actual projectile +
+# muzzles + run all the per-cast procs (arcane_pulse, split_cinder,
+# echo_quill). The body is what _start_blast did pre-iter-249.
+func _resolve_blast_fire() -> void:
+	# Free the off-hand glow (windup ends; the gathered energy "fires").
+	if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+		_blast_glow_ref.queue_free()
+		_blast_glow_ref = null
+	# Skip the actual cast if the hero died mid-windup (status combos
+	# can kill in this tiny 0.10s window). The _attack_live timer would
+	# clear _blast_locked on its own; just exit.
+	if _is_dying:
+		return
+	var aim: Vector2 = _blast_aim
 	# Iter 214 — STATIC RUNES per-cast proc check. Computed BEFORE the
 	# projectile spawn loop so EVERY projectile in this cast sees the
 	# same proc flag — multi-shot all chain on the proc cast, otherwise
@@ -1854,16 +1967,10 @@ func _start_blast() -> void:
 			_static_runes_proc_this_cast = true
 	# Iter 42 — multi-shot. projectile_count mod (Twin Cast etc.) adds
 	# extra projectiles in a small spread around the aim direction.
-	# 1 (default) = single shot; 2 = two projectiles 14° apart; 3 = three
-	# at -14/0/+14°. The center projectile always uses the unmodified aim
-	# so straight-line accuracy is preserved.
 	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
 	var total_count: int = 1 + bonus_count
 	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
-	# Iter 44 — multi-shot muzzle: spawn ONE flash per projectile so a
-	# spread of 3 shots reads as 3 distinct launch points rather than
-	# 3 orbs emerging from 1 puff. Each muzzle is oriented to its
-	# projectile's aim so the streak runs in the right direction.
+	# Iter 44 — multi-shot muzzle: spawn ONE flash per projectile.
 	for i in range(total_count):
 		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
 		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
@@ -1873,40 +1980,22 @@ func _start_blast() -> void:
 			muzzle.global_position = spawn_pos
 			muzzle.rotation = spread_aim.angle()
 			get_tree().current_scene.add_child(muzzle)
-		_spawn_blast_projectile(spawn_pos, spread_aim, resonance_active)
-	# Iter 72 — ARCANE PULSE redesign. Once per cast (not per projectile
-	# in a multi-shot), bump the cast counter; on every 5th cast, fork a
-	# violet bolt to the nearest enemy within 140px of the spawn_pos.
-	# Tracked counter is independent of _blast_counter (which is the
-	# arcane_resonance every-4th counter) so the two relics' procs land
-	# on DIFFERENT casts most of the time. Fires AFTER the projectile
-	# spawn loop so the bolt's source pos is the cast origin, not
-	# whatever the loop left as final spread_aim. Independent of
-	# resonance_active — both can fire on the same cast.
+		_spawn_blast_projectile(spawn_pos, spread_aim, _blast_resonance_active)
+	# Iter 72 — ARCANE PULSE redesign. Once per cast, bump counter +
+	# fork bolt on every 5th cast.
 	if GameState.has_relic("arcane_pulse"):
 		_arcane_pulse_cast_counter += 1
 		if _arcane_pulse_cast_counter % 5 == 0:
 			_trigger_arcane_pulse_bolt(spawn_pos)
-	# Iter 214 — SPLIT CINDER. Every 3rd blast cast, fan TWO smaller
-	# ember projectiles at ±30 ° from the aim. These are SEPARATE shots
-	# from the main spawn loop (not part of the spread_aim multi-shot
-	# fan) so they always fire EVEN if the player doesn't own
-	# projectile_count modifiers. Smaller scale + warm orange tint +
-	# 1 base damage so they don't compete with main cast output —
-	# they're crowd-fragment hits, not focused damage.
+	# Iter 214 — SPLIT CINDER. Every 3rd blast cast, fan 2 embers.
 	if GameState.has_relic("split_cinder"):
 		_split_cinder_cast_counter += 1
 		if _split_cinder_cast_counter % 3 == 0:
 			_spawn_split_cinder_embers(spawn_pos, aim)
-	# Iter 203 — Echo Quill. Noita-tier spell-modifier relic. Every
-	# blast schedules a follow-up projectile 0.16 s later, fired from
-	# the hero's CURRENT position (chases the hero's movement) toward
-	# the latest cursor direction. Reads as the spell echoing — the
-	# player can fire-and-move and the echo lands where they ended
-	# up. Compounds with multi-shot (projectile_count bonus): N main
-	# shots → echo shoots N shots again at the new position.
+	# Iter 203 — Echo Quill. Schedules a follow-up cast 0.16 s later
+	# from the hero's THEN-current position.
 	if GameState.has_relic("echo_quill"):
-		var echo_resonance: bool = resonance_active
+		var echo_resonance: bool = _blast_resonance_active
 		var echo_tween: Tween = create_tween()
 		echo_tween.tween_interval(0.16)
 		echo_tween.tween_callback(_fire_echo_blast.bind(echo_resonance))
@@ -3193,6 +3282,19 @@ func _blood_tithe_damage_mul() -> float:
 	return 1.0
 
 func _start_dash_strike() -> void:
+	# iter-249 — DODGE CANCEL OF BLAST. If a blast windup/recovery is in
+	# flight, cancel it cleanly: free the off-hand glow, zero the
+	# pending fire timer, clear the commit lock. The projectile DOES NOT
+	# fire (the cast was cancelled in mid-gesture — exactly the design's
+	# "dodge breaks the cast" feel).
+	if _blast_windup_time > 0.0:
+		_blast_windup_time = 0.0
+		if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+			_blast_glow_ref.queue_free()
+			_blast_glow_ref = null
+	_blast_locked = false
+	_is_attacking = false
+	_attack_live = 0.0
 	var aim_world := get_global_mouse_position() - global_position
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
