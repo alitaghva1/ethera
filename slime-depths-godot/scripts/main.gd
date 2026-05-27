@@ -744,7 +744,17 @@ func _ready() -> void:
 		#   sanctuary: cool blue-grey
 		var modulate_node: CanvasModulate = $CanvasModulate
 		if modulate_node != null:
-			modulate_node.color = _room.ambient_tint
+			# Iter 255 / Wave 4 — apply BIOME_DARKNESS_MULTIPLIER to push
+			# the ambient ~22% darker. Alpha unchanged. The darker baseline
+			# makes torches + hero rim light READ as light sources rather
+			# than mild warm overlays.
+			var raw: Color = _room.ambient_tint
+			modulate_node.color = Color(
+				raw.r * BIOME_DARKNESS_MULTIPLIER,
+				raw.g * BIOME_DARKNESS_MULTIPLIER,
+				raw.b * BIOME_DARKNESS_MULTIPLIER,
+				raw.a
+			)
 		# Iter 185 — per-biome BaseFloor + wall stone color. Different
 		# from CanvasModulate (which multiplies the whole scene): these
 		# set the actual base color of the floor + wall mass so each
@@ -1483,6 +1493,16 @@ const SCREEN_SIZE: Vector2 = Vector2(1280, 768)
 # alpha stays below 0.25 so combat readability isn't sacrificed.
 const CHROME_CENTER_MUTE_COLOR: Color = Color(0.05, 0.04, 0.07, 0.22)
 const CHROME_WALL_STONE_COLOR: Color = Color(0.10, 0.08, 0.13, 1.0)
+# Iter 255 / Wave 4 — global darkness push. The pre-iter-255 ambient_tints
+# (set in each room .tres file) and BIOME_WALL_COLOR values were tuned for
+# a moderately-dark baseline; combined with the bumped torch energy +
+# hero rim light, we want a noticeably darker baseline so the warm light
+# islands pop with HIGHER contrast (Noita / Hades "lit by fire in the
+# dark" feeling). Multipliers applied at runtime so room .tres files
+# stay shape-compatible with the parallel Wave 5A room-shape edits — no
+# .tres rewrite needed.
+const BIOME_DARKNESS_MULTIPLIER: float = 0.78  # 22% darker ambient tint
+const BIOME_WALL_DARKNESS_MULTIPLIER: float = 0.85  # 15% darker wall mass
 # Iter 185 — runtime per-biome wall color. Defaults to the const above;
 # _apply_biome_palette overrides per biome before _spawn_perimeter_wall_mass
 # reads it. Same fallback if biome doesn't match a known case.
@@ -1516,10 +1536,22 @@ func _apply_biome_palette(biome: String) -> void:
 	if bf is Polygon2D and BIOME_FLOOR_COLOR.has(biome):
 		(bf as Polygon2D).color = BIOME_FLOOR_COLOR[biome] as Color
 	# Wall mass color — runtime var read by _spawn_perimeter_wall_mass.
+	# Iter 255 / Wave 4 — wall mass darkened by BIOME_WALL_DARKNESS_MULTIPLIER
+	# (15% darker). Stays in lockstep with the ambient_tint darkening so
+	# the wall:floor contrast preserves its relative reading (walls are
+	# still ~slightly darker than floors per the lookup tables) while
+	# the whole room reads deeper. Alpha untouched.
+	var raw_wall: Color
 	if BIOME_WALL_COLOR.has(biome):
-		_biome_wall_color = BIOME_WALL_COLOR[biome] as Color
+		raw_wall = BIOME_WALL_COLOR[biome] as Color
 	else:
-		_biome_wall_color = CHROME_WALL_STONE_COLOR
+		raw_wall = CHROME_WALL_STONE_COLOR
+	_biome_wall_color = Color(
+		raw_wall.r * BIOME_WALL_DARKNESS_MULTIPLIER,
+		raw_wall.g * BIOME_WALL_DARKNESS_MULTIPLIER,
+		raw_wall.b * BIOME_WALL_DARKNESS_MULTIPLIER,
+		raw_wall.a
+	)
 # Iter 244 — Director Phase 2. Pre-iter-244 the perimeter wall TOP
 # highlight was Color(0.48, 0.42, 0.32, 0.85) — a warm tan that traced
 # a continuous rectangle around the whole playfield. User playtest read
@@ -3452,12 +3484,18 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 	motes.gravity = Vector2.ZERO
 	motes.z_index = 5
 	var tint: Color
+	# Iter 255 / Wave 4 — atmospheric density push. Mote counts bumped
+	# 2-3× per biome to make the air feel THICK with motion (Noita-style
+	# atmospheric density). Lifetime bumps on the slow biomes (crypt /
+	# ossuary) compensate for the higher amount draining the pool faster.
+	# Scale / damping / direction stay unchanged — only density + lifetime.
 	match biome:
 		"crypt":
 			# Pale dust falling slowly. Air feels still — gravity does
 			# the work, no horizontal drift.
-			motes.amount = 24
-			motes.lifetime = 7.0
+			# iter-255: amount 24 → 56 (~2.3×), lifetime 7→8 to compensate.
+			motes.amount = 56
+			motes.lifetime = 8.0
 			motes.direction = Vector2(0, 1)     # DOWNWARD (was always up)
 			motes.spread = 35.0
 			motes.initial_velocity_min = 4.0
@@ -3472,8 +3510,9 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 		"ossuary":
 			# Bone-pale motes in LAZY SWIRLS — high angular velocity, low
 			# linear speed, so each mote orbits/drifts rather than streaks.
-			motes.amount = 32
-			motes.lifetime = 8.0
+			# iter-255: amount 32 → 72 (~2.25×), lifetime 8→9 compensates.
+			motes.amount = 72
+			motes.lifetime = 9.0
 			motes.direction = Vector2(0, -1)
 			motes.spread = 180.0                # full circle — random direction
 			motes.initial_velocity_min = 3.0
@@ -3490,7 +3529,9 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 		"ember":
 			# Sparks RISING upward — denser, slightly faster, bigger scale
 			# variance so the eye reads "things floating up off the heat."
-			motes.amount = 48
+			# iter-255: amount 48 → 84 (~1.75×). Lifetime unchanged — sparks
+			# are already short-lived, more density not more persistence.
+			motes.amount = 84
 			motes.lifetime = 5.0
 			motes.direction = Vector2(0, -1)
 			motes.spread = 25.0
@@ -3504,8 +3545,9 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 			tint = Color(1.0, 0.65, 0.32, 0.26)
 		"sanctuary":
 			# Cool-blue runes drifting upward + outward with slow rotation.
-			motes.amount = 28
-			motes.lifetime = 7.5
+			# iter-255: amount 28 → 64 (~2.3×), lifetime 7.5→8.5 compensates.
+			motes.amount = 64
+			motes.lifetime = 8.5
 			motes.direction = Vector2(0, -1)
 			motes.spread = 75.0
 			motes.initial_velocity_min = 5.0
@@ -3521,7 +3563,8 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 			tint = Color(0.72, 0.82, 1.0, 0.24)
 		_:
 			# Unknown biome — fall back to the iter-51 generic mote.
-			motes.amount = 32
+			# iter-255: amount 32 → 72 (~2.25×).
+			motes.amount = 72
 			motes.lifetime = 6.0
 			motes.direction = Vector2(0, -1)
 			motes.spread = 60.0
@@ -3545,35 +3588,113 @@ func _build_ambient_mote_primary(biome: String) -> CPUParticles2D:
 	motes.color_ramp = ramp
 	return motes
 
-# Per-biome accent emitter — adds a second visual layer for distinctive
-# biomes that need more than just primary motes to read. Returns null
-# for biomes where the primary alone is enough (crypt, ossuary).
+# Per-biome accent emitter — adds a second visual layer that carries
+# distinct biome identity beyond the primary mote layer. iter-255 / Wave 4
+# expanded coverage so ALL 4 biomes have a secondary layer (was just
+# ember + sanctuary). The four biomes now read DIFFERENTLY in their
+# airborne particles, not just via floor color:
+#   crypt     → warm candle-ash flecks rising slowly through cool dust
+#   ossuary   → larger cool bone-fragment chunks in tangential drift
+#   ember     → heat-haze sparks rising fast (Noita inferno vibe)
+#   sanctuary → violet divine sparks rising with tangential swirl
+# Returns null for unknown biomes (no secondary).
 func _build_ambient_mote_accent(biome: String) -> CPUParticles2D:
 	match biome:
-		"ember":
-			# Big slow rising embers — fewer, larger, brighter than the
-			# primary spark layer. Reads as "the floor itself is giving
-			# off heat-flecks" rather than the dense spark shower.
+		"crypt":
+			# Warm candle-ash flecks — sparse, low alpha, drifting upward
+			# very slowly through the falling dust. Reads as "embers
+			# from invisible candles" inside the cool tomb air.
+			var p: CPUParticles2D = CPUParticles2D.new()
+			p.name = "AmbientMotesAccent"
+			p.emitting = true
+			p.preprocess = 4.0
+			p.amount = 16
+			p.lifetime = 5.0
+			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			p.emission_rect_extents = Vector2(480.0, 260.0)
+			p.position = Vector2(640, 384)
+			p.direction = Vector2(0, -1)
+			p.spread = 30.0
+			p.initial_velocity_min = 4.0
+			p.initial_velocity_max = 10.0
+			p.gravity = Vector2(0, -8.0)
+			p.scale_amount_min = 0.4
+			p.scale_amount_max = 0.8
+			p.angular_velocity_min = -10.0
+			p.angular_velocity_max = 10.0
+			p.z_index = 5
+			var tint: Color = Color(1.0, 0.65, 0.30, 0.18)
+			var ramp: Gradient = Gradient.new()
+			ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+			ramp.colors = PackedColorArray([
+				Color(tint.r, tint.g, tint.b, 0.0),
+				tint,
+				tint,
+				Color(tint.r, tint.g, tint.b, 0.0),
+			])
+			p.color_ramp = ramp
+			return p
+		"ossuary":
+			# Larger cool swirl chunks ("bone fragments") — fewer than
+			# primary, bigger scale, tangential motion so they read as
+			# floating debris rather than dust.
 			var p: CPUParticles2D = CPUParticles2D.new()
 			p.name = "AmbientMotesAccent"
 			p.emitting = true
 			p.preprocess = 4.0
 			p.amount = 12
-			p.lifetime = 8.0
+			p.lifetime = 9.0
 			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-			p.emission_rect_extents = Vector2(540.0, 280.0)
+			p.emission_rect_extents = Vector2(480.0, 260.0)
+			p.position = Vector2(640, 384)
+			p.direction = Vector2(0, -1)
+			p.spread = 180.0
+			p.initial_velocity_min = 2.0
+			p.initial_velocity_max = 6.0
+			p.tangential_accel_min = -12.0
+			p.tangential_accel_max = 12.0
+			p.angular_velocity_min = -30.0
+			p.angular_velocity_max = 30.0
+			p.scale_amount_min = 1.0
+			p.scale_amount_max = 1.8
+			p.z_index = 5
+			var tint: Color = Color(0.85, 0.82, 0.70, 0.20)
+			var ramp: Gradient = Gradient.new()
+			ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
+			ramp.colors = PackedColorArray([
+				Color(tint.r, tint.g, tint.b, 0.0),
+				tint,
+				tint,
+				Color(tint.r, tint.g, tint.b, 0.0),
+			])
+			p.color_ramp = ramp
+			return p
+		"ember":
+			# Heat-haze sparks RISING fast — small, bright, dense. Reads
+			# as superheated air shimmering off the floor. iter-255 boost:
+			# amount 12 → 32, gravity -4 → -22 (faster rise), scale 1.6-3.0
+			# → 0.3-0.7 (smaller / sharper, less "glob of ember"),
+			# lifetime 8 → 3 (fast burn).
+			var p: CPUParticles2D = CPUParticles2D.new()
+			p.name = "AmbientMotesAccent"
+			p.emitting = true
+			p.preprocess = 4.0
+			p.amount = 32
+			p.lifetime = 3.0
+			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+			p.emission_rect_extents = Vector2(480.0, 260.0)
 			p.position = Vector2(640, 384)
 			p.direction = Vector2(0, -1)
 			p.spread = 12.0
-			p.initial_velocity_min = 6.0
-			p.initial_velocity_max = 14.0
-			p.gravity = Vector2(0, -4.0)
-			p.scale_amount_min = 1.6
-			p.scale_amount_max = 3.0
+			p.initial_velocity_min = 8.0
+			p.initial_velocity_max = 18.0
+			p.gravity = Vector2(0, -22.0)
+			p.scale_amount_min = 0.3
+			p.scale_amount_max = 0.7
 			p.angular_velocity_min = -12.0
 			p.angular_velocity_max = 12.0
 			p.z_index = 5
-			var tint: Color = Color(1.0, 0.50, 0.20, 0.34)
+			var tint: Color = Color(1.0, 0.85, 0.45, 0.22)
 			var ramp: Gradient = Gradient.new()
 			ramp.offsets = PackedFloat32Array([0.0, 0.15, 0.7, 1.0])
 			ramp.colors = PackedColorArray([
@@ -3585,30 +3706,32 @@ func _build_ambient_mote_accent(biome: String) -> CPUParticles2D:
 			p.color_ramp = ramp
 			return p
 		"sanctuary":
-			# Drifting larger rune-flecks — slower, more visible, with
-			# rotation so they read as "glyph fragments floating in
-			# magic air."
+			# Violet divine sparks — gentle rise with tangential drift.
+			# iter-255: retuned from the cool-blue rune-flecks to violet
+			# divine sparks to push contrast against the primary cool-blue
+			# layer. amount 8 → 18, scale 1.4-2.4 → 0.6-1.2, lifetime 9→6,
+			# velocity rangework bumped.
 			var p: CPUParticles2D = CPUParticles2D.new()
 			p.name = "AmbientMotesAccent"
 			p.emitting = true
 			p.preprocess = 4.0
-			p.amount = 8
-			p.lifetime = 9.0
+			p.amount = 18
+			p.lifetime = 6.0
 			p.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
-			p.emission_rect_extents = Vector2(540.0, 280.0)
+			p.emission_rect_extents = Vector2(480.0, 260.0)
 			p.position = Vector2(640, 384)
 			p.direction = Vector2(0, -1)
-			p.spread = 100.0
-			p.initial_velocity_min = 4.0
-			p.initial_velocity_max = 9.0
-			p.tangential_accel_min = -5.0
-			p.tangential_accel_max = 5.0
-			p.angular_velocity_min = -45.0
-			p.angular_velocity_max = 45.0
-			p.scale_amount_min = 1.4
-			p.scale_amount_max = 2.4
+			p.spread = 80.0
+			p.initial_velocity_min = 6.0
+			p.initial_velocity_max = 12.0
+			p.tangential_accel_min = -8.0
+			p.tangential_accel_max = 8.0
+			p.angular_velocity_min = -35.0
+			p.angular_velocity_max = 35.0
+			p.scale_amount_min = 0.6
+			p.scale_amount_max = 1.2
 			p.z_index = 5
-			var tint: Color = Color(0.55, 0.78, 1.0, 0.35)
+			var tint: Color = Color(0.85, 0.72, 1.0, 0.24)
 			var ramp: Gradient = Gradient.new()
 			ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.8, 1.0])
 			ramp.colors = PackedColorArray([

@@ -65,13 +65,21 @@ script = ExtResource("1_script")
 ; +25% → 3.56 widens each warm pool so torch islands overlap more,
 ; giving the floor a continuous lit / partially-lit gradient instead of
 ; "torch bright spot → cool dark corridor → next bright spot."
+; Iter 255 / Wave 4 — atmospheric density + contrast push. The
+; BIOME_DARKNESS_MULTIPLIER drops the ambient ~22%, so torch energy
+; bumped +20% (1.95 → 2.34) so the warm core reads at the same absolute
+; brightness despite the darker baseline — net effect is HIGHER contrast
+; between lit pool and surrounding darkness. texture_scale +18%
+; (3.56 → 4.20) widens the warm influence so adjacent torches still
+; overlap nicely after the higher contrast pushes the falloff edge
+; into deeper darkness.
 [node name="PointLight2D" type="PointLight2D" parent="."]
 color = Color(1, 0.58, 0.28, 1)
-energy = 1.95
+energy = 2.34
 range_z_min = -1024
 range_z_max = 1024
 texture = SubResource("torch_grad_tex")
-texture_scale = 3.56
+texture_scale = 4.20
 ; iter-109: shadows on. Pillars (and any future LightOccluder2D-bearing
 ; node) now cast a long pillar-shaped shadow across the floor when
 ; this torch is behind them. The flat-darkened scene reads as a

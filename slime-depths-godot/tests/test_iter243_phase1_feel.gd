@@ -195,16 +195,39 @@ func _initialize() -> void:
 		printerr("FAIL: hero.tscn missing PointLight2D node")
 		quit(1)
 		return
-	# iter-243 specific: energy = 0.6 (was 0.55), texture_scale = 1.5
-	if hero_tscn.find("energy = 0.6") < 0:
-		printerr("FAIL: hero.tscn rim light energy not bumped to 0.6")
+	# iter-243 specific: energy ≥ 0.6 (was 0.55), texture_scale ≥ 1.5.
+	# iter-255 / Wave 4 — values bumped further (0.85 / 1.85) to keep up
+	# with the BIOME_DARKNESS_MULTIPLIER push. Floor-bounded asserts here
+	# so iter-243's "the rim light was bumped" intent survives the
+	# iter-255 second bump without forcing a coupled edit every push.
+	var rim_energy: float = -1.0
+	var rim_scale: float = -1.0
+	var in_rim_block: bool = false
+	for line in hero_tscn.split("\n"):
+		var s: String = (line as String).strip_edges()
+		if s.find("name=\"RimLight\"") >= 0:
+			in_rim_block = true
+			continue
+		# A new [node ...] line ends the RimLight block.
+		if in_rim_block and s.begins_with("[node "):
+			in_rim_block = false
+		if in_rim_block and s.begins_with("energy"):
+			var eq: int = s.find("=")
+			if eq >= 0:
+				rim_energy = s.substr(eq + 1).strip_edges().to_float()
+		if in_rim_block and s.begins_with("texture_scale"):
+			var eq2: int = s.find("=")
+			if eq2 >= 0:
+				rim_scale = s.substr(eq2 + 1).strip_edges().to_float()
+	if rim_energy < 0.6:
+		printerr("FAIL: hero.tscn RimLight energy=%f, expected ≥ 0.6" % rim_energy)
 		quit(1)
 		return
-	if hero_tscn.find("texture_scale = 1.5") < 0:
-		printerr("FAIL: hero.tscn rim light texture_scale not bumped to 1.5")
+	if rim_scale < 1.5:
+		printerr("FAIL: hero.tscn RimLight texture_scale=%f, expected ≥ 1.5" % rim_scale)
 		quit(1)
 		return
-	print("[iter243] G. hero.tscn PointLight2D energy=0.6 + scale=1.5 OK")
+	print("[iter243] G. hero.tscn PointLight2D energy=%f + scale=%f OK" % [rim_energy, rim_scale])
 
 	print("[iter243] PASS")
 	quit(0)

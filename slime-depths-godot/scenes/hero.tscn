@@ -74,12 +74,19 @@ script = ExtResource("1_script")
 ; sprite (the PointLight2D sits in the parent tree but does not
 ; render UNDER the sprite — Godot's PointLight2D paints the floor,
 ; not the actor itself, which is the intended behavior).
+; iter-255 / Wave 4 — atmospheric density + contrast push. The
+; BIOME_DARKNESS_MULTIPLIER drops the ambient ~22%, so the hero rim
+; light needs to keep up with the darker baseline. Energy bumped
+; 0.6 → 0.85 (+42%) so the hero retains its "brightest small object
+; on screen" status. texture_scale bumped 1.5 → 1.85 (~120 px
+; effective radius) so the pool reads as a real findability halo
+; against the deeper darkness.
 [node name="RimLight" type="PointLight2D" parent="."]
 position = Vector2(0, -8)
 color = Color(1.0, 0.92, 0.82, 1)
-energy = 0.6
+energy = 0.85
 texture = SubResource("hero_rim_tex")
-texture_scale = 1.5
+texture_scale = 1.85
 shadow_enabled = false
 range_z_min = -1024
 range_z_max = 1024
