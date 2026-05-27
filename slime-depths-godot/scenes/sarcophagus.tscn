@@ -1,0 +1,69 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3sarcophagus001"]
+
+[ext_resource type="Script" path="res://scripts/sarcophagus.gd" id="1_script"]
+
+; iter-256 / Wave 5B — destructible sarcophagus. Squat stone slab
+; with the chiseled-stone grammar (top highlight + body + base shadow)
+; matching the iter-188 sarcophagus wall theming. Smaller than a
+; pillar (40×24 vs the pillar's 36×68), so it reads as a tomb-lid
+; rather than a column.
+;
+; Collision: small rectangle. Layer 1 = world (hero walks AROUND it).
+
+[sub_resource type="RectangleShape2D" id="sarc_collision"]
+size = Vector2(40, 24)
+
+[node name="Sarcophagus" type="StaticBody2D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("sarc_collision")
+
+; Ground shadow under the slab.
+[node name="Shadow" type="Polygon2D" parent="."]
+position = Vector2(0, 12)
+polygon = PackedVector2Array(-26, 0, -22, 6, 22, 6, 26, 0, 22, -6, -22, -6)
+color = Color(0, 0, 0, 0.55)
+z_index = -1
+
+; Base shadow band — dark stone at the bottom of the slab so it reads
+; as "anchored to the floor, casting shadow forward."
+[node name="Base" type="ColorRect" parent="."]
+offset_left = -22.0
+offset_top = 4.0
+offset_right = 22.0
+offset_bottom = 12.0
+color = Color(0.18, 0.16, 0.14, 1)
+
+; Body — midtone stone, the main visible face of the lid.
+[node name="Body" type="ColorRect" parent="."]
+offset_left = -22.0
+offset_top = -12.0
+offset_right = 22.0
+offset_bottom = 4.0
+color = Color(0.32, 0.30, 0.28, 1)
+
+; Top highlight band — lighter stone catching ambient torchlight.
+[node name="Top" type="ColorRect" parent="."]
+offset_left = -22.0
+offset_top = -12.0
+offset_right = 22.0
+offset_bottom = -8.0
+color = Color(0.46, 0.42, 0.38, 1)
+
+; Centered iter-188-style sigil — small diamond at the top face.
+; Cream-bronze color picks up the tomb-lid mark.
+[node name="Sigil" type="Polygon2D" parent="."]
+position = Vector2(0, -4)
+polygon = PackedVector2Array(4, 0, 0, 3, -4, 0, 0, -3)
+color = Color(0.82, 0.64, 0.40, 0.92)
+
+; Diagonal crack — a thin etched line suggesting age + fragility, so
+; the player reads "this is breakable" before swinging.
+[node name="Crack" type="Line2D" parent="."]
+points = PackedVector2Array(-14, -2, 6, 2, 16, -1)
+width = 1.0
+default_color = Color(0.03, 0.02, 0.05, 0.65)
+antialiased = true

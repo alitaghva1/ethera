@@ -1591,6 +1591,18 @@ func _resolve_melee_strike() -> void:
 		# lights enemies directly) for layered FLAME pressure.
 		if GameState.theme_tier("flame") >= 2:
 			_trigger_swing_fire_trail()
+	# iter-256 / Wave 5B+5C — DESTRUCTIBLE scan. Same range/arc as the
+	# enemy scan above, iterate three new groups (obstacles, breakable
+	# lanterns, secret walls) and call take_hit on anything in range.
+	# Per spec: ONLY HIT 3 (combo_index == 2, the heavy hit) damages
+	# destructibles — light jabs (hits 1+2) glance off without effect.
+	# Hit 3 deals 2 damage so pillars (hp=5) need 3 Hit-3 connects,
+	# lanterns (hp=1) break in one Hit-3, secret walls (hp=2) break in
+	# one Hit-3 OR via dash. Performance: bounded by in-room group
+	# counts (~4-8 obstacles, 6 torches, 0-1 secret wall) and only
+	# runs on Hit 3 swings (1 in 3 sword swings) — well within budget.
+	if _combo_index == 2:
+		_scan_and_hit_destructibles(arc_actual, 2)
 	# iter-248 — arm the combo chain window. Fires whether or not the
 	# swing connected (a whiff still counts as a "press" for chaining;
 	# Hades does this too — it'd feel bad if a swing past a moving enemy
@@ -1626,6 +1638,73 @@ func _trigger_swing_fire_trail() -> void:
 	var host: Node = get_parent()
 	if host != null:
 		host.add_child(pool)
+
+# iter-256 / Wave 5B+5C — destructible-prop scan helper. Called from
+# _resolve_melee_strike with the same arc + range used for the enemy
+# scan. Iterates the three new groups (obstacles, breakable_lanterns,
+# secret_walls) and calls take_hit(damage, hero.global_position) on
+# anything in arc + range. Each group call-shape:
+#   • obstacles      → take_hit(int, Vector2)   pillar / sarcophagus
+#   • breakable_lanterns → take_hit(int)        torch
+#   • secret_walls   → take_hit(int, Vector2)   secret_wall
+# Group membership defines the source_pos arity, but we use
+# has_method to invoke generically — a future destructible that takes
+# zero args still works as long as it implements take_hit(int).
+func _scan_and_hit_destructibles(arc_actual: float, damage: int) -> void:
+	if damage <= 0:
+		return
+	# Track per-swing hits so a node in MULTIPLE groups (defensive — not
+	# the case today) can't take_hit twice in the same call.
+	var hit_destruct: Dictionary = {}
+	for group_name in ["obstacles", "breakable_lanterns", "secret_walls"]:
+		for prop in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(prop) or not (prop is Node2D):
+				continue
+			var pid: int = prop.get_instance_id()
+			if hit_destruct.has(pid):
+				continue
+			var to_prop: Vector2 = (prop as Node2D).global_position - global_position
+			if to_prop.length() > _pending_melee_range:
+				continue
+			if abs(to_prop.angle_to(_pending_melee_aim)) > arc_actual:
+				continue
+			if not prop.has_method("take_hit"):
+				continue
+			hit_destruct[pid] = true
+			# Lanterns expose take_hit(int); pillar/sarcophagus/secret_wall
+			# expose take_hit(int, Vector2). Use callv with the right
+			# arity so a 1-arg lantern doesn't blow up on extra args.
+			if group_name == "breakable_lanterns":
+				prop.call("take_hit", damage)
+			else:
+				prop.call("take_hit", damage, global_position)
+
+# iter-256 / Wave 5B+5C — radius-based destructible scan for dash-strike
+# pass-through and final AoE. Same three groups as the melee helper but
+# no arc check (dash hits everything in a circle around the hero).
+# damage = 1 per tick — pillars (hp=5) survive multiple dashes,
+# lanterns (hp=1) break in one pass, secret walls (hp=2) break in two.
+func _dash_scan_destructibles(radius: float, damage: int) -> void:
+	if damage <= 0:
+		return
+	var hit_destruct: Dictionary = {}
+	for group_name in ["obstacles", "breakable_lanterns", "secret_walls"]:
+		for prop in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(prop) or not (prop is Node2D):
+				continue
+			var pid: int = prop.get_instance_id()
+			if hit_destruct.has(pid):
+				continue
+			var d: Vector2 = (prop as Node2D).global_position - global_position
+			if d.length() > radius:
+				continue
+			if not prop.has_method("take_hit"):
+				continue
+			hit_destruct[pid] = true
+			if group_name == "breakable_lanterns":
+				prop.call("take_hit", damage)
+			else:
+				prop.call("take_hit", damage, global_position)
 
 # Iter 66 — BLOOD theme lifesteal proc. Called from _resolve_melee_strike
 # for every enemy a swing damages, while _pending_blood_tier > 0.
@@ -3200,6 +3279,12 @@ func _apply_dash_pierce_tick() -> void:
 			# clears a corridor instead of leaving stunned enemies
 			# behind them.
 			enemy.apply_knockback(_dash_strike_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
+	# iter-256 / Wave 5B+5C — destructible pierce. As the hero dashes
+	# through obstacles / lanterns / secret walls, deal 1 damage per
+	# tick to anything within DASH_STRIKE_PIERCE_RADIUS. Same per-prop
+	# hit-set guard as the enemy pierce loop above so a single dash
+	# can't double-tick the same object.
+	_dash_scan_destructibles(DASH_STRIKE_PIERCE_RADIUS, 1)
 
 func _can_start_dash_strike() -> bool:
 	# iter-95: _dodge_time check removed (dodge ability gone).
@@ -3695,6 +3780,12 @@ func _resolve_dash_strike_hit() -> void:
 		var pool_count: int = 5 if flame_tier >= 2 else 3
 		var pool_life: float = 0.7 if flame_tier >= 2 else 0.5
 		_trigger_dash_fire_trail(_dash_strike_start_pos, global_position, pool_count, pool_life)
+	# iter-256 / Wave 5B+5C — destructible AoE at dash-end. Same 1-damage
+	# tick the pierce path uses; if a pillar was already pierced during
+	# the dash and saw an earlier _dash_scan_destructibles call, the
+	# pillar's _broken / hp<=0 guard short-circuits the second hit so
+	# we don't double-apply damage.
+	_dash_scan_destructibles(DASH_STRIKE_RADIUS, 1)
 	# Always emit even on whiff — the impact VFX still wants to fire so
 	# the player gets visual feedback that the dash committed.
 	dash_strike_landed.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), hit_count)

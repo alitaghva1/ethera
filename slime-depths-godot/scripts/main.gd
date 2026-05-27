@@ -23,6 +23,16 @@ const PILLAR_SCENE: PackedScene   = preload("res://scenes/pillar.tscn")
 const CHEST_SCENE: PackedScene    = preload("res://scenes/chest.tscn")
 const DOOR_SCENE: PackedScene     = preload("res://scenes/door.tscn")
 const SHRINE_SCENE: PackedScene   = preload("res://scenes/shrine.tscn")
+# iter-256 / Wave 5B+5C — destructible props. Sarcophagus is a NEW
+# breakable obstacle (2 HP, drops gold OR spawns an ember enemy on
+# break); secret_wall is a hidden 48×48 cache embedded in the room
+# perimeter with a 30% spawn chance per room. Both share the existing
+# obstacles / secret_walls group conventions so hero combat code can
+# iterate them uniformly.
+const SARCOPHAGUS_SCENE: PackedScene = preload("res://scenes/sarcophagus.tscn")
+const SECRET_WALL_SCENE: PackedScene = preload("res://scenes/secret_wall.tscn")
+# Spawn chance per room for the secret crackable wall.
+const SECRET_WALL_SPAWN_CHANCE: float = 0.30
 # Iter 227 / Fun Ideas Team — Pact Altar (Faustian bargain counterpart to
 # the shrine). Spawns as a 4th option in shrine rooms; player picks ONE.
 const PACT_ALTAR_SCENE: PackedScene = preload("res://scenes/pact_altar.tscn")
@@ -781,6 +791,11 @@ func _ready() -> void:
 		var pillars: Array[Vector2] = _maybe_jitter_pillars(_room.pillar_positions, _room.position_jitter)
 		_spawn_pillars(pillars)
 		_spawn_chests(_room.chest_positions)
+		# iter-256 / Wave 5B — sarcophagi roll. Sparse breakable
+		# obstacles with a random "gold or threat" payoff on smash.
+		# Same per-room seed pattern as pillars; same "obstacles" group
+		# membership so hero combat finds them uniformly.
+		_maybe_spawn_sarcophagi()
 		# Iter 30 — interior walls + hazards. Interior walls partition
 		# the otherwise-open 1280×720 arena into corridors / chambers /
 		# cover. Hazards push the player to keep moving. Both are
@@ -1172,6 +1187,88 @@ func _spawn_pillars(positions: Array[Vector2]) -> void:
 		var p: Pillar = PILLAR_SCENE.instantiate()
 		p.position = pos
 		add_child(p)
+
+# iter-256 / Wave 5B — sarcophagus spawn. ~40% chance per non-boss
+# combat room to add 1-2 sarcophagi at one of several inset positions.
+# Seeded per-room/per-run so the same room visits within a run see
+# the same sarcophagi (consistent layout) but different runs get
+# different layouts. Sarcophagi share the "obstacles" group with
+# pillars so hero combat code finds them uniformly.
+func _maybe_spawn_sarcophagi() -> void:
+	if _room == null:
+		return
+	# Skip boss + shrine + treasure rooms (no waves → empty rooms; spec).
+	if _room.is_last_room:
+		return
+	if _room.waves.is_empty():
+		return
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 5279 + GameState.dungeon_runs * 11 + 67
+	# 40% chance per room — sarcophagi are sparse atmospheric props,
+	# not in every room. Stacks on top of the iter-188 wall theming so
+	# rooms with NO physical sarcophagus still feel like "old tomb
+	# walls" thanks to the slab grammar in _build_interior_wall.
+	if rng.randf() >= 0.4:
+		return
+	# Candidate inset positions — 8 spots around the play area's
+	# interior perimeter (the same grid the secret wall uses, but
+	# inset further so sarcophagi land in playable space rather than
+	# flush against the perimeter mass).
+	var inset: float = 120.0
+	var pmin: Vector2 = PLAY_AREA_MIN
+	var pmax: Vector2 = PLAY_AREA_MAX
+	var candidates: Array[Vector2] = [
+		Vector2(pmin.x + inset, lerp(pmin.y, pmax.y, 0.30)),
+		Vector2(pmin.x + inset, lerp(pmin.y, pmax.y, 0.70)),
+		Vector2(pmax.x - inset, lerp(pmin.y, pmax.y, 0.30)),
+		Vector2(pmax.x - inset, lerp(pmin.y, pmax.y, 0.70)),
+		Vector2(lerp(pmin.x, pmax.x, 0.30), pmin.y + inset),
+		Vector2(lerp(pmin.x, pmax.x, 0.70), pmin.y + inset),
+		Vector2(lerp(pmin.x, pmax.x, 0.30), pmax.y - inset),
+		Vector2(lerp(pmin.x, pmax.x, 0.70), pmax.y - inset),
+	]
+	# Filter out positions too close to existing obstacles (pillars,
+	# chests, spawn_points, walls, hazards). Uses the same 80px radius
+	# heuristic as _spawn_perimeter_prop_clusters.
+	var occupied: Array[Vector2] = []
+	occupied.append_array(_room.pillar_positions)
+	occupied.append_array(_room.chest_positions)
+	occupied.append_array(_room.spawn_points)
+	for hp_ in _room.hazard_positions:
+		occupied.append(hp_)
+	for wr in _room.wall_rects:
+		occupied.append(wr.position + wr.size * 0.5)
+	occupied.append(_room.hero_spawn)
+	var safe: Array[Vector2] = []
+	for c in candidates:
+		var blocked: bool = false
+		for o in occupied:
+			if c.distance_to(o) < 80.0:
+				blocked = true
+				break
+		if blocked:
+			continue
+		# Also reject positions inside an interior wall_rect.
+		for wr2 in _room.wall_rects:
+			if c.x >= wr2.position.x and c.x <= wr2.position.x + wr2.size.x \
+			and c.y >= wr2.position.y and c.y <= wr2.position.y + wr2.size.y:
+				blocked = true
+				break
+		if not blocked:
+			safe.append(c)
+	if safe.is_empty():
+		return
+	# Spawn 1-2 sarcophagi. Cap at safe.size().
+	var num: int = mini(rng.randi_range(1, 2), safe.size())
+	for _i in range(num):
+		var idx: int = rng.randi() % safe.size()
+		var pos: Vector2 = safe[idx]
+		safe.remove_at(idx)
+		var sarc: StaticBody2D = SARCOPHAGUS_SCENE.instantiate() as StaticBody2D
+		if sarc == null:
+			continue
+		sarc.global_position = pos
+		add_child(sarc)
 
 # Iter 38 — optional content spawner. Each entry from RoomConfig.
 # lore_stones spawns one LoreStone with its position + lore text +
@@ -1624,6 +1721,74 @@ func _spawn_room_chrome() -> void:
 	# random scatter — these read as authored "something happened here"
 	# moments). Adds the "the room is alive and hostile" Noita feel.
 	_spawn_material_story_clusters()
+	# iter-256 / Wave 5C — secret wall roll. ~30% chance per room to
+	# embed a small (48×48) crackable cache in the perimeter wall mass.
+	# The wall sits in the "secret_walls" group; observant players spot
+	# the subtle violet sheen. Breaking awards 30 ether shards.
+	_maybe_spawn_secret_wall()
+
+# iter-256 / Wave 5C — roll for a secret crackable wall at room init.
+# 30% chance per room (SECRET_WALL_SPAWN_CHANCE). Position is chosen
+# from a small pool of inset positions just INSIDE the perimeter wall
+# mass — close enough that the violet sheen reads as "embedded in the
+# wall," far enough that the player can swing at it without bumping
+# the room's outer boundary. Seeded per-room/per-run via the same
+# pattern _spawn_perimeter_prop_clusters uses for stability across
+# the same room visits within a single run.
+func _maybe_spawn_secret_wall() -> void:
+	if _room == null:
+		return
+	# Skip boss / shrine / treasure rooms — those have authored content,
+	# adding a secret feels like clutter. Detect via is_last_room (boss)
+	# or by branches setting kind to "shrine" / "treasure" on the
+	# room config… simpler heuristic: skip rooms with NO waves (shrine
+	# rooms have empty waves).
+	if _room.is_last_room:
+		return
+	if _room.waves.is_empty():
+		return
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = (RunState.current_room_index + 1) * 3001 + GameState.dungeon_runs * 41 + 13
+	if rng.randf() >= SECRET_WALL_SPAWN_CHANCE:
+		return
+	# Pick one of 8 candidate slots along the perimeter — two per side,
+	# evenly spaced and inset 24 px from the edge so the secret wall
+	# sits flush against the perimeter wall mass.
+	var inset: float = 30.0
+	var pmin: Vector2 = PLAY_AREA_MIN
+	var pmax: Vector2 = PLAY_AREA_MAX
+	var slots: Array[Vector2] = [
+		Vector2(pmin.x + inset, lerp(pmin.y, pmax.y, 0.30)),  # left, upper
+		Vector2(pmin.x + inset, lerp(pmin.y, pmax.y, 0.70)),  # left, lower
+		Vector2(pmax.x - inset, lerp(pmin.y, pmax.y, 0.30)),  # right, upper
+		Vector2(pmax.x - inset, lerp(pmin.y, pmax.y, 0.70)),  # right, lower
+		Vector2(lerp(pmin.x, pmax.x, 0.30), pmin.y + inset),  # top, left
+		Vector2(lerp(pmin.x, pmax.x, 0.70), pmin.y + inset),  # top, right
+		Vector2(lerp(pmin.x, pmax.x, 0.30), pmax.y - inset),  # bottom, left
+		Vector2(lerp(pmin.x, pmax.x, 0.70), pmax.y - inset),  # bottom, right
+	]
+	# Filter slots that are inside an interior wall_rect (can't put a
+	# secret wall inside another wall). Same _point_in_any_rect logic
+	# as the iter-254 room-shape test.
+	var safe_slots: Array[Vector2] = []
+	for s in slots:
+		var blocked: bool = false
+		for wr in _room.wall_rects:
+			if s.x >= wr.position.x and s.x <= wr.position.x + wr.size.x \
+			and s.y >= wr.position.y and s.y <= wr.position.y + wr.size.y:
+				blocked = true
+				break
+		if not blocked:
+			safe_slots.append(s)
+	if safe_slots.is_empty():
+		return
+	# Pick one of the safe slots deterministically per-room.
+	var slot: Vector2 = safe_slots[rng.randi() % safe_slots.size()]
+	var sw: StaticBody2D = SECRET_WALL_SCENE.instantiate() as StaticBody2D
+	if sw == null:
+		return
+	sw.global_position = slot
+	add_child(sw)
 
 # Solid dark stone fills along the 4 perimeter wall regions (the
 # unused frame between the playable interior and the viewport edge).

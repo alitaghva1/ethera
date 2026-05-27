@@ -18,6 +18,10 @@ extends Area2D
 
 const SPEED    := 520.0
 const LIFETIME := 1.4
+# iter-256 / Wave 5B — radius for breaking lanterns on near-pass.
+# 16 px ≈ the visible flame sprite + sconce base; a blast flying
+# directly over the lantern reads as "the projectile knocked it loose."
+const LANTERN_HIT_RADIUS := 16.0
 
 # Iter 65 — FIRE_POOL preload for BLAST × FLAME ability evolution. On
 # projectile impact against an enemy, if `flame_impact_pool_life` was
@@ -234,6 +238,21 @@ func _physics_process(delta: float) -> void:
 			if d.length_squared() <= rsq and e.has_method("apply_slow"):
 				e.apply_slow(GRAVITY_NEEDLE_SLOW_DURATION, GRAVITY_NEEDLE_SLOW_MUL)
 				_gravity_needle_slowed[eid] = true
+	# iter-256 / Wave 5B — lantern near-pass break. Torches are Node2Ds
+	# (no collision body), so the physics _on_body_entered hook can't
+	# fire on them. Instead, scan per-frame: any lantern within ~16 px
+	# of the projectile position breaks (take_hit(1)) and the projectile
+	# queue_frees. Hero blasts AND enemy projectiles both break torches
+	# (intentional — environmental destruction is direction-agnostic).
+	# Cheap O(n) scan with n = number of torches per room (typ. 6).
+	for lantern in get_tree().get_nodes_in_group("breakable_lanterns"):
+		if not is_instance_valid(lantern) or not (lantern is Node2D):
+			continue
+		var lo: Vector2 = (lantern as Node2D).global_position - global_position
+		if lo.length() <= LANTERN_HIT_RADIUS and lantern.has_method("take_hit"):
+			lantern.call("take_hit", 1)
+			queue_free()
+			return
 
 func _on_body_entered(body: Node) -> void:
 	# Wall (or any non-target body) — always ends the projectile.

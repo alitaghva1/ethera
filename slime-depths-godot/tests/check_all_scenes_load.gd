@@ -35,6 +35,9 @@ const SCENES_TO_LOAD: Array[String] = [
 	"res://scenes/soul_gem.tscn",
 	# iter-257 / Wave 6 — persistent enemy death decals.
 	"res://scenes/corpse_decal.tscn",
+	# iter-256 / Wave 5B+5C — destructible sarcophagus + secret cracked wall.
+	"res://scenes/sarcophagus.tscn",
+	"res://scenes/secret_wall.tscn",
 ]
 
 func _initialize() -> void:

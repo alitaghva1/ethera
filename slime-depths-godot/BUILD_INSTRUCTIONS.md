@@ -15,15 +15,19 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (42 tests — 36 baseline + 4 added by iter-247..250
+# Full audit (42 tests — 35 baseline + 3 added by iter-248..250
 # combat redesign + 1 added by iter-254 room shape variety + 1 added by
-# iter-255 atmospheric density push. Combat redesign removes parry
-# input, adds sword 3-hit combo, blast windup commitment, and
-# perfect-dodge mechanic. See ETHERA_COMBAT_DESIGN.md. Wave 5A iter-254
-# re-authors room_04 as RING and room_06 as MULTI-CHAMBER to add
-# geometric variety. Wave 4 iter-255 doubles ambient mote density,
-# adds per-biome accent emitters, applies BIOME_DARKNESS_MULTIPLIER,
-# and bumps torch + hero rim light to push high-contrast atmosphere.)
+# iter-255 atmospheric density push + 1 added by iter-256 destructibles
+# / secret walls. Combat redesign removes parry input, adds sword
+# 3-hit combo, blast windup commitment, and perfect-dodge mechanic.
+# See ETHERA_COMBAT_DESIGN.md. Wave 5A iter-254 re-authors room_04 as
+# RING and room_06 as MULTI-CHAMBER to add geometric variety. Wave 4
+# iter-255 doubles ambient mote density, adds per-biome accent
+# emitters, applies BIOME_DARKNESS_MULTIPLIER, and bumps torch + hero
+# rim light to push high-contrast atmosphere. Wave 5B+5C iter-256
+# makes pillars / lanterns / sarcophagi destructible via hero sword
+# Hit 3 + dash-strike pierce, projectile blast (lanterns only), and
+# adds a 30%/room secret crackable wall that awards 30 ether shards.)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -43,7 +47,7 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter245_phase3_hud test_iter246_phase4_juice \
          test_iter248_combo test_iter249_blast_windup \
          test_iter250_perfect_dodge test_iter254_room_shapes \
-         test_iter255_atmospheric_density; do
+         test_iter255_atmospheric_density test_iter256_destructibles; do
     godot --headless --script "tests/$t.gd"
 done
 ```
