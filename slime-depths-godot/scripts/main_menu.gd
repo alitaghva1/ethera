@@ -422,11 +422,336 @@ func _process(delta: float) -> void:
 	if title_halo != null:
 		title_halo.position = _title_halo_base_pos + title_drift
 
+# ── Iter 240 / Polish Team R5 — Themed modal builders ────────────────
+# Shared StyleBox + helper machinery so the BINDINGS, ACHIEVEMENTS,
+# and (future) MODIFIERS modals all use the same dark-fantasy
+# vocabulary. Pre-iter-240 each modal was raw Labels on a single
+# ColorRect dim — the main-menu title and buttons bled through the
+# overlay. The visual diagnosis:
+#   • No backing panel → the menu read through the modal text.
+#   • Ad-hoc column widths in HBoxContainer rows → name/desc/button
+#     drifted out of alignment on long descriptions.
+#   • Default Button colors → INVEST looked the same regardless of
+#     affordability; player couldn't tell what was a real choice.
+#   • Locked/unlocked achievements differed only by "OK" / "—"
+#     prefix → no celebratory delta when one unlocked.
+#
+# This iter pulls the shared chrome into _build_themed_modal_panel
+# (full-screen scrim + center container + styled PanelContainer +
+# inner gold border + title + sub-header + close button row) and
+# styles each row inside that frame consistently. Three button
+# StyleBoxes (affordable / unaffordable / maxed / close) keep state
+# legible at a glance.
+
+# Panel chrome constants — referenced by _build_themed_modal_panel +
+# the row builders so tweaks land in one place.
+const MODAL_SCRIM_COLOR: Color = Color(0, 0, 0, 0.72)
+const MODAL_PANEL_BG: Color = Color(0.10, 0.08, 0.06, 0.96)
+const MODAL_PANEL_BORDER_OUTER: Color = Color(0.72, 0.58, 0.30)
+const MODAL_PANEL_BORDER_INNER: Color = Color(0.40, 0.30, 0.16)
+const MODAL_TITLE_COLOR: Color = Color(0.92, 0.78, 0.42)
+const MODAL_SUBTITLE_COLOR: Color = Color(0.78, 0.72, 0.62)
+const MODAL_BODY_COLOR: Color = Color(0.88, 0.82, 0.70)
+const MODAL_MUTED_COLOR: Color = Color(0.62, 0.56, 0.46)
+const MODAL_DISABLED_COLOR: Color = Color(0.46, 0.42, 0.38)
+# Affordable / maxed / locked-button accent palettes.
+const MODAL_BUTTON_GOLD: Color = Color(0.78, 0.62, 0.32)
+const MODAL_BUTTON_GOLD_FILL: Color = Color(0.18, 0.14, 0.08, 0.95)
+const MODAL_BUTTON_GOLD_HOVER: Color = Color(0.92, 0.74, 0.40)
+const MODAL_BUTTON_DEAD: Color = Color(0.32, 0.22, 0.32)
+const MODAL_BUTTON_DEAD_FILL: Color = Color(0.10, 0.08, 0.10, 0.92)
+const MODAL_BUTTON_MAXED_FILL: Color = Color(0.30, 0.22, 0.08, 0.98)
+const MODAL_ROW_HOVER_TINT: Color = Color(1.10, 1.08, 1.04)
+
+# Builds the canonical modal chrome and returns the inner VBoxContainer
+# the caller appends rows into. Caller is responsible for hooking up a
+# CLOSE button via _append_modal_close_row (or wiring ESC via the
+# returned root). The root is added to the MainMenu scene; close it
+# with queue_free().
+#
+# Returned dict shape:
+#   {
+#     "root": Control,        # full-screen overlay (free this to close)
+#     "panel": PanelContainer, # the actual gold-bordered panel
+#     "body": VBoxContainer,   # append content here
+#   }
+func _build_themed_modal_panel(title_text: String, sub_text: String, min_size: Vector2) -> Dictionary:
+	var root: Control = Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Full-screen darkening scrim.
+	var scrim: ColorRect = ColorRect.new()
+	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scrim.color = MODAL_SCRIM_COLOR
+	scrim.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(scrim)
+	# Center container holds the styled PanelContainer.
+	var center: CenterContainer = CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(center)
+	# Outer PanelContainer with double-border ornament feel — outer
+	# warm gold + inner thinner band.
+	var panel: PanelContainer = PanelContainer.new()
+	panel.custom_minimum_size = min_size
+	panel.add_theme_stylebox_override("panel", _make_panel_stylebox())
+	center.add_child(panel)
+	# Body VBox — content rows go in here. Inner padding is already
+	# provided by the panel's stylebox content margins.
+	var body: VBoxContainer = VBoxContainer.new()
+	body.add_theme_constant_override("separation", 12)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.add_child(body)
+	# Title — large, warm gold, centered, with a thin gold rule beneath.
+	var title: Label = Label.new()
+	title.text = title_text
+	title.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
+	title.add_theme_font_size_override("font_size", 30)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.add_child(title)
+	# Gold separator rule — slim ColorRect that visually closes the
+	# title from the content rows.
+	var rule: ColorRect = ColorRect.new()
+	rule.color = Color(MODAL_PANEL_BORDER_OUTER.r, MODAL_PANEL_BORDER_OUTER.g, MODAL_PANEL_BORDER_OUTER.b, 0.65)
+	rule.custom_minimum_size = Vector2(0, 1)
+	rule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(rule)
+	# Optional sub-header (caller passes "" to suppress).
+	if sub_text != "":
+		var sub: Label = Label.new()
+		sub.text = sub_text
+		sub.add_theme_color_override("font_color", MODAL_SUBTITLE_COLOR)
+		sub.add_theme_font_size_override("font_size", 14)
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		body.add_child(sub)
+	return {
+		"root": root,
+		"panel": panel,
+		"body": body,
+	}
+
+# StyleBox factory for the modal frame — deep warm-dark fill with a
+# 2px warm-gold outer border and rounded corners. The inner thinner
+# band is faked by setting expand_margin so the outer border's inner
+# edge reads as a second line.
+func _make_panel_stylebox() -> StyleBoxFlat:
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.bg_color = MODAL_PANEL_BG
+	sb.border_color = MODAL_PANEL_BORDER_OUTER
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 12
+	sb.corner_radius_top_right = 12
+	sb.corner_radius_bottom_left = 12
+	sb.corner_radius_bottom_right = 12
+	sb.content_margin_left = 28
+	sb.content_margin_right = 28
+	sb.content_margin_top = 24
+	sb.content_margin_bottom = 24
+	# Subtle drop shadow so the panel reads as RAISED off the scrim.
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 4)
+	return sb
+
+# StyleBox factory for buttons — three states:
+#   "affordable" — gold border, warm-cream text, hover scales fill
+#   "unaffordable" — muted violet border, dim grey text (disabled look)
+#   "maxed" — solid gold panel, dark text, "MAXED" label
+#   "close" — cream background with gold border, for CLOSE/dismiss
+func _make_button_stylebox(state: String) -> StyleBoxFlat:
+	var sb: StyleBoxFlat = StyleBoxFlat.new()
+	sb.corner_radius_top_left = 4
+	sb.corner_radius_top_right = 4
+	sb.corner_radius_bottom_left = 4
+	sb.corner_radius_bottom_right = 4
+	sb.border_width_left = 1
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 6
+	sb.content_margin_bottom = 6
+	match state:
+		"affordable":
+			sb.bg_color = MODAL_BUTTON_GOLD_FILL
+			sb.border_color = MODAL_BUTTON_GOLD
+		"affordable_hover":
+			sb.bg_color = Color(0.28, 0.20, 0.10, 0.98)
+			sb.border_color = MODAL_BUTTON_GOLD_HOVER
+		"unaffordable":
+			sb.bg_color = MODAL_BUTTON_DEAD_FILL
+			sb.border_color = MODAL_BUTTON_DEAD
+		"maxed":
+			sb.bg_color = MODAL_BUTTON_MAXED_FILL
+			sb.border_color = MODAL_BUTTON_GOLD
+			sb.border_width_left = 2
+			sb.border_width_top = 2
+			sb.border_width_right = 2
+			sb.border_width_bottom = 2
+		"close":
+			sb.bg_color = Color(0.16, 0.13, 0.10, 0.96)
+			sb.border_color = MODAL_BUTTON_GOLD
+		"close_hover":
+			sb.bg_color = Color(0.24, 0.18, 0.12, 0.98)
+			sb.border_color = MODAL_BUTTON_GOLD_HOVER
+		_:
+			sb.bg_color = MODAL_PANEL_BG
+			sb.border_color = MODAL_BUTTON_GOLD
+	return sb
+
+# Apply per-state styling + hover behavior to a Button. `state` is
+# one of "affordable" / "unaffordable" / "maxed" / "close". Hover
+# state for affordable + close transitions the stylebox via tween.
+func _style_modal_button(btn: Button, state: String) -> void:
+	var normal_sb: StyleBoxFlat = _make_button_stylebox(state)
+	btn.add_theme_stylebox_override("normal", normal_sb)
+	btn.add_theme_stylebox_override("pressed", normal_sb)
+	btn.add_theme_stylebox_override("focus", normal_sb)
+	btn.add_theme_stylebox_override("disabled", _make_button_stylebox("unaffordable"))
+	# Hover styling — affordable/close get the brighter variant.
+	if state == "affordable":
+		btn.add_theme_stylebox_override("hover", _make_button_stylebox("affordable_hover"))
+		btn.add_theme_color_override("font_color", Color(0.96, 0.88, 0.72))
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.94, 0.78))
+	elif state == "close":
+		btn.add_theme_stylebox_override("hover", _make_button_stylebox("close_hover"))
+		btn.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
+		btn.add_theme_color_override("font_hover_color", Color(1.0, 0.94, 0.78))
+	elif state == "unaffordable":
+		btn.add_theme_stylebox_override("hover", normal_sb)
+		btn.add_theme_color_override("font_color", MODAL_DISABLED_COLOR)
+	elif state == "maxed":
+		btn.add_theme_stylebox_override("hover", normal_sb)
+		btn.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
+	btn.add_theme_font_size_override("font_size", 13)
+	# Hover scale tween — 1.0 → 1.04 over 80ms, same idiom as menu
+	# button hover so the doctrine stays consistent.
+	btn.pivot_offset = btn.size / 2.0
+	btn.resized.connect(func ():
+		btn.pivot_offset = btn.size / 2.0
+	)
+	btn.mouse_entered.connect(_on_modal_button_hover_enter.bind(btn))
+	btn.mouse_exited.connect(_on_modal_button_hover_exit.bind(btn))
+	btn.focus_entered.connect(_on_modal_button_hover_enter.bind(btn))
+	btn.focus_exited.connect(_on_modal_button_hover_exit.bind(btn))
+
+func _on_modal_button_hover_enter(btn: Button) -> void:
+	if btn.disabled:
+		return
+	Audio.play_ui_cue("ui_hover", -10.0)
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(btn, "scale", Vector2(1.04, 1.04), 0.08)
+
+func _on_modal_button_hover_exit(btn: Button) -> void:
+	var tween: Tween = create_tween()
+	tween.set_trans(Tween.TRANS_QUAD)
+	tween.set_ease(Tween.EASE_OUT)
+	tween.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.10)
+
+# Centered CLOSE-button row appended to the body. Smaller than the
+# pre-iter-240 close: ~120 × 34 px with the close-style stylebox.
+# The caller passes the dismiss callable.
+func _append_modal_close_row(body: VBoxContainer, on_close: Callable) -> Button:
+	var spacer: Control = Control.new()
+	spacer.custom_minimum_size = Vector2(0, 4)
+	body.add_child(spacer)
+	var close_row: HBoxContainer = HBoxContainer.new()
+	close_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_child(close_row)
+	var close_btn: Button = Button.new()
+	close_btn.text = "CLOSE"
+	close_btn.custom_minimum_size = Vector2(120, 34)
+	_style_modal_button(close_btn, "close")
+	close_btn.pressed.connect(on_close)
+	close_row.add_child(close_btn)
+	return close_btn
+
+# Diamond glyph as a small Polygon2D — used as the achievement status
+# icon. Gold filled for unlocked, dim outlined for locked. 24×24 cell
+# minimum. We wrap it in a Control sized 24×24 so it sits in column 1
+# of the achievement row.
+func _build_diamond_glyph(unlocked: bool) -> Control:
+	var wrap: Control = Control.new()
+	wrap.custom_minimum_size = Vector2(24, 24)
+	var poly: Polygon2D = Polygon2D.new()
+	# Diamond points around center (12, 12), 10 px radius.
+	poly.polygon = PackedVector2Array([
+		Vector2(12, 2),   # top
+		Vector2(22, 12),  # right
+		Vector2(12, 22),  # bottom
+		Vector2(2, 12),   # left
+	])
+	if unlocked:
+		poly.color = MODAL_TITLE_COLOR
+	else:
+		# Locked → near-transparent dark with just outline showing.
+		poly.color = Color(0.30, 0.26, 0.20, 0.45)
+	wrap.add_child(poly)
+	# Outline — second Polygon2D drawn slightly larger (line trick),
+	# clipped to inner via z order. Cheaper than a Line2D loop here.
+	if not unlocked:
+		var outline: Polygon2D = Polygon2D.new()
+		outline.polygon = PackedVector2Array([
+			Vector2(12, 1),
+			Vector2(23, 12),
+			Vector2(12, 23),
+			Vector2(1, 12),
+		])
+		outline.color = MODAL_MUTED_COLOR
+		wrap.add_child(outline)
+		wrap.move_child(outline, 0)  # draw outline behind fill
+	return wrap
+
+# Small ETHER currency chip — drawn above the bindings row list to
+# anchor the "what you can spend" reading. Returns the root Control
+# so the caller can swap it out on currency change if desired (we
+# currently rebuild the whole panel after every spend).
+func _build_currency_chip() -> PanelContainer:
+	var chip: PanelContainer = PanelContainer.new()
+	var chip_sb: StyleBoxFlat = StyleBoxFlat.new()
+	chip_sb.bg_color = Color(0.14, 0.10, 0.06, 0.94)
+	chip_sb.border_color = MODAL_BUTTON_GOLD
+	chip_sb.border_width_left = 1
+	chip_sb.border_width_top = 1
+	chip_sb.border_width_right = 1
+	chip_sb.border_width_bottom = 1
+	chip_sb.corner_radius_top_left = 6
+	chip_sb.corner_radius_top_right = 6
+	chip_sb.corner_radius_bottom_left = 6
+	chip_sb.corner_radius_bottom_right = 6
+	chip_sb.content_margin_left = 14
+	chip_sb.content_margin_right = 14
+	chip_sb.content_margin_top = 4
+	chip_sb.content_margin_bottom = 4
+	chip.add_theme_stylebox_override("panel", chip_sb)
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var label: Label = Label.new()
+	label.text = "ETHER  ◇  %d" % GameState.ether_shards
+	label.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
+	label.add_theme_font_size_override("font_size", 18)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip.add_child(label)
+	return chip
+
 # ── Iter 220 / Beta M1.1 — Upgrade tree panel ─────────────────────────
 # Adds an UPGRADES button to the main menu CenterStack and an inline
 # panel listing the 5 upgrade-tree nodes with invest buttons. Spend
 # Ether Shards (M1.0 currency) to advance levels; effects fold into
 # GameState.modifier_total at run time.
+#
+# iter-240 redesign — panel chrome now comes from
+# _build_themed_modal_panel: full-screen scrim + center container +
+# gold-bordered PanelContainer + title rule + sub-header. Row layout
+# is now glyph / name+level / description / invest-button — clean
+# 4-column grid via HBoxContainer with fixed widths. INVEST buttons
+# now display their state via StyleBoxFlat variant: affordable (gold
+# border, gold text), unaffordable (muted violet border, dim grey
+# text, disabled), or maxed (solid gold panel, "MAXED" label).
 
 var _upgrades_button: Button = null
 var _upgrade_panel: Control = null
@@ -460,75 +785,84 @@ func _on_upgrades_pressed() -> void:
 func _show_upgrade_panel() -> void:
 	if _upgrade_panel != null and is_instance_valid(_upgrade_panel):
 		return
-	_upgrade_panel = Control.new()
+	# iter-240 redesign — use the shared themed-modal helper.
+	var modal: Dictionary = _build_themed_modal_panel(
+		"PERMANENT BINDINGS",
+		"Bind your ether to permanent gifts.",
+		Vector2(580, 480),
+	)
+	_upgrade_panel = modal["root"]
 	_upgrade_panel.name = "UpgradePanel"
-	_upgrade_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_upgrade_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_upgrade_panel)
-	var dim: ColorRect = ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0, 0, 0, 0.74)
-	_upgrade_panel.add_child(dim)
-	var center: CenterContainer = CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_upgrade_panel.add_child(center)
-	var box: VBoxContainer = VBoxContainer.new()
-	box.custom_minimum_size = Vector2(560, 0)
-	box.add_theme_constant_override("separation", 12)
-	center.add_child(box)
-	var title: Label = Label.new()
-	title.text = "PERMANENT BINDINGS"
-	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
-	title.add_theme_font_size_override("font_size", 28)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(title)
-	var sub: Label = Label.new()
-	sub.text = "ETHER ◇ %d" % GameState.ether_shards
-	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
-	sub.add_theme_font_size_override("font_size", 18)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(sub)
-	# One row per node.
+	var body: VBoxContainer = modal["body"]
+	# Currency chip — centered above the row list. Reads "ETHER ◇ N".
+	var chip_row: HBoxContainer = HBoxContainer.new()
+	chip_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_child(chip_row)
+	chip_row.add_child(_build_currency_chip())
+	# One row per node — 4-column layout (glyph / name+level / desc / button).
 	for node_id in GameState.UPGRADE_TREE.keys():
 		var spec: Dictionary = GameState.UPGRADE_TREE[node_id]
-		var row: HBoxContainer = HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		box.add_child(row)
-		var label: Label = Label.new()
-		var lvl: int = GameState.upgrade_level(node_id)
-		label.text = "%s  [%d/%d]" % [spec.get("display_name", node_id), lvl, spec.get("max_level", 0)]
-		label.add_theme_color_override("font_color", Color(0.94, 0.92, 0.86))
-		label.add_theme_font_size_override("font_size", 16)
-		label.custom_minimum_size = Vector2(280, 0)
-		row.add_child(label)
-		var desc: Label = Label.new()
-		desc.text = str(spec.get("description", ""))
-		desc.add_theme_color_override("font_color", Color(0.78, 0.78, 0.74))
-		desc.add_theme_font_size_override("font_size", 12)
-		desc.autowrap_mode = TextServer.AUTOWRAP_WORD
-		desc.custom_minimum_size = Vector2(180, 0)
-		row.add_child(desc)
-		var btn: Button = Button.new()
-		var next_cost: int = GameState.upgrade_next_cost(node_id)
-		if next_cost < 0:
-			btn.text = "MAXED"
-			btn.disabled = true
+		body.add_child(_build_upgrade_row(node_id, spec))
+	# Close button row + ESC keybind.
+	_append_modal_close_row(body, _close_upgrade_panel).grab_focus()
+
+# Iter 240 — single-row builder for the BINDINGS panel. Columns:
+#   1. status glyph (24×24 diamond, gold filled if any level invested)
+#   2. name + level (e.g. "RESILIENCE   1/3")
+#   3. description (single-line, truncated if too long)
+#   4. INVEST button (affordable / unaffordable / maxed state)
+# Total row width: 540 px (32 + 220 + 200 + 130 with separators).
+func _build_upgrade_row(node_id: String, spec: Dictionary) -> HBoxContainer:
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Column 1 — diamond glyph (gold if invested at all, dim outline otherwise).
+	var lvl: int = GameState.upgrade_level(node_id)
+	row.add_child(_build_diamond_glyph(lvl > 0))
+	# Column 2 — name + level. Two labels in an HBox so we can color
+	# the "1/3" portion dimmer than the name.
+	var name_box: HBoxContainer = HBoxContainer.new()
+	name_box.add_theme_constant_override("separation", 8)
+	name_box.custom_minimum_size = Vector2(220, 0)
+	var name_label: Label = Label.new()
+	name_label.text = str(spec.get("display_name", node_id))
+	name_label.add_theme_color_override("font_color", MODAL_BODY_COLOR)
+	name_label.add_theme_font_size_override("font_size", 17)
+	name_box.add_child(name_label)
+	var lvl_label: Label = Label.new()
+	lvl_label.text = "%d/%d" % [lvl, spec.get("max_level", 0)]
+	lvl_label.add_theme_color_override("font_color", MODAL_MUTED_COLOR)
+	lvl_label.add_theme_font_size_override("font_size", 14)
+	name_box.add_child(lvl_label)
+	row.add_child(name_box)
+	# Column 3 — description (single line, clipped if it would wrap).
+	var desc: Label = Label.new()
+	desc.text = str(spec.get("description", ""))
+	desc.add_theme_color_override("font_color", MODAL_MUTED_COLOR)
+	desc.add_theme_font_size_override("font_size", 13)
+	desc.custom_minimum_size = Vector2(220, 0)
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.clip_text = true
+	row.add_child(desc)
+	# Column 4 — INVEST button with state-appropriate styling.
+	var btn: Button = Button.new()
+	var next_cost: int = GameState.upgrade_next_cost(node_id)
+	if next_cost < 0:
+		btn.text = "MAXED"
+		btn.disabled = true
+		_style_modal_button(btn, "maxed")
+	else:
+		btn.text = "INVEST  ◇%d" % next_cost
+		if GameState.ether_shards >= next_cost:
+			_style_modal_button(btn, "affordable")
 		else:
-			btn.text = "INVEST ◇%d" % next_cost
-			btn.disabled = (GameState.ether_shards < next_cost)
-		btn.custom_minimum_size = Vector2(120, 32)
-		btn.pressed.connect(_on_invest_pressed.bind(node_id))
-		row.add_child(btn)
-	# Close button
-	var close_row: HBoxContainer = HBoxContainer.new()
-	close_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(close_row)
-	var close_btn: Button = Button.new()
-	close_btn.text = "CLOSE"
-	close_btn.custom_minimum_size = Vector2(140, 36)
-	close_btn.pressed.connect(_close_upgrade_panel)
-	close_row.add_child(close_btn)
-	close_btn.grab_focus()
+			btn.disabled = true
+			_style_modal_button(btn, "unaffordable")
+	btn.custom_minimum_size = Vector2(130, 32)
+	btn.pressed.connect(_on_invest_pressed.bind(node_id))
+	row.add_child(btn)
+	return row
 
 func _on_invest_pressed(node_id: String) -> void:
 	if not GameState.upgrade_node(node_id):
@@ -540,6 +874,26 @@ func _on_invest_pressed(node_id: String) -> void:
 	# Rebuild panel so labels reflect new state.
 	_close_upgrade_panel()
 	_show_upgrade_panel()
+
+# Iter 240 — ESC keybind closes whichever modal is up. Without this
+# the player had to mouse to the CLOSE button; ESC felt like it
+# should work but didn't. Order of dismissal matches stacking
+# expectations: modifiers (top-most when BEGIN pressed) → achievements
+# → bindings.
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
+		if _modifiers_panel != null and is_instance_valid(_modifiers_panel):
+			_on_modifiers_cancel()
+			get_viewport().set_input_as_handled()
+			return
+		if _achievements_panel != null and is_instance_valid(_achievements_panel):
+			_close_achievements_panel()
+			get_viewport().set_input_as_handled()
+			return
+		if _upgrade_panel != null and is_instance_valid(_upgrade_panel):
+			_close_upgrade_panel()
+			get_viewport().set_input_as_handled()
+			return
 
 func _close_upgrade_panel() -> void:
 	if _upgrade_panel != null and is_instance_valid(_upgrade_panel):
@@ -604,110 +958,70 @@ func _on_achievements_pressed() -> void:
 func _show_achievements_panel() -> void:
 	if _achievements_panel != null and is_instance_valid(_achievements_panel):
 		return
-	_achievements_panel = Control.new()
-	_achievements_panel.name = "AchievementsPanel"
-	_achievements_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_achievements_panel.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(_achievements_panel)
-	# Full-screen dim so the menu visually fades out behind the modal.
-	# Matches _show_upgrade_panel and pause_screen._show_quit_confirm
-	# darkness levels.
-	var dim: ColorRect = ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0, 0, 0, 0.74)
-	_achievements_panel.add_child(dim)
-	var center: CenterContainer = CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_achievements_panel.add_child(center)
-	var box: VBoxContainer = VBoxContainer.new()
-	box.custom_minimum_size = Vector2(600, 0)
-	box.add_theme_constant_override("separation", 10)
-	center.add_child(box)
-	# Header — count of unlocked / total, matches the UPGRADES panel's
-	# "ETHER ◇ N" sub-header pattern.
-	var title: Label = Label.new()
-	title.text = "ACHIEVEMENTS"
-	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
-	title.add_theme_font_size_override("font_size", 28)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(title)
+	# iter-240 redesign — themed-modal chrome + 3-column rows with
+	# diamond glyphs in place of "OK" / "—" prefixes.
 	var total: int = GameState.ACHIEVEMENTS.size()
-	var unlocked: int = GameState.unlocked_achievements.size()
-	var sub: Label = Label.new()
-	sub.text = "%d / %d  unlocked" % [unlocked, total]
-	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
-	sub.add_theme_font_size_override("font_size", 16)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(sub)
-	# Scrollable list — preempts overflow if achievement count grows
-	# past what fits on 720h. Today 12 entries fit comfortably.
+	var unlocked_count: int = GameState.unlocked_achievements.size()
+	var sub_text: String = "%d / %d  UNLOCKED" % [unlocked_count, total]
+	var modal: Dictionary = _build_themed_modal_panel(
+		"ACHIEVEMENTS",
+		sub_text,
+		Vector2(640, 540),
+	)
+	_achievements_panel = modal["root"]
+	_achievements_panel.name = "AchievementsPanel"
+	add_child(_achievements_panel)
+	var body: VBoxContainer = modal["body"]
+	# Scrollable list — preempts overflow if achievement count grows.
 	var scroll: ScrollContainer = ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(600, 420)
-	box.add_child(scroll)
+	scroll.custom_minimum_size = Vector2(580, 380)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(scroll)
 	var list_box: VBoxContainer = VBoxContainer.new()
-	list_box.add_theme_constant_override("separation", 6)
+	list_box.add_theme_constant_override("separation", 8)
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(list_box)
-	# One row per achievement. Stable iteration order (GameState
-	# constant uses dict literal, which Godot preserves insertion order
-	# on).
 	for id in GameState.ACHIEVEMENTS.keys():
 		var spec: Dictionary = GameState.ACHIEVEMENTS[id]
 		var is_unlocked: bool = id in GameState.unlocked_achievements
 		list_box.add_child(_build_achievement_row(spec, is_unlocked))
-	# Close
-	var close_row: HBoxContainer = HBoxContainer.new()
-	close_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_child(close_row)
-	var close_btn: Button = Button.new()
-	close_btn.text = "CLOSE"
-	close_btn.custom_minimum_size = Vector2(140, 36)
-	close_btn.pressed.connect(_close_achievements_panel)
-	close_row.add_child(close_btn)
-	close_btn.grab_focus()
+	# Close button + focus
+	_append_modal_close_row(body, _close_achievements_panel).grab_focus()
 
-# Iter 225 — single-row builder. Unlocked entries are bright +
-# gold-tinted with an "OK" prefix glyph; locked entries are dim with
-# a "—" prefix and the description hidden behind "???". Names stay
-# visible regardless so the player has a hint what they're chasing
-# (mythic_find = "MYTHIC FIND" already telegraphs "find a mythic
-# relic" without spoiling specifics).
+# Iter 240 — redesigned row builder. Columns:
+#   1. 24×24 diamond glyph (gold filled if unlocked, dim outlined if locked)
+#   2. name (warm gold if unlocked, dim grey if locked)
+#   3. description (cream if unlocked; "???" in dim grey if locked for
+#      spoiler protection)
+# Layout uses fixed widths so all three columns align across rows
+# regardless of name/description length.
 func _build_achievement_row(spec: Dictionary, is_unlocked: bool) -> HBoxContainer:
 	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	# Status glyph (24px column).
-	var glyph: Label = Label.new()
-	glyph.text = "OK" if is_unlocked else "—"
-	glyph.custom_minimum_size = Vector2(36, 0)
-	glyph.add_theme_font_size_override("font_size", 16)
-	if is_unlocked:
-		glyph.add_theme_color_override("font_color", Color(1.00, 0.82, 0.32))
-	else:
-		glyph.add_theme_color_override("font_color", Color(0.50, 0.50, 0.50))
-	row.add_child(glyph)
-	# Name column (180px).
+	row.add_theme_constant_override("separation", 14)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Column 1 — diamond status glyph (gold/dim).
+	row.add_child(_build_diamond_glyph(is_unlocked))
+	# Column 2 — name (200 px column).
 	var name_label: Label = Label.new()
 	name_label.text = str(spec.get("name", "???"))
-	name_label.custom_minimum_size = Vector2(180, 0)
+	name_label.custom_minimum_size = Vector2(200, 0)
 	name_label.add_theme_font_size_override("font_size", 16)
 	if is_unlocked:
-		name_label.add_theme_color_override("font_color", Color(0.96, 0.92, 0.78))
+		name_label.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
 	else:
-		name_label.add_theme_color_override("font_color", Color(0.62, 0.60, 0.56))
+		name_label.add_theme_color_override("font_color", MODAL_DISABLED_COLOR)
 	row.add_child(name_label)
-	# Description column — autowrap, fills remaining width.
+	# Column 3 — description (fills remaining width).
 	var desc_label: Label = Label.new()
 	if is_unlocked:
 		desc_label.text = str(spec.get("description", ""))
-		desc_label.add_theme_color_override("font_color", Color(0.86, 0.86, 0.82))
+		desc_label.add_theme_color_override("font_color", MODAL_BODY_COLOR)
 	else:
-		# Light spoiler protection — locked entries hide the
-		# objective, keeping the player guessing the exact trigger.
 		desc_label.text = "???"
-		desc_label.add_theme_color_override("font_color", Color(0.46, 0.46, 0.44))
-	desc_label.add_theme_font_size_override("font_size", 12)
+		desc_label.add_theme_color_override("font_color", MODAL_DISABLED_COLOR)
+	desc_label.add_theme_font_size_override("font_size", 13)
 	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.custom_minimum_size = Vector2(340, 0)
+	desc_label.custom_minimum_size = Vector2(300, 0)
 	desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(desc_label)
 	return row
