@@ -5948,22 +5948,27 @@ func _update_reaction_web() -> void:
 					Color(theme_col.r, theme_col.g, theme_col.b, 0.96),
 				)
 			"partial":
-				chip.visible = true
-				var missing: String = ReactionWebScript.missing_kind(combo_id, gs)
-				if missing == "":
-					missing = "?"
-				# Greyed hint chip — quieter than armed so eye flows to
-				# the armed combos first. The "needs X" tells the
-				# player WHAT relic family completes the combo.
-				chip.text = "· %s · needs %s" % [label_text, missing.to_upper()]
-				chip.add_theme_color_override(
-					"font_color", Color(0.66, 0.66, 0.62, 0.62)
-				)
+				# iter-243 / Director Phase 1 — HIDE partial chips
+				# entirely. Pre-iter-243 we showed "· KINDLE · needs
+				# BURN" hints for every half-armed combo. In practice
+				# that filled the HUD with five "needs X" rows on
+				# floor 1 before any relic was picked up — the chip
+				# strip became no-go messaging instead of payoff
+				# messaging. New rule: the strip is ARMED-ONLY. When a
+				# combo arms, its chip pops in bright themed; until
+				# then it's invisible and takes no layout space. The
+				# typo-vulnerable string ("needs SLOW", not "neecs")
+				# is no longer rendered, eliminating that class of HUD
+				# noise. Set both visible = false AND text "" so the
+				# Label takes zero footprint in the HBoxContainer.
+				chip.visible = false
+				chip.text = ""
 			_:
 				# Unarmable — no source for either half. Hide so the
 				# strip doesn't visually noise up with five "needs X"
 				# rows on floor 1 before any relic is picked up.
 				chip.visible = false
+				chip.text = ""
 
 # ── iter-229 / Polish Team R2 — elite affix tooltip card ─────────────
 # UX audit risk: elite enemies tint subtly (frost cyan, ember red,

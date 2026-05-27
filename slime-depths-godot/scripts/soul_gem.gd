@@ -49,31 +49,44 @@ var _magnet_active: bool = false
 # reaches the player. If null, we still queue_free silently on contact.
 var _audio_ref: Node = null
 
+# iter-243 / Director Phase 1 — ghost-trail accumulator. Each
+# physics frame the gem drops a small fading polygon at its
+# current position; the polygons free themselves after 0.2 s. Reads
+# as a violet streak that helps the player TRACK the gem during the
+# magnet pull. _trail_timer gates spawn cadence (1 ghost per 30 ms).
+const TRAIL_INTERVAL: float = 0.03
+const TRAIL_LIFETIME: float = 0.20
+var _trail_timer: float = 0.0
+
 func _ready() -> void:
-	# Tiny diamond polygon — 8×8 violet/cyan two-tone. Built procedurally
-	# so we don't need an asset import for an 8-px shape. The polygon is
-	# centered on origin so global_position == gem center.
+	# Diamond polygon — built procedurally so we don't need an asset
+	# import for a small shape. The polygon is centered on origin so
+	# global_position == gem center.
+	# iter-243 / Director Phase 1 — polygon size scaled up from 8x10
+	# (5x5 diamond pre-iter-243) to 12x12 (6x6 diamond). The 8 px gem
+	# vanished into floor decor when spawned outside the immediate
+	# kill site; 12 px reads as a tactile collectible from 3-4 hero-
+	# widths away. Bright violet (0.80, 0.55, 1.0) lifts the gem off
+	# the dark crypt floor for instant findability — the pre-iter-243
+	# (0.72, 0.62, 1.0) was a flat lavender that read "ambient mist"
+	# rather than "collect me."
 	var poly := Polygon2D.new()
 	poly.polygon = PackedVector2Array([
-		Vector2(0, -5),   # top point
-		Vector2(4, 0),    # right point
-		Vector2(0, 5),    # bottom point
-		Vector2(-4, 0),   # left point
+		Vector2(0, -6),   # top point  (was -5)
+		Vector2(6, 0),    # right point (was 4)
+		Vector2(0, 6),    # bottom point (was 5)
+		Vector2(-6, 0),   # left point  (was -4)
 	])
-	# Cool violet-cyan gradient for "soul essence" feel. Slightly biased
-	# toward violet because pure cyan reads "ice" against the dark-fantasy
-	# rooms; violet sits between the cool-magic family and the warm gold
-	# of the relic strip. Matches the Ascendance SHADOW theme tint.
-	poly.color = Color(0.72, 0.62, 1.0, 1.0)
+	poly.color = Color(0.80, 0.55, 1.0, 1.0)
 	add_child(poly)
-	# A tiny inner highlight for readability against dark floors. Single
-	# white pixel cluster pulled toward the top of the diamond — same
+	# Inner highlight for readability against dark floors — same
 	# gestural trick Hades / Hyper Light use on small VFX shapes.
+	# Scaled to match the larger diamond.
 	var highlight := Polygon2D.new()
 	highlight.polygon = PackedVector2Array([
-		Vector2(0, -3), Vector2(1, -2), Vector2(0, -1), Vector2(-1, -2),
+		Vector2(0, -4), Vector2(2, -2), Vector2(0, 0), Vector2(-2, -2),
 	])
-	highlight.color = Color(0.95, 0.92, 1.0, 0.85)
+	highlight.color = Color(0.98, 0.94, 1.0, 0.90)
 	add_child(highlight)
 	# Lift gem above the floor a touch so it doesn't get buried in floor
 	# decor on dense rooms. Slightly above ground but below hero (which
@@ -122,6 +135,37 @@ func _physics_process(delta: float) -> void:
 		_on_collected()
 		return
 	global_position += to_hero.normalized() * step
+	# iter-243 / Director Phase 1 — drop a fading violet ghost behind the
+	# gem every TRAIL_INTERVAL so the magnet-pull reads as a real
+	# streak, not a teleporting dot. Hero / Risk of Rain / Vampire
+	# Survivors all use this trick on fast collectibles.
+	_trail_timer -= delta
+	if _trail_timer <= 0.0:
+		_trail_timer = TRAIL_INTERVAL
+		_spawn_trail_ghost()
+
+# Lazy-create a small violet polygon at the gem's CURRENT global
+# position, parented to the gem's parent (so it survives the gem's
+# queue_free on pickup mid-flight). Tweens alpha to 0 over
+# TRAIL_LIFETIME and queue_frees itself.
+func _spawn_trail_ghost() -> void:
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	var ghost := Polygon2D.new()
+	# Half-size diamond — ghost is visibly behind the gem (smaller +
+	# pre-faded) so the live gem stays the bright leader of the streak.
+	ghost.polygon = PackedVector2Array([
+		Vector2(0, -3), Vector2(3, 0), Vector2(0, 3), Vector2(-3, 0),
+	])
+	ghost.color = Color(0.80, 0.55, 1.0, 0.55)
+	ghost.z_index = 3   # under the gem's z=4 so the live gem reads on top
+	ghost.global_position = global_position
+	parent.add_child(ghost)
+	var tw: Tween = ghost.create_tween()
+	tw.tween_property(ghost, "modulate:a", 0.0, TRAIL_LIFETIME)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_callback(ghost.queue_free)
 
 # Pickup resolution — bump the lifetime kill counter (already tracked by
 # GameState; we just emit it here so kills made BEFORE gem collection don't

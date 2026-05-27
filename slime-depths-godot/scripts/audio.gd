@@ -57,6 +57,22 @@ const SOUND_CONFIGS := {
 	"hero_died":     { "freq_start": 240.0, "freq_end":  55.0, "duration": 0.55, "wave": "sin",    "gain": 0.60, "decay_pow": 1.8 },
 	# Combat — enemy side
 	"enemy_hit":     { "freq_start": 240.0, "freq_end": 170.0, "duration": 0.06, "wave": "sin",    "gain": 0.45, "decay_pow": 2.0 },
+	# iter-243 / Director Phase 1 — size-class hit variants. Pre-iter-243
+	# every enemy hit played the same enemy_hit thud regardless of whether
+	# the player tagged a 0.55-scale slime or a 1.4-scale Tuskbrod. The
+	# audio gave zero feedback about mass. New rule: enemy.gd::take_hit
+	# branches on enemy_type.sprite_scale and plays small / medium / large
+	# variants pitched to suggest mass — small = tin "tic", medium =
+	# existing baseline thud, large = chest-deep thump.
+	# small  (scale < 0.7): higher and tighter — quick tin tap for the
+	#                       lightest mobs (small slimes, mites, gnats)
+	# medium (default 0.7-1.2): unchanged from baseline enemy_hit so
+	#                       existing combat feel is preserved
+	# large  (scale > 1.2): low chest thump + longer decay — boss /
+	#                       Tuskbrod / orc-elite tier
+	"enemy_hit_small":  { "freq_start": 360.0, "freq_end": 240.0, "duration": 0.05, "wave": "sin", "gain": 0.42, "decay_pow": 2.2 },
+	"enemy_hit_medium": { "freq_start": 240.0, "freq_end": 170.0, "duration": 0.06, "wave": "sin", "gain": 0.45, "decay_pow": 2.0 },
+	"enemy_hit_large":  { "freq_start": 160.0, "freq_end":  90.0, "duration": 0.10, "wave": "sin", "gain": 0.55, "decay_pow": 1.6 },
 	"enemy_died":    { "freq_start": 320.0, "freq_end":  95.0, "duration": 0.28, "wave": "sin",    "gain": 0.50, "decay_pow": 1.6 },
 	# Pickups / UI
 	"pickup_claimed":{ "freq_start": 600.0, "freq_end":1280.0, "duration": 0.22, "wave": "sin",    "gain": 0.50, "decay_pow": 1.4 },

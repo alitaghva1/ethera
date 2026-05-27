@@ -2550,16 +2550,30 @@ func _tick_telegraphed_melee(delta: float) -> void:
 			#       the bomber prime already uses (line ~683). Color cue
 			#       + motion cue together = readable at a glance during
 			#       chaotic multi-enemy combat.
+			# iter-243 / Director Phase 1 — ground swing-arc telegraph.
+			# Paint a warm amber cone in the facing direction during
+			# windup so the player can SEE the danger zone before the
+			# strike lands. Reads as "this 70-px wedge in front of the
+			# orc is about to be unsafe" — Hades / Dead Cells / Hyper
+			# Light all use this readable-windup grammar. Drawn at
+			# z_index -1 so it sits under the enemy sprite (looks like
+			# ground decal, not floating UI). Alpha eases from 0 → 0.65
+			# over the windup so the cue grows louder as the strike
+			# nears, mirroring the existing tint+scale pulse.
 			var wt: float = 1.0 - (_melee_timer / t.melee_windup)
 			var base: Color = _baseline_modulate()
 			sprite.modulate = Color(base.r, base.g * (1.0 - wt * 0.75), base.b * (1.0 - wt * 0.75), base.a)
 			var sc: float = t.sprite_scale * (1.0 + 0.08 * wt)
 			sprite.scale = Vector2(sc, sc)
+			_update_telegraph_arc(wt, t.melee_reach, t.melee_cone)
 			_melee_timer -= delta
 			if _melee_timer <= 0.0:
 				_melee_state = MeleeState.SWING
 				_melee_timer = t.melee_swing
 				sprite.play(&"attack")
+				# Hide the windup arc on swing-fire — danger zone is now
+				# the actual attack, the telegraph's job is done.
+				_hide_telegraph_arc()
 				# Damage check at swing-start — final position lets dodge
 				# escape if the hero leaves the cone in time.
 				var final_to_hero: Vector2 = _hero.global_position - global_position
@@ -2580,6 +2594,9 @@ func _tick_telegraphed_melee(delta: float) -> void:
 				# iter-139 — restore base scale at swing-end so cooldown
 				# state doesn't keep the tensed-up silhouette.
 				sprite.scale = Vector2(t.sprite_scale, t.sprite_scale)
+				# iter-243 — defensive: arc may still be visible if SWING
+				# entered via an edge case path (zero windup time, etc.).
+				_hide_telegraph_arc()
 		MeleeState.COOLDOWN:
 			if t.can_move() and dist > t.melee_reach * 0.85:
 				velocity = to_hero.normalized() * _effective_move_speed()
@@ -2591,6 +2608,64 @@ func _tick_telegraphed_melee(delta: float) -> void:
 			_melee_timer -= delta
 			if _melee_timer <= 0.0:
 				_melee_state = MeleeState.IDLE
+
+# iter-243 / Director Phase 1 — telegraphed-melee ground arc telegraph.
+# Lazy-created Polygon2D child shaped as a warm amber cone in the
+# direction the enemy is about to swing. The arc is shown during
+# WINDUP only and hidden on swing-fire (when the danger is now the
+# actual attack VFX). Reads as "ground decal" because z_index = -1
+# puts it UNDER the enemy sprite — same trick the dash trail / fire
+# pool use for ground-anchored feedback.
+#
+# Arc geometry: 12-segment 90° cone fan (sufficient resolution to look
+# smooth at melee_reach ≈ 50-70 px). Half-cone matches the actual
+# damage cone (t.melee_cone radians half-width) so what the player
+# SEES is what the player can be hit by. Color: warm amber
+# Color(1.0, 0.78, 0.30, 0.65) — the windup red sprite tint already
+# lives in the upper hemisphere of the screen, the amber-on-floor cue
+# is the second readable channel (color + position) that lets a
+# player react to multiple windups at once.
+const TELEGRAPH_ARC_SEGMENTS: int = 12
+const TELEGRAPH_ARC_COLOR: Color = Color(1.0, 0.78, 0.30, 0.65)
+var _telegraph_arc: Polygon2D = null
+
+func _ensure_telegraph_arc() -> Polygon2D:
+	if _telegraph_arc != null and is_instance_valid(_telegraph_arc):
+		return _telegraph_arc
+	_telegraph_arc = Polygon2D.new()
+	_telegraph_arc.z_index = -1
+	_telegraph_arc.color = TELEGRAPH_ARC_COLOR
+	_telegraph_arc.modulate.a = 0.0
+	add_child(_telegraph_arc)
+	return _telegraph_arc
+
+func _update_telegraph_arc(wt: float, reach: float, half_cone: float) -> void:
+	# wt is windup progress 0..1; arc fades in from 0.0 to its full
+	# alpha (carried in TELEGRAPH_ARC_COLOR.a) over the windup.
+	var arc: Polygon2D = _ensure_telegraph_arc()
+	# Build the cone polygon in LOCAL space (rotated by aim angle below).
+	# Vertex 0 is the origin; the remaining N+1 vertices fan across the
+	# cone arc. The shape is a pie slice.
+	var pts: PackedVector2Array = PackedVector2Array()
+	pts.append(Vector2.ZERO)
+	for i in range(TELEGRAPH_ARC_SEGMENTS + 1):
+		var f: float = float(i) / float(TELEGRAPH_ARC_SEGMENTS)
+		var ang: float = -half_cone + f * (2.0 * half_cone)
+		pts.append(Vector2(cos(ang), sin(ang)) * reach)
+	arc.polygon = pts
+	# Rotate to face the locked-in melee aim direction.
+	arc.rotation = _melee_aim.angle()
+	# Fade alpha in with the windup so the cue grows louder as the
+	# strike nears — ease-in 0 → ~0.65.
+	var ease: float = clampf(wt / 0.10, 0.0, 1.0) if wt < 0.10 else 1.0
+	arc.modulate.a = ease
+	arc.visible = true
+
+func _hide_telegraph_arc() -> void:
+	if _telegraph_arc == null or not is_instance_valid(_telegraph_arc):
+		return
+	_telegraph_arc.visible = false
+	_telegraph_arc.modulate.a = 0.0
 
 # ── Behavior: shoot ───────────────────────────────────────────────────
 # Kite + cast. Backs away if hero is closer than min_dist, approaches if
@@ -2765,9 +2840,19 @@ func take_hit(damage: int, is_crit: bool = false, source_pos: Variant = null) ->
 		sprite.play(&"hurt")
 	# Iter 43 — per-hit damage number. Crit hits use spawn_crit (yellow,
 	# bigger, "!" suffix, longer life); normal hits use the standard
-	# white number. Spawned at the enemy head so it reads as "X damage
-	# to this enemy" rather than floating in the void.
-	var num_pos: Vector2 = global_position + Vector2(0, -28)
+	# white number.
+	# iter-243 / Director Phase 1 — spawn at the IMPACT POINT, not the
+	# enemy head. Pre-iter-243 num_pos = global_position + (0, -28),
+	# which on a 50-px-tall enemy floated the number well ABOVE the
+	# silhouette — reads as "near the enemy" not "ON the enemy". New
+	# rule: spawn at the top of the collision disc (global_position
+	# minus collision_radius). On a slime (r=14) the number lands at
+	# 14 px above feet — right on the silhouette top. On Tuskbrod or a
+	# boss (r=28-40) it lands at the chest. Pair with damage_number.gd's
+	# RISE=24 (was 40) so the number stays anchored to the hit, not
+	# drifting halfway to the HUD.
+	var impact_offset: float = enemy_type.collision_radius if enemy_type != null else 16.0
+	var num_pos: Vector2 = global_position - Vector2(0, impact_offset)
 	var dn: DamageNumber
 	if is_crit:
 		dn = DamageNumber.spawn_crit(num_pos, damage)
@@ -2817,6 +2902,26 @@ func take_hit(damage: int, is_crit: bool = false, source_pos: Variant = null) ->
 			flash_tween.tween_property(mat, "shader_parameter/flash_strength", 0.0, 0.12)\
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	Events.enemy_hit.emit(global_position)
+	# iter-243 / Director Phase 1 — size-class hit audio. The signal
+	# above plays the baseline enemy_hit thud (and fx's hit_spark);
+	# we layer a size-variant on top so a 0.55-scale slime gets a
+	# bright tin "tic" and a 1.4-scale Tuskbrod gets a chest thump.
+	# Layering rather than replacing means existing emitters (chest,
+	# prototype room) keep their baseline behavior — the variant
+	# kicks in only when enemy_type carries a sprite_scale field.
+	# Plays at -5 dB so it tints the thud rather than out-shouting it.
+	# Robust to enemy_type == null (fall back to medium variant).
+	var s_scale: float = 1.0
+	if enemy_type != null:
+		s_scale = enemy_type.sprite_scale
+	var hit_variant: String = "enemy_hit_medium"
+	if s_scale < 0.7:
+		hit_variant = "enemy_hit_small"
+	elif s_scale > 1.2:
+		hit_variant = "enemy_hit_large"
+	var audio_node: Node = Engine.get_main_loop().root.get_node_or_null("/root/Audio") if Engine.get_main_loop() != null else null
+	if audio_node != null and audio_node.has_method("_play"):
+		audio_node.call("_play", hit_variant, global_position, -5.0)
 	# iter-81 (Workstream A): tiered hit feedback. damage / max_hp ratio
 	# picks a tier (nick/solid/heavy/crushing) and fires shake + extra
 	# sparks scaled to it. Replaces the previous uniform FX.shake(4,

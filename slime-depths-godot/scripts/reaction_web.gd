@@ -178,7 +178,11 @@ static func evaluate_combo(combo_id: String, gs: Node) -> String:
 
 # Returns the kind string of the MISSING half (or "" if both/neither
 # are present). Used by main.gd to write the "needs SLOW" hint chip
-# text without re-walking the spec.
+# text without re-walking the spec. iter-243 / Director Phase 1 —
+# partial chips no longer render in main.gd::_update_reaction_web,
+# but the missing_kind helper stays in the API for future tooling
+# (death-screen recap, codex hints, etc.). The HUD strip is now
+# armed-only.
 static func missing_kind(combo_id: String, gs: Node) -> String:
 	var spec: Dictionary = COMBO_REQUIREMENTS.get(combo_id, {})
 	if spec.is_empty():

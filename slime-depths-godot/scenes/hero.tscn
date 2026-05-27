@@ -65,12 +65,21 @@ script = ExtResource("1_script")
 
 ; iter-116: subtle hero rim light. Pool the player into instant
 ; findability without becoming a spotlight on adjacent enemies.
+; iter-243 / Director Phase 1 — bumped energy 0.55 → 0.6, color to
+; warmer cream (1.0, 0.92, 0.82), texture scale 1.0 → 1.5 so the rim
+; pool reads as ~96 px effective radius. The hero should now be the
+; brightest small object on screen in dark rooms — pre-iter-243 the
+; rim was so subtle it disappeared under torch warmth, leaving the
+; hero hard to find during cluttered fights. z-index stays under the
+; sprite (the PointLight2D sits in the parent tree but does not
+; render UNDER the sprite — Godot's PointLight2D paints the floor,
+; not the actor itself, which is the intended behavior).
 [node name="RimLight" type="PointLight2D" parent="."]
 position = Vector2(0, -8)
-color = Color(1.0, 0.94, 0.82, 1)
-energy = 0.55
+color = Color(1.0, 0.92, 0.82, 1)
+energy = 0.6
 texture = SubResource("hero_rim_tex")
-texture_scale = 1.0
+texture_scale = 1.5
 shadow_enabled = false
 range_z_min = -1024
 range_z_max = 1024

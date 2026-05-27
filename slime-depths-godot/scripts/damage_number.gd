@@ -17,7 +17,15 @@
 class_name DamageNumber
 extends Label
 
-const RISE        := 40.0     # px drifted up over life
+# iter-243 / Director Phase 1 — RISE knocked from 40 → 24. Numbers
+# spawn AT the impact point now (enemy collision-radius top, not the
+# enemy head + -64 offset many callers used). A short 24 px float keeps
+# the number anchored to WHERE the hit happened — pre-iter-243 the
+# 40 px float plus various caller offsets had numbers drifting halfway
+# up to the HUD before fading. Hades / Isaac / Diablo all use ~20-30 px
+# rises for normal hits; the eye reads "above the impact" without
+# losing the impact site.
+const RISE        := 24.0     # px drifted up over life
 const LIFETIME    := 0.7      # sec total
 const FADE_DELAY  := 0.2      # sec at full opacity before fade starts
 
@@ -114,14 +122,19 @@ static func _apply_variant(
 			# iter-137 — font_size 33 -> 36 to widen the gap from the new
 			# 28 pt normal baseline. Crits should feel ~30% bigger than
 			# regular hits, not just 18%.
+			# iter-243 / Director Phase 1 — normal damage baseline is now
+			# 42 pt (was 28). Crit gets +30 % on top → ~55 pt. Color also
+			# shifts toward GOLD (was red-orange) — the brief calls for
+			# gold crit feedback to differentiate from the red enemy-
+			# damage / hero-damage family.
 			var crit_text: String = text
 			if not crit_text.ends_with("!") and crit_text.is_valid_int():
 				crit_text += "!"
 			n.text = crit_text
-			n.add_theme_color_override("font_color", Color(1.0, 0.55, 0.25, 1.0))
-			n.add_theme_color_override("font_outline_color", Color(0.20, 0.06, 0.0, 0.95))
+			n.add_theme_color_override("font_color", Color(1.0, 0.85, 0.40, 1.0))
+			n.add_theme_color_override("font_outline_color", Color(0.20, 0.10, 0.0, 0.95))
 			n.add_theme_constant_override("outline_size", 5)
-			n.add_theme_font_size_override("font_size", 36)
+			n.add_theme_font_size_override("font_size", 55)
 			n.add_theme_constant_override("letter_spacing", 1)
 			n._life = 1.0
 			n._init_life = 1.0
@@ -182,12 +195,18 @@ static func _apply_variant(
 			# add 0-8 pt on top of the 28 pt baseline depending on hit
 			# size. 1 dmg = 28 pt baseline; 3 dmg = 30 pt; 6 dmg = 32 pt;
 			# 10+ dmg = 36 pt (caps at +8 to leave headroom under crit).
+			# iter-243 / Director Phase 1 — +50 % across the board for
+			# damage-number legibility. Normal baseline 28 → 42 pt; the
+			# +0..+8 magnitude bonus stretches to +0..+12 to keep the
+			# heavy-hit ramp proportional. Crit floats at +30 % on top
+			# of THIS baseline (55 pt), so the crit is still the
+			# unmistakable highlight beat.
 			n.text = text
 			n.add_theme_color_override("font_color", color)
 			if text.is_valid_int():
 				var dmg: int = abs(text.to_int())
-				var bonus: int = clampi(dmg - 1, 0, 8)
-				n.add_theme_font_size_override("font_size", 28 + bonus)
+				var bonus: int = clampi(dmg - 1, 0, 12)
+				n.add_theme_font_size_override("font_size", 42 + bonus)
 				# Heavier hits also rise slightly further — extra weight
 				# in vertical motion reinforces the "this was a big hit"
 				# read without needing extra pixels.
