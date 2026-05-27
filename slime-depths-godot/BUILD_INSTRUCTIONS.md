@@ -15,10 +15,12 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (40 tests — 36 baseline + 4 added by iter-247..250
-# combat redesign: removes parry input, adds sword 3-hit combo, blast
-# windup commitment, and perfect-dodge mechanic. See
-# ETHERA_COMBAT_DESIGN.md.)
+# Full audit (41 tests — 36 baseline + 4 added by iter-247..250
+# combat redesign + 1 added by iter-254 room shape variety. Combat
+# redesign removes parry input, adds sword 3-hit combo, blast windup
+# commitment, and perfect-dodge mechanic. See ETHERA_COMBAT_DESIGN.md.
+# Wave 5A iter-254 re-authors room_04 as RING and room_06 as
+# MULTI-CHAMBER to add geometric variety to the dungeon.)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -37,12 +39,12 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter243_phase1_feel test_iter244_phase2_visual \
          test_iter245_phase3_hud test_iter246_phase4_juice \
          test_iter248_combo test_iter249_blast_windup \
-         test_iter250_perfect_dodge; do
+         test_iter250_perfect_dodge test_iter254_room_shapes; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 40 should print PASS / OK. (The 40th test for "BACKDRAFT migration"
+All 41 should print PASS / OK. (The 40th test for "BACKDRAFT migration"
 is folded into test_iter250_perfect_dodge's `BACKDRAFT trigger wired
 from perfect-dodge` assertion — no separate file needed since the
 function is unchanged; only the caller moved.)
