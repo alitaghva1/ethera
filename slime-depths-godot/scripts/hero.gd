@@ -201,16 +201,53 @@ const SHIELD_HIT_IFRAMES      := 0.30  # iter-247 dead — kept for test pin
 #     to dash_dir each tick) so the player can curve through tight
 #     enemy groups.
 #   - Cooldown 1.2 → 1.4 s to balance the strictly-stronger ability.
-const DASH_STRIKE_SPEED    := 600.0
-const DASH_STRIKE_DURATION := 0.28
-# iter-95: cooldown trimmed 1.4 → 0.9. Dash strike is the only mobility
-# option now (dodge ability removed); to keep the "aggressive" feel the
-# user asked for, the engage is available roughly every second instead
-# of every 1.4 s.
-const DASH_STRIKE_COOLDOWN := 0.9
+# iter-250 — DODGE RETUNE per ETHERA_COMBAT_DESIGN.md §6.4.
+#   DASH_STRIKE_SPEED:    600 → 580   (~140 px travel at 0.24s duration)
+#   DASH_STRIKE_DURATION: 0.28 → 0.24
+#   DASH_STRIKE_COOLDOWN: 0.9 → 0.6   (snappier engage rhythm)
+# The duration shrink + speed tweak gives a slightly shorter, faster
+# dash that's easier to chain into the perfect-dodge window. 140 px
+# travel preserves the "real movement" feel (vs a glorified i-frame
+# blink).
+const DASH_STRIKE_SPEED    := 580.0
+const DASH_STRIKE_DURATION := 0.24
+# iter-95: cooldown trimmed 1.4 → 0.9 → iter-250: 0.6. Dash strike is
+# both the mobility AND defensive verb now (perfect-dodge catch lives
+# on the last-0.10s window of dash active frames). The shorter cd
+# makes the timing-skill option more available — players can attempt
+# 5+ perfect-dodges per 3-second engagement.
+const DASH_STRIKE_COOLDOWN := 0.6
 const DASH_STRIKE_RADIUS   := 60.0
 const DASH_STRIKE_POST_IFRAMES := 0.10
 const DASH_STRIKE_STEER_GAIN   := 0.15
+
+# iter-250 — PERFECT DODGE WINDOW. The last 0.10s of the dash active
+# frames opens a timing-skill catch window. If an enemy attack lands
+# during this window, it's PERFECT-DODGED: no damage taken (normal
+# i-frames already provide that), AND a buffer arms a +50% damage /
+# guaranteed-crit next-sword-strike. Slow-mo + violet phase blur +
+# brass chime + "PERFECT!" floater + Events.hero_perfect_dodged emit.
+# Window starts when dash_active_time >= (DURATION - PERFECT_WINDOW).
+# At 0.24 duration + 0.10 window, that's the last ~42% of the dash.
+const PERFECT_DODGE_WINDOW: float = 0.10
+# Next-sword buff: +50% damage AND guaranteed crit. The CRIT_DAMAGE_MUL
+# constant elsewhere is the base crit (1.5×); perfect dodge stacks:
+# +50% raw + crit on top = effectively 1.5 × 1.5 = 2.25× a normal hit.
+# Buffer lifetime — long enough to land 1-2 chained hits in the
+# slow-mo window + follow-up.
+const PERFECT_DODGE_BUFFER_TIME: float = 1.5
+const PERFECT_DODGE_DAMAGE_MUL: float = 1.5
+const PERFECT_DODGE_KNOCKBACK_MUL: float = 1.2
+# Slow-mo: Engine.time_scale → 0.40 for 0.30s, then ease back to 1.0
+# over 0.30s. Total slow-mo beat = 0.6s (per design "shortened
+# Bayonetta-style"). NOTE: Engine.time_scale slows the hero too, but
+# since this is brief the player gets to SEE that they nailed the
+# timing — net-positive feedback.
+const PERFECT_DODGE_SLOWMO_SCALE: float = 0.40
+const PERFECT_DODGE_SLOWMO_HOLD: float = 0.30
+const PERFECT_DODGE_SLOWMO_EASE: float = 0.30
+# Violet phase color (reuses the iter-213 VEILSTEP rim hue, design §5).
+const PERFECT_DODGE_TINT: Color = Color(0.55, 0.30, 0.95, 0.6)
 # Hero collision radius is 14; we want a generous pass-through hit-box
 # during dash so glancing impacts register. 40 covers hero body + small
 # enemies (slimes ~22, spider ~12) without grabbing distant ones.
@@ -487,11 +524,26 @@ var _shield_aim: Vector2 = Vector2.RIGHT
 var _dash_strike_cd := 0.0
 var _dash_strike_time := 0.0
 var _dash_strike_dir := Vector2.RIGHT
+# iter-250 — DODGE ACTIVE TIME tracker for the perfect-dodge window
+# detection. Counts UP from 0 each dash (vs _dash_strike_time which
+# counts DOWN). Used in take_damage's perfect-dodge branch: window
+# opens when active_time >= (DURATION - WINDOW). Set to 0 in
+# _start_dash_strike; incremented in _physics_process while the dash
+# is running.
+var _dodge_active_time: float = 0.0
 # Iter 64 — cached start position of the current dash-strike. Captured
 # in _start_dash_strike, consumed in _resolve_dash_strike_hit by the
 # FLAME resonance fire-trail spawner so it can stamp fire pools evenly
 # along the dash path. Zero-vector when no dash is active.
 var _dash_strike_start_pos: Vector2 = Vector2.ZERO
+# iter-250 — PERFECT DODGE BUFFER. Set to PERFECT_DODGE_BUFFER_TIME
+# when a perfect-dodge catch fires; decrements in _physics_process.
+# While > 0, the next sword strike (in _resolve_melee_strike) gets
+# +50% damage AND is guaranteed-crit. Buffer is CONSUMED (set to 0)
+# when the next sword strike connects with any enemy. A whiff DOES
+# NOT consume — the player keeps the bonus until they actually land
+# a hit (matches the design's "this hit is your reward" intent).
+var _perfect_dodge_buffer: float = 0.0
 # Iter 25 — per-dash hit tracker. Reset on _start_dash_strike. Every
 # physics tick during the dash, we scan enemies within
 # DASH_STRIKE_PIERCE_RADIUS and damage any not already in this dict.
@@ -787,6 +839,10 @@ func _physics_process(delta: float) -> void:
 	_attack_live      = max(0.0, _attack_live      - delta)
 	# iter-95: _dodge_cd and _dodge_time timer decrements removed with
 	# the dodge ability.
+	# iter-250: perfect-dodge buffer decay. Lifetime PERFECT_DODGE_BUFFER_TIME.
+	# Decremented unconditionally; consumed (zeroed) by the first sword
+	# hit that connects in _resolve_melee_strike.
+	_perfect_dodge_buffer = max(0.0, _perfect_dodge_buffer - delta)
 	_iframes          = max(0.0, _iframes          - delta)
 	_blast_cd         = max(0.0, _blast_cd         - delta)
 	# iter-247: _shield_time / _shield_cd decrements removed. _shield_cd
@@ -902,6 +958,11 @@ func _physics_process(delta: float) -> void:
 	# final AoE in _resolve_dash_strike_hit skips already-hit ids so
 	# we don't double-count enemies hit mid-dash.
 	if _dash_strike_time > 0.0:
+		# iter-250 — accumulate dodge active time for the perfect-dodge
+		# detection window. Read by take_damage when an enemy hit
+		# connects: if active_time >= (DURATION - PERFECT_WINDOW), the
+		# catch is a perfect-dodge. Resets to 0 in _start_dash_strike.
+		_dodge_active_time += delta
 		_apply_dash_pierce_tick()
 		# Iter 29 — afterimages. Every AFTERIMAGE_INTERVAL seconds spawn
 		# a cyan-purple ghost of the current sprite frame at the hero's
@@ -1097,13 +1158,30 @@ func _physics_process(delta: float) -> void:
 		_start_dash_strike()
 	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0 and not _combo_committed and not _blast_locked:
 		_start_blast()
-	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dash_strike_time <= 0.0 and not _blast_locked:
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and not _blast_locked:
 		# iter-249: _blast_locked added. Pre-iter-249 sword could cancel
 		# blast recovery (blast set _is_attacking + _attack_live = 0.18,
 		# and _attack_cd was independent so sword could fire at end of
 		# its own cd window). Now blast's commitment is explicit.
 		# (No _combo_committed guard here — _attack_cd already gates this
 		# to the end of the heavy's recovery.)
+		#
+		# iter-250: REMOVED `_dash_strike_time <= 0.0` guard. Sword now
+		# CAN cancel a dash (Hades pattern — "dodge → strike chain").
+		# But the cancel has a BRUTAL cost: remaining i-frames die
+		# instantly, the dash ends, the perfect-dodge active-time
+		# tracker zeroes. The skilled play (perfect-dodge → strike to
+		# consume the buffer) gets the +50% bonus crit. The panic play
+		# (mashing LMB mid-dodge) loses the i-frame safety net.
+		if _dash_strike_time > 0.0:
+			# Mid-dodge attack penalty: kill i-frames, end the dash.
+			# Do this BEFORE _start_attack so the new swing isn't
+			# affected by the dash state. The pierce-hit logic running
+			# this same physics tick is OK — _apply_dash_pierce_tick
+			# ran earlier in _physics_process, before this input chain.
+			_iframes = 0.0
+			_dash_strike_time = 0.0
+			_dodge_active_time = 0.0
 		_start_attack()
 	# Iter 201 — active relic input. Outside the if/elif chain because
 	# active relic should be triggerable mid-swing / mid-blast (it's
@@ -1386,6 +1464,10 @@ func _resolve_melee_strike() -> void:
 			continue
 		if abs(to_enemy.angle_to(_pending_melee_aim)) > arc_actual:
 			continue
+		# iter-250: perfect-dodge knockback bonus scoped per-enemy. Declared
+		# outside the take_hit block so the apply_knockback block below
+		# (same loop iteration, sibling scope) can read it.
+		var _pf_kb_bonus: float = 1.0
 		if enemy.has_method("take_hit"):
 			var dmg_for_this: int = damage
 			if has_execute and _is_executable(enemy):
@@ -1395,7 +1477,19 @@ func _resolve_melee_strike() -> void:
 			# rounded). Per-enemy roll means a cleave hits some enemies
 			# for crit and others not — reads as "lucky swing" not "every-
 			# or-nothing."
-			var is_crit: bool = _roll_crit()
+			# iter-250: PERFECT DODGE BUFFER override. If the player has
+			# a recent perfect-dodge catch, the FIRST enemy hit this
+			# swing gets +50% damage AND a forced crit. Buffer consumed
+			# on first connect; subsequent enemies in a cleave roll
+			# their own crit chance normally.
+			var is_crit: bool = false
+			if _perfect_dodge_buffer > 0.0:
+				is_crit = true
+				dmg_for_this = int(round(float(dmg_for_this) * PERFECT_DODGE_DAMAGE_MUL))
+				_perfect_dodge_buffer = 0.0  # consume immediately
+				_pf_kb_bonus = PERFECT_DODGE_KNOCKBACK_MUL  # bump knockback for this enemy
+			else:
+				is_crit = _roll_crit()
 			if is_crit:
 				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
 				any_crit = true  # iter-140 — sticky across the swing
@@ -1475,7 +1569,10 @@ func _resolve_melee_strike() -> void:
 					_trigger_iron_fang_burst(enemy.global_position)
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
-			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
+			# iter-250: _pf_kb_bonus is the perfect-dodge bump (1.2× for
+			# the consumed-buffer enemy, else 1.0). knockback_mul already
+			# folds combo_index + relic mods.
+			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul * _pf_kb_bonus, MELEE_KNOCKBACK_TIME)
 	if hit_count > 0:
 		swing_connected.emit(hit_count, any_crit)
 		# Iter 39 — STORM ascendance (4+ STORM relics owned). Every
@@ -2236,6 +2333,25 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: St
 		# `_on_shield_block` method-existence check survives unmodified.
 		_on_shield_block()
 		return
+	# iter-250 — PERFECT DODGE DETECTION. If the hero is currently
+	# dashing AND we're inside the last PERFECT_DODGE_WINDOW seconds of
+	# the dash's active frames, the hit is a perfect-dodge catch:
+	#   • No damage taken (regular i-frames already covered that).
+	#   • Buffer next sword strike (+50% dmg + guaranteed crit).
+	#   • Slow-mo + violet phase blur + brass chime + "PERFECT!" floater.
+	#   • Events.hero_perfect_dodged emit (BACKDRAFT + VOW listen in
+	#     sub-commit 5).
+	# Checked BEFORE the _iframes early-return so the perfect-dodge
+	# emit path runs even though the iframes themselves would also have
+	# absorbed the hit (we want the BUFFER + FX, not just damage void).
+	if _dash_strike_time > 0.0 and _dodge_active_time >= (DASH_STRIKE_DURATION - PERFECT_DODGE_WINDOW):
+		# Capture aim BEFORE firing trigger — _shield_aim is used by the
+		# VOW reflect-fan. Capture the dash direction as the aim (the
+		# player is dodging TOWARDS something; the reflect should fire
+		# in that direction).
+		_shield_aim = _dash_strike_dir if _dash_strike_dir.length() > 0.001 else _dir_to_vector(_facing_dir)
+		_trigger_perfect_dodge(source_pos)
+		return
 	if _iframes > 0.0:
 		return
 	# Iter 239 / Fun Ideas Team R4 — HEAT WAVE floor modifier scales
@@ -2751,6 +2867,109 @@ func _start_shield() -> void:
 #      called from sub-commit 4's perfect-dodge trigger.
 func _on_shield_block() -> void:
 	return
+
+# iter-250 — PERFECT DODGE TRIGGER. Called from take_damage when an
+# incoming hit lands during the last PERFECT_DODGE_WINDOW seconds of a
+# dash. The hit is canceled (no damage taken; this function returns
+# before the hp subtraction); a 1.5s buffer arms for the next sword
+# strike (+50% damage AND guaranteed crit), slow-mo punctuates the
+# beat, a violet phase blur + vignette + "PERFECT!" floater sells
+# the moment, the perfect_dodge_chime fires (renamed from the old
+# parry_chime in iter-247 audio.gd), and Events.hero_perfect_dodged
+# is emitted so BACKDRAFT (sub-commit 5) + VOW (called inline here)
+# can react.
+#
+# Bayonetta-style scope: full Engine.time_scale slow-mo. Slows the
+# hero too, but for 0.6s total — net-positive because the player
+# SEES they nailed it. A future polish pass could swap to "only
+# enemies slowed" via per-enemy time-scale, design §8 calls it out.
+func _trigger_perfect_dodge(source_pos: Vector2) -> void:
+	# Guard: don't fire if hero is dying. take_damage's hp <= 0 check
+	# above already early-returns, but a status-combo death could
+	# theoretically race; defensive zero-cost branch.
+	if _is_dying:
+		return
+	# Arm the buffer. _resolve_melee_strike reads + consumes.
+	_perfect_dodge_buffer = PERFECT_DODGE_BUFFER_TIME
+	# Slow-mo: hold scale 0.40 for PERFECT_DODGE_SLOWMO_HOLD seconds,
+	# then ease back to 1.0 over PERFECT_DODGE_SLOWMO_EASE. The tween
+	# runs on Engine.time_scale; we use TWEEN_PAUSE_PROCESS so the
+	# tween itself doesn't slow with the world. (NOTE: in Godot 4 the
+	# tween's process_mode defaults to inherit-from-tree, which IS
+	# affected by Engine.time_scale. set_pause_mode controls pause
+	# behavior, not time_scale; we'd want set_process_mode(IDLE) on a
+	# free-standing Timer to escape time_scale. For v1 the tween
+	# running at slow speed is fine — it just means the ease-back
+	# takes a real-world 0.75s instead of 0.30s, which actually feels
+	# good as a "snap-back" beat. If playtest dislikes, switch to a
+	# Timer-driven manual interp using `Time.get_ticks_msec()`.)
+	Engine.time_scale = PERFECT_DODGE_SLOWMO_SCALE
+	var slowmo_tw: Tween = create_tween()
+	slowmo_tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	slowmo_tw.tween_interval(PERFECT_DODGE_SLOWMO_HOLD)
+	slowmo_tw.tween_property(Engine, "time_scale", 1.0, PERFECT_DODGE_SLOWMO_EASE)
+	# Violet phase blur — spawn an afterimage tinted PERFECT_DODGE_TINT.
+	# Reuses _spawn_dash_afterimage's grammar (Sprite2D + tween) so we
+	# don't need a separate scene file. The phase blur fades over 0.25s.
+	_spawn_perfect_dodge_phase_blur()
+	# Violet vignette pulse — screen-edge wash signaling the moment.
+	# Reuse the existing screen_flash autoload's _flash with a violet
+	# color so the player gets a brief peripheral cue.
+	if ScreenFlash != null and ScreenFlash.has_method("_flash"):
+		ScreenFlash._flash(Color(0.55, 0.30, 0.95, 0.45), 0.40)
+	# "PERFECT!" floater above the hero.
+	var parent: Node = get_parent()
+	if parent != null:
+		var pf: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -72),
+			"PERFECT!",
+			PERFECT_DODGE_TINT,
+		)
+		parent.add_child(pf)
+	# Audio chime (perfect_dodge_chime — was hero_shielded in iter-95;
+	# renamed in iter-247).
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("perfect_dodge_chime", global_position, -2.0)
+	# Signal emit. Audio + screen_flash subscribers (iter-247) react;
+	# BACKDRAFT + VOW are wired in this function below so they don't
+	# rely on signal ordering.
+	Events.hero_perfect_dodged.emit(global_position)
+	# VOW ascendance payoff (heal +1 + reflect fan if tier 2 owned).
+	_perfect_dodge_vow_payoff()
+	# BACKDRAFT combo (burning enemy in range → flame burst). The
+	# function is the unchanged iter-215 implementation; we just call
+	# it from here now instead of from _on_shield_block.
+	_try_trigger_backdraft()
+
+# iter-250 — violet phase blur for perfect-dodge feedback. Snapshot of
+# the hero's current sprite frame, tinted PERFECT_DODGE_TINT, fades
+# alpha 0.65 → 0 over 0.25s. Parented to current_scene so it persists
+# in world space even if the hero moves on (mirrors the iter-29
+# afterimage pattern).
+func _spawn_perfect_dodge_phase_blur() -> void:
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+	var anim: StringName = sprite.animation
+	if not sprite.sprite_frames.has_animation(anim):
+		return
+	var tex: Texture2D = sprite.sprite_frames.get_frame_texture(anim, sprite.frame)
+	if tex == null:
+		return
+	var ghost: Sprite2D = Sprite2D.new()
+	ghost.texture = tex
+	ghost.global_position = global_position + sprite.position
+	ghost.scale = sprite.scale * 1.08
+	ghost.flip_h = sprite.flip_h
+	ghost.modulate = PERFECT_DODGE_TINT
+	ghost.z_index = -1
+	scene_root.add_child(ghost)
+	var tw: Tween = ghost.create_tween().set_parallel(true)
+	tw.tween_property(ghost, "modulate:a", 0.0, 0.25)
+	tw.tween_property(ghost, "scale", ghost.scale * 1.20, 0.25)
+	tw.chain().tween_callback(ghost.queue_free)
 
 # iter-247: VOW ascendance payoff for the perfect-dodge catch.
 # Pre-iter-247 this lived inline in _on_shield_block. Lifted to a
@@ -3300,6 +3519,10 @@ func _start_dash_strike() -> void:
 		aim_world = _dir_to_vector(_facing_dir)
 	_dash_strike_dir = aim_world.normalized()
 	_dash_strike_time = DASH_STRIKE_DURATION
+	# iter-250 — reset the perfect-dodge active-time counter. Counts UP
+	# from 0 during the dash; read in take_damage to detect catches in
+	# the last-PERFECT_DODGE_WINDOW seconds.
+	_dodge_active_time = 0.0
 	# Iter 215 — RIME_TRAIL combo arming (Phase 4 / SLOW + DASH-THROUGH).
 	# Re-armed each dash so the trail can fire at most once per dash
 	# regardless of how many enemies are sliced.

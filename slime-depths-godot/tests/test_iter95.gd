@@ -149,11 +149,19 @@ func _initialize() -> void:
 		print("OK damage_number banner: PARRY removed (iter-95); SHIELD floater removed in iter-247 catch refactor")
 
 	# ═══ Dash strike retuned + theme procs reanchored ═══
-	if not hero_src.contains("DASH_STRIKE_COOLDOWN := 0.9"):
-		push_error("FAIL: DASH_STRIKE_COOLDOWN not retuned to 0.9 (iter-95 aggression bump)")
+	# iter-95 originally pinned 0.9; iter-250 trimmed it further to 0.6
+	# alongside the perfect-dodge mechanic (more dodge attempts per
+	# engagement → more skill-expression). The regression guard is
+	# "no longer 1.4 (the iter-95 source it dropped from) AND not above
+	# 0.9 (the iter-95 ship value)" — both retunes survive this check.
+	if hero_src.contains("DASH_STRIKE_COOLDOWN := 1.4"):
+		push_error("FAIL: DASH_STRIKE_COOLDOWN reverted to 1.4 (iter-95 aggression bump lost)")
+		ok = false
+	elif not hero_src.contains("DASH_STRIKE_COOLDOWN := 0.6") and not hero_src.contains("DASH_STRIKE_COOLDOWN := 0.9"):
+		push_error("FAIL: DASH_STRIKE_COOLDOWN not at expected iter-95 (0.9) or iter-250 (0.6) value")
 		ok = false
 	else:
-		print("OK DASH_STRIKE_COOLDOWN trimmed to 0.9 (1.4 → 0.9 for aggressive feel)")
+		print("OK DASH_STRIKE_COOLDOWN current ship value (iter-95 0.9 → iter-250 0.6)")
 
 	# SHADOW shockwave + STORM pulse now fire from _start_dash_strike
 	# (the renamed functions). The dash_strike body should call both.
