@@ -159,6 +159,15 @@ var _claimed: bool = false
 # Per-tier tuning written by _apply_tier_visuals; consumed by _process.
 var _glow_energy_base: float = GLOW_ENERGY_BASE_COMMON
 var _bob_amplitude: float = BOB_AMP_COMMON
+# Iter 252 / Wave 2 lighting — breathing-pulse multiplier. A continuous
+# Tween in _ready cycles this 0.85 → 1.30 → 0.85 over 2.0 s (slow
+# ritual-chamber breath). _process multiplies the bob-modulated energy by
+# this so the breath layers ON TOP of the bob without fighting it. Held
+# at field scope so _claim can spike it briefly before the queue_free
+# fade-out tween takes over. The actual visible energy at any instant is:
+#   glow.energy = (_glow_energy_base + bob_phase * 0.25) * _breathing_mul.
+var _breathing_mul: float = 1.0
+var _breathing_tween: Tween = null
 # Refs to optional tier effect children so _claim/_dismiss can dim them
 # alongside the orb. Both are null on a common pedestal.
 var _rare_ring: Line2D = null
@@ -254,6 +263,27 @@ func _ready() -> void:
 	# matching the SoundCloud/wave-clear timing matters more than
 	# choreographing the three.
 	_play_rise_in_animation()
+	# Iter 252 / Wave 2 lighting — start the slow gold breathing pulse so
+	# the pedestal reads as a lit ritual focus from across a dark room.
+	# Layered on top of the bob-driven energy ripple in _process via
+	# _breathing_mul (see field comment + _process docstring).
+	_start_breathing_pulse()
+
+# Iter 252 / Wave 2 lighting — slow continuous pulse (2.0 s cycle) on the
+# breathing multiplier. Tween held at field scope so _claim can kill it
+# before spiking energy on pickup. Loops infinite while the pedestal is
+# unclaimed; cleared in _claim / _dismiss before the outro tween.
+func _start_breathing_pulse() -> void:
+	if _breathing_tween != null and _breathing_tween.is_valid():
+		_breathing_tween.kill()
+	_breathing_tween = create_tween().set_loops()
+	# 0.85 → 1.30 → 0.85 over 2.0 s. Range chosen so the breath is felt
+	# but doesn't flicker — same rate-of-change a sleeping creature's
+	# chest follows.
+	_breathing_tween.tween_property(self, "_breathing_mul", 1.30, 1.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_breathing_tween.tween_property(self, "_breathing_mul", 0.85, 1.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _play_rise_in_animation() -> void:
 	modulate.a = 0.0
@@ -281,7 +311,12 @@ func _process(delta: float) -> void:
 		halo_sprite.position.y = bob_y
 	if glow != null:
 		glow.position.y = bob_y
-		glow.energy = _glow_energy_base + bob_phase * 0.25
+		# Iter 252 — layered modulation: tier base + bob ripple + slow
+		# breathing pulse (driven by _breathing_tween started in _ready).
+		# All three signals are multiplicative on the underlying tier base,
+		# so a LEGENDARY breath swells dramatically while COMMON breathes
+		# subtly — rarity stays legible at every phase of the cycle.
+		glow.energy = (_glow_energy_base + bob_phase * 0.25) * _breathing_mul
 	# Iter 178 — orb shadow shrinks/grows inverse to bob: when the orb
 	# lifts (bob_phase < 0 in our sin sign convention here means UP
 	# since y goes more-negative when bob_phase is negative — orb.y
@@ -699,6 +734,17 @@ func _claim() -> void:
 	# delete the pedestal. Disable collision immediately so a queued
 	# interact doesn't double-trigger.
 	monitoring = false
+	# Iter 252 / Wave 2 lighting — kill the breathing pulse and spike the
+	# light briefly so the claim moment reads as a flash of acknowledgment
+	# before the pedestal recedes. The 0.35s tween below fades glow.energy
+	# to 0 starting from this elevated spike value (1.5× tier base) — the
+	# player sees a bright flare → dim → gone. _process won't overwrite
+	# the glow during the fade because _claimed is set TRUE at the top of
+	# this function and _process early-returns on _claimed.
+	if _breathing_tween != null and _breathing_tween.is_valid():
+		_breathing_tween.kill()
+	if glow != null:
+		glow.energy = _glow_energy_base * 1.5
 	var tween: Tween = create_tween().set_parallel(true)
 	tween.tween_property(orb, "scale", orb.scale * 1.8, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(orb, "modulate:a", 0.0, 0.35)
@@ -742,6 +788,13 @@ func _dismiss() -> void:
 	_claimed = true
 	prompt.visible = false
 	monitoring = false
+	# Iter 252 / Wave 2 lighting — stop the breathing pulse so the
+	# dismissed pedestal recedes cleanly. Without this, the looped tween
+	# keeps writing _breathing_mul each frame; _process early-returns on
+	# _claimed so it wouldn't reach glow.energy anyway, but killing the
+	# tween is cheap and keeps the tween bank clean for GC.
+	if _breathing_tween != null and _breathing_tween.is_valid():
+		_breathing_tween.kill()
 	var tween: Tween = create_tween().set_parallel(true)
 	tween.tween_property(orb, "modulate:a", 0.0, 0.45)
 	tween.tween_property(glow, "energy", 0.0, 0.45)

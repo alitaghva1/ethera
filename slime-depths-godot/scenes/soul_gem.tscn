@@ -1,12 +1,45 @@
-[gd_scene load_steps=2 format=3 uid="uid://b3soulgem00001"]
+[gd_scene load_steps=4 format=3 uid="uid://x5w5jolyr0vs"]
 
 ; iter-242 / Loop Tightening LEVER 1 — soul gem scene.
 ; Pure Node2D wrapper for scripts/soul_gem.gd; the script builds the
 ; Polygon2D children procedurally at _ready (8-px shapes are cheaper to
 ; author in code than as sub-resources here). No textures, no shaders —
 ; this is the smallest possible per-kill collectible.
+;
+; Iter 252 / Wave 2 lighting — added a small violet PointLight2D so each
+; gem ACTUALLY emits light onto the dungeon floor as it streams toward
+; the hero. Energy 0.5 keeps a single gem subtle; many gems on screen
+; (Vampire Survivors moment) read as a beautiful violet streamer toward
+; the player. texture_scale 0.3 ≈ 38 px effective light radius.
 
 [ext_resource type="Script" path="res://scripts/soul_gem.gd" id="1_script"]
 
+; Soft radial light texture for the PointLight2D. Same recipe used in
+; projectile.tscn / pedestal.tscn — radial gradient → white-center
+; falloff alpha. Color modulation is applied via PointLight2D.color
+; below so this texture can be reused if needed.
+[sub_resource type="Gradient" id="gem_light_grad"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="gem_light_tex"]
+gradient = SubResource("gem_light_grad")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
 [node name="SoulGem" type="Node2D"]
 script = ExtResource("1_script")
+
+; PointLight2D — small bright violet matching the gem polygon color
+; (Polygon2D 0.80, 0.55, 1.0 from soul_gem.gd::_ready). Energy 0.5 is
+; deliberately subtle: a single gem casts a soft pool, but Vampire-
+; Survivors-style kill bursts (5-15 gems at once) compound into a
+; violet streamer leading the player's eye.
+[node name="PointLight2D" type="PointLight2D" parent="."]
+color = Color(0.8, 0.55, 1, 1)
+energy = 0.5
+texture = SubResource("gem_light_tex")
+texture_scale = 0.3

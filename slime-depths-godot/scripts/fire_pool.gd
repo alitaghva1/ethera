@@ -33,8 +33,16 @@ var _next_hit: Dictionary = {}
 var _fading: bool = false
 
 var _disc: Polygon2D = null
+# Iter 252 / Wave 2 lighting — _glow now resolves to the PointLight2D
+# defined inside fire_pool.tscn (was code-built before). Held as a
+# nullable so test harnesses that instantiate the script in isolation
+# (without the scene tree) still execute without crashing on the cast.
 var _glow: PointLight2D = null
 var _pulse: Polygon2D = null
+# Iter 252 — baseline energy for the flicker. Captured at _ready time so
+# tier scaling / future overrides can bump the pool brightness without
+# changing the flicker amplitude separately.
+var _flicker_base_energy: float = 1.1
 # Iter-readability: small ember dots that scatter ON TOP of the pool
 # and pulse asynchronously — sells "actively burning fuel" rather than
 # a flat decal. Three pips at different offsets, each driven by its own
@@ -99,16 +107,25 @@ func _build_visuals() -> void:
 	_ember_a = _make_ember(Vector2(-7, 4))
 	_ember_b = _make_ember(Vector2(8, -6))
 	_ember_c = _make_ember(Vector2(2, 9))
-	# Light — warm orange. Modest energy so a single pool doesn't
-	# dominate, but a CARPET of pools turns the floor orange (the
-	# desired bullet-hell aesthetic).
-	_glow = PointLight2D.new()
-	_glow.energy = 0.8
-	_glow.texture_scale = 0.9
-	_glow.color = Color(1.0, 0.55, 0.25, 1.0)
-	_glow.range_z_min = -1024
-	_glow.range_z_max = 1024
-	add_child(_glow)
+	# Iter 252 / Wave 2 lighting — PointLight2D now lives in fire_pool.tscn
+	# (warm orange, energy 1.1 baseline, texture_scale 0.8 → ~102 px radius).
+	# Query the scene node; falls back to a code-built light only if the
+	# scene node is missing (defensive — test harness or future refactor).
+	_glow = get_node_or_null("PointLight2D") as PointLight2D
+	if _glow == null:
+		# Fallback: scene tree didn't carry one. Build a comparable light
+		# in code so the test harness / isolation scenarios still glow.
+		_glow = PointLight2D.new()
+		_glow.energy = 1.1
+		_glow.texture_scale = 0.8
+		_glow.color = Color(1.0, 0.62, 0.28, 1.0)
+		_glow.range_z_min = -1024
+		_glow.range_z_max = 1024
+		add_child(_glow)
+	# Snapshot the baseline energy so the flicker in _physics_process can
+	# oscillate around it (and the fade-out tween's final value of 0 is
+	# computed from the same number).
+	_flicker_base_energy = _glow.energy
 
 # Small bright-yellow ember pip. Shared shape so the three embers are
 # visually consistent (just at different positions / phases).
@@ -157,8 +174,21 @@ func _physics_process(delta: float) -> void:
 	if _disc != null:
 		_disc.modulate.a = fade_t
 		_disc.scale = Vector2(0.72 + 0.28 * fade_t, 0.72 + 0.28 * fade_t)
+	# Iter 252 / Wave 2 lighting — flicker the light each frame so the
+	# pool reads as ACTIVE flame, not a static decal. sin-driven 15%
+	# amplitude around baseline gives a subtle crackle (0.85×–1.15×).
+	# In the fade window (_life < 0.6) the flickered value also scales by
+	# fade_t so the light dims with the disc instead of clipping at full
+	# energy until the queue_free callback. Time.get_ticks_msec is the
+	# canonical clock — survives time_scale changes by the slow-mo system
+	# the way delta-based accumulation wouldn't.
 	if _glow != null:
-		_glow.energy = 0.8 * (fade_t * 0.6 + 0.4)
+		var flicker_phase: float = Time.get_ticks_msec() * 0.02
+		var flicker_mul: float = 1.0 + sin(flicker_phase) * 0.15
+		var target_energy: float = _flicker_base_energy * flicker_mul
+		if _life < 0.6:
+			target_energy *= (fade_t * 0.6 + 0.4)
+		_glow.energy = target_energy
 	# In the final 0.6s, the embers cluster INWARD as fuel runs out —
 	# tween-style scale-down on their positions (cheap to recompute).
 	if _life < 0.6:

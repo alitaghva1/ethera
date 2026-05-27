@@ -65,11 +65,18 @@ texture = SubResource("orb_tex")
 modulate = Color(1, 0.55, 1, 1)
 scale = Vector2(1.4, 1)
 
+; Iter 252 — Wave 2 lighting pass. texture_scale 0.7 → 1.05 (+50%) and
+; baseline energy bumped (was 1.6 already meeting the 0.9 minimum, kept).
+; Effective light radius ≈ 128 px × 1.05 / 2 ≈ 67 px on baseline; with
+; damage scaling and orb_tint override (set in projectile.gd::_ready),
+; bright violet streaks visibly LIGHT a dark corridor as the orb flies.
+; color stays violet as the static default — projectile.gd overrides it
+; from orb_tint per-cast so crit-gold / resonance-cyan flow through.
 [node name="PointLight2D" type="PointLight2D" parent="."]
-color = Color(1, 0.6, 1, 1)
+color = Color(0.78, 0.55, 1, 1)
 energy = 1.6
 texture = SubResource("light_tex")
-texture_scale = 0.7
+texture_scale = 1.05
 
 ; Iter 154 — projectile motion trail. Pre-iter-154 the orb just streaked
 ; in a straight line with no visible "tail" — felt floaty/uncommitted,
