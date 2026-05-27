@@ -34,6 +34,14 @@ const SAMPLE_RATE := 22050    # 22.05 kHz mono. Enough fidelity for short SFX
 const SOUND_CONFIGS := {
 	# Combat — hero side
 	"hero_swing":    { "freq_start": 620.0, "freq_end": 220.0, "duration": 0.09, "wave": "sin",    "gain": 0.40, "decay_pow": 1.6 },
+	# iter-248 — HEAVY combo hit 3 layered swoosh. Deeper pitch sweep
+	# (380→140 Hz vs the regular 620→220) over a longer 160ms duration.
+	# Plays LAYERED on top of the regular hero_swing (which fires from
+	# Events.hero_attacked) so the heavy reads as "regular swing PLUS a
+	# weighty thwack" — matches Hades' Aegis heavy strike audio grammar.
+	# Sine for musicality, decay_pow 1.4 for a slightly longer "follow-
+	# through" tail than the snappy regular swing.
+	"hero_swing_heavy": { "freq_start": 380.0, "freq_end": 140.0, "duration": 0.16, "wave": "sin", "gain": 0.55, "decay_pow": 1.4 },
 	"hero_blasted":  { "freq_start": 820.0, "freq_end": 160.0, "duration": 0.18, "wave": "sin",    "gain": 0.45, "decay_pow": 1.8 },
 	# iter-95: was "hero_dodged" — dodge ability deleted, sound played
 	# on the SHIELD raise + catch beats via the renamed hero_shielded signal.

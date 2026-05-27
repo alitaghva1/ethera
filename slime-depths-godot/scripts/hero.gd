@@ -55,6 +55,46 @@ const ATTACK_ARC         := PI * 0.55
 # `_attack_cd <= 0`).
 const ATTACK_COOLDOWN    := 0.18
 const ATTACK_SWING_TIME  := 0.18
+
+# iter-248 — 3-HIT SWORD COMBO state machine. Per ETHERA_COMBAT_DESIGN.md §2.
+#
+# The combo: jab-jab-HEAVY. Hits 1 and 2 are the existing fast jabs
+# (0.10 startup, 0.08 active, 0.16 recovery — 0.34s total, damage = base).
+# Hit 3 is COMMITTED: 0.20 startup, 0.10 active, 0.32 recovery (0.62s total),
+# damage = base × 2, knockback × 1.5, NOT cancellable except into dodge.
+#
+# Implementation: instead of overhauling _attack_cd / _attack_live (which
+# would ripple through enemy projectile timing + swing-connected wiring),
+# we LAYER combo state on top — _combo_index (0/1/2) tracks which hit
+# is in flight, _combo_window_timer (0.5s) is the post-hit chain window.
+# _start_attack reads _combo_index to pick startup / active / recovery /
+# damage-mul / knockback-mul for THIS swing. After _resolve_melee_strike,
+# the window timer is set; if a new attack press comes inside the window
+# AND _combo_index < 2, increment; else reset to 0.
+#
+# Hit 3 also sets a `_combo_committed` flag during its recovery so the
+# input precedence in _physics_process knows to disallow blast/attack
+# cancellation (only DODGE can break out — the design's "committed
+# heavy" feel).
+#
+# Pre-iter-248 _attack_cd = 0.18 / _attack_live = 0.18 covered ALL hits.
+# Now _attack_live is set per hit (covers startup+active) and _attack_cd
+# is the recovery; both vary by combo index.
+const COMBO_WINDOW: float = 0.50
+const COMBO_RESET_TIMER_MAX: int = 2  # 0, 1, 2 — max index is 2 (heavy)
+
+# Per-hit frame data. Index 0/1 = jab, index 2 = HEAVY.
+#   startup       = time from press to damage scan (MELEE_WINDUP override)
+#   active        = duration _is_attacking stays true after start
+#   recovery      = time until next attack can press (cd value)
+#   damage_mul    = multiplier on base sword damage
+#   knockback_mul = multiplier on melee knockback force
+const COMBO_HIT_STARTUP:       Array[float] = [0.10, 0.10, 0.20]
+const COMBO_HIT_ACTIVE:        Array[float] = [0.08, 0.08, 0.10]
+const COMBO_HIT_RECOVERY:      Array[float] = [0.16, 0.16, 0.32]
+const COMBO_HIT_DAMAGE_MUL:    Array[float] = [1.0,  1.0,  2.0]
+const COMBO_HIT_KNOCKBACK_MUL: Array[float] = [1.0,  1.0,  1.5]
+
 const MAX_HP             := 3
 
 # iter-95: DODGE_* constants removed. The dodge ability is gone — the
@@ -348,6 +388,15 @@ var _attack_cd := 0.0
 var _attack_live := 0.0
 var _attack_aim := Vector2.RIGHT
 var _is_attacking := false
+
+# iter-248 — 3-HIT COMBO state. _combo_index is 0..2 (jab, jab, HEAVY).
+# Increments on every _start_attack while _combo_window_timer > 0 (i.e.
+# inside the 0.5s chain window after the previous hit). Resets to 0 on
+# combo_window timeout. _combo_committed locks out non-dodge cancels
+# during heavy-hit recovery.
+var _combo_index: int = 0
+var _combo_window_timer: float = 0.0
+var _combo_committed: bool = false  # true during heavy-hit (combo_index==2) recovery
 
 # Iter 201 — active relic cooldown timer. Decrements each frame; while
 # > 0 the active relic input is gated. Reset to ACTIVE_RELIC_COOLDOWN
@@ -715,6 +764,18 @@ func _physics_process(delta: float) -> void:
 	_blast_cd         = max(0.0, _blast_cd         - delta)
 	# iter-247: _shield_time / _shield_cd decrements removed. _shield_cd
 	# stays at 0 (stub for HUD chip; main.gd reads it).
+	# iter-248: combo window decrements alongside the other attack timers.
+	# When it hits 0, _combo_index resets — see below for the reset block.
+	_combo_window_timer = max(0.0, _combo_window_timer - delta)
+	if _combo_window_timer <= 0.0 and _combo_index > 0 and not _is_attacking and _attack_cd <= 0.0:
+		# Window expired and no in-flight swing — reset the combo so the
+		# next press starts a fresh jab. The "and not _is_attacking"
+		# guard prevents reset during the windup/active phase of an
+		# in-flight strike; we wait for _attack_cd (the recovery) to
+		# also expire so the player's "next press" feels like a clean
+		# new combo.
+		_combo_index = 0
+		_combo_committed = false
 	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
 	_hurt_time        = max(0.0, _hurt_time        - delta)
 	# iter-97: _lunge_time gone. _blast_facing_time decays here so sprite
@@ -982,13 +1043,22 @@ func _physics_process(delta: float) -> void:
 	# below (off the if/elif chain because it should fire from any state).
 	# Combat now has 4 verbs: SWORD / BLAST / DODGE (dash_strike) / ACTIVE
 	# relic — same as the ETHERA_COMBAT_DESIGN.md spec.
-	# (Sword 3-hit combo + perfect-dodge detection land in sub-commits
-	# 2 / 4; this commit's mandate is removing the parry layer.)
+	#
+	# iter-248 — HEAVY HIT (combo_index == 2) is COMMITTED: only DODGE can
+	# interrupt its recovery. The `_combo_committed` flag is set in
+	# _start_attack when the heavy fires; it stays true until the heavy's
+	# recovery ends (cleared when _attack_cd hits 0 in the next branch
+	# below or by combo_window timeout reset).
 	if Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
 		_start_dash_strike()
-	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0:
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0 and not _combo_committed:
 		_start_blast()
 	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and _dash_strike_time <= 0.0:
+		# (No _combo_committed guard here — _attack_cd already gates this
+		# to the end of the heavy's recovery. The next press will start
+		# the next combo, which is fine; if the player chained press
+		# during heavy recovery they'd get the next press converted to
+		# combo index 0 since the window expired.)
 		_start_attack()
 	# Iter 201 — active relic input. Outside the if/elif chain because
 	# active relic should be triggerable mid-swing / mid-blast (it's
@@ -1067,8 +1137,35 @@ func _start_attack() -> void:
 	if aim_world.length() < 1.0:
 		aim_world = _dir_to_vector(_facing_dir)
 	_attack_aim = aim_world.normalized()
-	_attack_cd = ATTACK_COOLDOWN * (1.0 + GameState.modifier_total_f("sword_cooldown_mul", 0.0))
-	_attack_live = ATTACK_SWING_TIME
+	# iter-248 — 3-HIT COMBO advance. If the chain window is still open
+	# AND we haven't yet hit the heavy (index 2), advance the index. Else
+	# start fresh at index 0. The window timer is set in
+	# _resolve_melee_strike AFTER the hit lands (so a whiff doesn't
+	# advance the combo — feels more natural and matches Hades).
+	# Note: on the VERY FIRST press of a fresh combo (window timer at 0
+	# from cold state), this branch goes to the else and starts at 0 —
+	# correct behavior.
+	if _combo_window_timer > 0.0 and _combo_index < COMBO_RESET_TIMER_MAX:
+		_combo_index += 1
+	else:
+		_combo_index = 0
+	var startup: float       = COMBO_HIT_STARTUP[_combo_index]
+	var active_time: float   = COMBO_HIT_ACTIVE[_combo_index]
+	var recovery: float      = COMBO_HIT_RECOVERY[_combo_index]
+	# iter-248 — heavy hit (index 2) is committed: only DODGE can break
+	# the recovery. Flag read in the input precedence chain (further down
+	# in _physics_process). Lower hits do NOT set this flag, so cancel
+	# rules for them are unchanged from pre-iter-248 behavior.
+	_combo_committed = (_combo_index == 2)
+	# _attack_live covers startup + active (the period during which the
+	# slash arc is visible + _is_attacking gates the "attack" anim
+	# branch). For hit 3 this is 0.30s; for hits 1/2 it's 0.18s.
+	_attack_live = startup + active_time
+	# _attack_cd is the RECOVERY — minimum time before the next attack
+	# input can fire. For hit 3 it's 0.32s, for hits 1/2 it's 0.16s.
+	# sword_cooldown_mul still applies (relic-driven). Cap floor at the
+	# raw recovery so a -1.0 mod can't go negative.
+	_attack_cd = max(recovery, recovery * (1.0 + GameState.modifier_total_f("sword_cooldown_mul", 0.0)))
 	_is_attacking = true
 	_facing_dir = _vector_to_dir_idx(_attack_aim)
 	sprite.frame = 0
@@ -1078,6 +1175,13 @@ func _start_attack() -> void:
 	# damage lands when the arc has visibly extended; the swing reads
 	# as a real motion arc instead of a hit-marker.
 	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
+	# iter-248 — heavy hit (index 2) plays a layered deeper swoosh on
+	# top of the regular hero_swing. Synthesized at audio.gd startup as
+	# "hero_swing_heavy" (lower-pitch sine sweep). The base hero_swing
+	# fires via the Events.hero_attacked subscriber above; we layer the
+	# heavy variant inline since there's no dedicated signal.
+	if _combo_index == 2 and Audio != null and Audio.has_method("_play"):
+		Audio._play("hero_swing_heavy", global_position, -2.0)
 	# iter-97: lunge arming removed. The forward impulse is gone — see
 	# the ATTACK_MOVE_SPEED_MUL block in _physics_process for the
 	# replacement "committed stance" feel.
@@ -1088,7 +1192,19 @@ func _start_attack() -> void:
 	_pending_melee_aim = _attack_aim
 	_pending_melee_range = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
 	_pending_melee_strike = true
-	_melee_strike_timer = MELEE_WINDUP
+	# iter-248 — startup time replaces the constant MELEE_WINDUP. For hits
+	# 1/2 this is 0.10s (slightly slower than the old 0.06 — players need
+	# the extra frames to read the combo state visually). For hit 3 it's
+	# 0.20s (the heavy "wind up the swing" feel).
+	_melee_strike_timer = startup
+	# iter-248 — blade glow tint by combo state. Player SEES which hit
+	# is about to fire so they can read the chain. Hit 0 = white (normal
+	# anim), hit 1 (after one jab) = amber, hit 2 (heavy windup) = red.
+	# We modulate the sprite's color very subtly — too bright would
+	# overwhelm the iframe tint. Tint resets to white when the combo
+	# ends + the iframe branch wins again. Applied AFTER _play_anim so
+	# the playing animation keeps these tint values.
+	_apply_combo_blade_tint()
 	# Iter 66 — lock the BLOOD theme tier at swing-time. Reading the tier
 	# again at hit-time would let a relic gained between press and resolve
 	# retroactively proc lifesteal on the in-flight swing — same locking
@@ -1096,6 +1212,29 @@ func _start_attack() -> void:
 	# projectiles. Re-reads each swing, so claiming the relic mid-room
 	# still procs on subsequent swings.
 	_pending_blood_tier = GameState.theme_tier("blood")
+
+# iter-248 — blade glow tint helper. Applied at swing-start; the iframe
+# branch in _physics_process overrides on hit, so this only "wins" while
+# the hero is actively swinging without iframes (which is the common
+# case during chain combos).
+const COMBO_TINT_HIT1: Color = Color(1.0, 0.95, 0.80, 1.0)  # faint amber for hit 2 anticipation
+const COMBO_TINT_HIT2: Color = Color(1.0, 0.65, 0.30, 1.0)  # warm orange for HEAVY windup
+func _apply_combo_blade_tint() -> void:
+	# Note: the modulate is OVERWRITTEN every physics_process tick by the
+	# iframe-or-shield branch. So the tint really only reads on the
+	# specific frame _start_attack is called (sprite.frame = 0 above
+	# triggers a fresh _play that the modulate decoration rides on).
+	# That's fine for a brief swing tell — the player gets a 1-frame
+	# colored "spark" at swing start that reads as "this hit will be
+	# stronger." A more persistent tint would need a sticky var
+	# (TODO: future polish if playtest agrees a longer tint helps).
+	if sprite == null:
+		return
+	if _combo_index == 1:
+		sprite.modulate = COMBO_TINT_HIT1
+	elif _combo_index == 2:
+		sprite.modulate = COMBO_TINT_HIT2
+	# Hit 0 — leave modulate alone (white default).
 
 # Damage scan deferred from _start_attack by MELEE_WINDUP. Hit pizza-
 # slice in front of the hero: any enemy within _pending_melee_range
@@ -1157,8 +1296,14 @@ func _roll_slow() -> bool:
 
 func _resolve_melee_strike() -> void:
 	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# iter-248 — apply per-combo-index damage multiplier. Index 0/1 = 1.0
+	# (base), index 2 = 2.0 (HEAVY). This multiplies the base+bonus stack
+	# so a +1 sword_damage_bonus on hit 3 gives (1+1)*2 = 4 damage, not
+	# 1+1*2 = 3. The design ("damage = base × 2, scales with
+	# sword_damage_bonus") confirms multiply-after-bonus.
+	damage = int(round(float(damage) * COMBO_HIT_DAMAGE_MUL[_combo_index]))
 	# Iter 213 — BLOOD TITHE multiplier. +50 % during the buff window.
-	# Applied AFTER relic mods so it scales the full stick.
+	# Applied AFTER relic mods + combo mul so it scales the full stick.
 	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
 	# Iter 21 — relic-driven modifiers:
 	#   wide_arc      widens the cone (attack_arc_mul)
@@ -1167,7 +1312,11 @@ func _resolve_melee_strike() -> void:
 	#   executioner   +150% damage to enemies below 25% HP (per-enemy check
 	#                 inside the loop, since each enemy has its own ratio)
 	var arc_actual: float = ATTACK_ARC * (1.0 + GameState.modifier_total_f("attack_arc_mul", 0.0))
-	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	# iter-248 — combo-index knockback multiplier ON TOP OF the relic
+	# knockback_force_mul. Heavy hit (index 2) gets 1.5× extra. Stacks
+	# multiplicatively with iron_grip + the dash-strike knockback path
+	# (which uses its own DASH_KNOCKBACK_FORCE constant).
+	var knockback_mul: float = (1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)) * COMBO_HIT_KNOCKBACK_MUL[_combo_index]
 	var has_chain: bool = GameState.has_relic("chain_lightning")
 	var has_execute: bool = GameState.has_relic("executioner")
 	var hit_count: int = 0
@@ -1300,6 +1449,17 @@ func _resolve_melee_strike() -> void:
 		# lights enemies directly) for layered FLAME pressure.
 		if GameState.theme_tier("flame") >= 2:
 			_trigger_swing_fire_trail()
+	# iter-248 — arm the combo chain window. Fires whether or not the
+	# swing connected (a whiff still counts as a "press" for chaining;
+	# Hades does this too — it'd feel bad if a swing past a moving enemy
+	# silently breaks the chain). The window decrements in
+	# _physics_process; if a new attack press lands before it expires
+	# AND _combo_index < 2, the next hit advances. If it expires, the
+	# combo resets at the next press.
+	# Hit 3 (heavy) also gets the window set, but since _combo_index
+	# can't advance past 2 (clamped in _start_attack), the next press
+	# will reset the chain anyway — visually feels like a clean restart.
+	_combo_window_timer = COMBO_WINDOW
 
 # Iter 61 — drop a brief fire pool at the position the sword swung to.
 # Uses the existing FIRE_POOL_SCENE but with a shorter _life (0.6s)
