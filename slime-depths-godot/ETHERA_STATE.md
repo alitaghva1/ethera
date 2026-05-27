@@ -4,8 +4,35 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
-Date of snapshot: 2026-05-20 (iter-239 = 4-team sprint Round 4 complete)
-Branch: `claude/wizard-kit-sprint-3` @ commit `faad364` (55 commits ahead of `main`)
+Date of snapshot: 2026-05-20 (iter-242 = Loop Tightening sprint complete)
+Branch: `claude/wizard-kit-sprint-3` @ commit `aa9665e` (60 commits ahead of `main`)
+
+**Loop Tightening Sprint (iter-242)**:
+After the user identified that "we have a lot for the player to use but a
+lot feels mid; that core loop doesnt feel good/tight," parallel diagnosis
++ research agents profiled our loop and surveyed VS / BoI / Hades / RoR2
+/ Dead Cells. Synthesis: "content is there; pace between content is what's
+killing it." 5 levers shipped in iter-242 (`aa9665e`):
+
+  • **L1 — Per-kill soul gems + always-visible kill counter** (VS reward-
+    heartbeat pattern). Each enemy death spawns a violet diamond that
+    flies to hero, bumping `☠ N` in the HUD with audio blip. Milestones
+    at 5/10/25/50/100 flash gold + ring chime.
+  • **L2 — Compress room intro** (1.95s UI ceremony → 0.6s). INITIAL_
+    WAVE_DELAY 0.6→0.2; ROOM_BANNER_HOLD 1.5→0.6; first wave overlaps
+    banner fade-out.
+  • **L3 — Compress wave clear + warp door to pedestal**. WAVE_CLEAR_
+    PAUSE 0.9→0.3. Single-door rooms now spawn the door 40 px east of
+    the LAST claimed pedestal, eliminating the 2.5s walk-to-east-wall
+    dead time. Branch doors keep east-edge positions (DAG integrity).
+  • **L4 — Tier-differentiated pickup audio**. Common chime / rare
+    2-note rise / legendary 4-step arpeggio / mythic wash (existing).
+    94% of pickups now audibly distinct vs. pre-iter-242 uniform tone.
+  • **L5 — Sword swing-cancel** (Hades cancel + Dead Cells input buffer
+    pattern). ATTACK_COOLDOWN 0.40 → 0.18 — re-trigger LMB at ~45%
+    through prior swing for snappy mash feel without anim lock.
+
+Tests +2 (test_iter242_soul_gem.gd, test_iter242_loop_constants.gd).
 
 **Round 4 (iter-236..239)**:
   • Bug Team R4 (iter-236): shipped the long-deferred shared enemy
