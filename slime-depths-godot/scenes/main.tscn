@@ -154,7 +154,7 @@ text = ""
 offset_left = 20.0
 offset_top = 12.0
 offset_right = 240.0
-offset_bottom = 52.0
+offset_bottom = 58.0
 theme_override_constants/separation = 6
 mouse_filter = 2
 
@@ -168,9 +168,9 @@ mouse_filter = 2
 ; glance at, not gameplay-critical info you need lit constantly.
 [node name="RoomProgressLabel" type="Label" parent="UI"]
 offset_left = 20.0
-offset_top = 50.0
+offset_top = 56.0
 offset_right = 240.0
-offset_bottom = 72.0
+offset_bottom = 78.0
 theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 11
 theme_override_colors/font_color = Color(0.62, 0.66, 0.72, 0.50)
@@ -193,9 +193,9 @@ text = "ROOM 1 / 6"
 ; HEARTS → ROOM → STATUS clean top-to-bottom.
 [node name="StatusLabel" type="Label" parent="UI"]
 offset_left = 20.0
-offset_top = 78.0
+offset_top = 84.0
 offset_right = 520.0
-offset_bottom = 102.0
+offset_bottom = 108.0
 theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 0.80)
@@ -235,26 +235,38 @@ text = ""
 horizontal_alignment = 1
 vertical_alignment = 1
 
-; ── RIGHT — wave only. KillsLabel hidden during gameplay (it lives on
-; for the death screen which reads _kills directly from main.gd).
+; ── KillsLabel: ON THE SAME ROW as hearts (iter-245 Director Phase 3) ──
 ;
-; Iter-124 originally hid this chip because a live kill counter felt like
-; visual noise. iter-242 / Loop Tightening — flipped back on. With per-kill
-; soul gems flying to the hero, the player needs a visible target for "this
-; tick of feedback added to a thing." Hades / VS / Isaac all surface a
-; persistent count of the per-kill collectible — Ethera now matches that
-; loop grammar. Re-styled at top-LEFT (not the old top-right slot, which
-; is now WaveLabel + RunTimer territory) with a skull glyph + smaller font
-; so it reads as a peripheral chip, not a competing center-screen number.
+; History: iter-124 hid this chip (felt like visual noise). iter-242 / Loop
+; Tightening flipped it back on at top-LEFT under the room banner. iter-245
+; / Director Phase 3 follow-up: the audit flagged that hearts + skull
+; counter + room label + relic strip + reaction web all stacked vertically
+; in the LEFT scan zone made the left HUD a wall of stamped info and the
+; right side empty (asymmetric clutter). The fix is to put the kill counter
+; INLINE with the hearts on a single tight row — hearts (now +20% larger
+; per iter-245 #1) at x=20, then an 8px gap, then "☠ N". The HBoxContainer
+; nature of HeartRow + this label's anchor offset puts them visually on
+; the same horizontal beat without a structural .tscn rewrite (we just
+; bump KillsLabel's y so it lines up with the heart row's vertical center
+; and shift its x so it begins right after the heart row's right edge).
+;
+; Concretely: HeartRow starts at x=20 y=12. With HEART_PIP_SIZE now 36 and
+; up to 8 hearts visible at 6 px separation, the row extends to roughly
+; x=20 + (36*8) + (6*7) ≈ x=350 at max. Most runs cap at 5 hearts (basal
+; HP=5), so the typical row ends around x=20 + (36*5) + (6*4) ≈ x=224.
+; We anchor the kill label at x=240 (start of the safe "after hearts"
+; zone) and let it grow rightward. The font_size bump from 14 → 16 keeps
+; the chip readable next to the larger pips. Color unchanged (mauve so the
+; soul-gem flow theme reads), outline unchanged.
 [node name="KillsLabel" type="Label" parent="UI"]
 anchors_preset = 1
 anchor_left = 0.0
 anchor_right = 0.0
-offset_left = 20.0
-offset_top = 80.0
-offset_right = 200.0
-offset_bottom = 104.0
-theme_override_font_sizes/font_size = 14
+offset_left = 240.0
+offset_top = 18.0
+offset_right = 380.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.86, 0.78, 1.0, 0.92)
 theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.10, 0.92)
 theme_override_constants/outline_size = 1
@@ -371,30 +383,40 @@ vertical_alignment = 1
 ; floor 1), the strip is literally empty space — invisible.
 [node name="RelicStrip" type="HBoxContainer" parent="UI"]
 offset_left = 20.0
-offset_top = 76.0
+offset_top = 82.0
 offset_right = 480.0
-offset_bottom = 116.0
+offset_bottom = 122.0
 theme_override_constants/separation = 4
 mouse_filter = 1
 
-; Iter 204 — Active-relic cooldown chip. Hidden by default; main.gd
-; _update_active_relic_label makes it visible when the hero owns
-; SOUL SURGE (or any future active relic) and renders the cooldown
-; state. Hades cast-charge readability — player knows when R is
-; ready. Position just under the relic strip in the same top-left
-; column.
+; Iter 204 — Active-relic cooldown chip. iter-245 / Director Phase 3 —
+; RELOCATED to the top-RIGHT cluster (was top-LEFT under relic strip).
+; The director audit flagged the left side as overloaded (hearts + skull +
+; room + relic strip + reaction web all stacked there) while the right
+; side was empty. Active relic + ability cooldowns + reaction web now
+; form a clean top-right vertical stack with 6 px separation between
+; groups, mirroring Hades' boon display pattern. Right-edge alignment at
+; viewport-right - 24 px (offset_right = -24, offset_left = -244).
+;
+; visibility = true by default — iter-245 #4 changes the no-active-owned
+; render from "hidden" to "[R] —" placeholder at 0.45 alpha so the player
+; learns the keybind exists even before they pick up their first active.
 [node name="ActiveRelicLabel" type="Label" parent="UI"]
-visible = false
-offset_left = 20.0
-offset_top = 122.0
-offset_right = 240.0
-offset_bottom = 144.0
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -244.0
+offset_top = 64.0
+offset_right = -24.0
+offset_bottom = 86.0
+grow_horizontal = 0
 theme_override_fonts/font = SubResource("hud_body_font")
 theme_override_font_sizes/font_size = 12
 theme_override_colors/font_color = Color(0.78, 0.62, 1.0, 0.86)
 theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.05, 0.92)
 theme_override_constants/outline_size = 1
-text = "[R] READY"
+text = "[R] —"
+horizontal_alignment = 2
 
 ; Iter 17 — boss HP bar. Hidden by default; main.gd makes it visible
 ; when an EnemyType with is_boss=true spawns and binds the bar value

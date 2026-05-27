@@ -5218,6 +5218,17 @@ func _on_hero_hp_changed(new_hp: int) -> void:
 # avoid HUD spam during short streaks. Color + scale ramp at tier
 # thresholds (10/25/50/100) — bigger + warmer as the streak grows.
 func _on_hero_combo_changed(new_value: int) -> void:
+	# iter-245 / Director Phase 3 — track the biggest streak this run so
+	# the death screen can render "BIGGEST COMBO ×N" alongside BIGGEST
+	# HIT. Single int field on GameState (best_combo_this_run) — only
+	# bumped on new highs, no per-frame writes. Guarded by the autoload
+	# presence check used elsewhere in this file so headless / test
+	# harnesses that don't autoload GameState don't crash here.
+	var gs: Node = get_node_or_null("/root/GameState")
+	if gs != null:
+		var prev_best: int = int(gs.get("best_combo_this_run"))
+		if new_value > prev_best:
+			gs.set("best_combo_this_run", new_value)
 	# Lazy-init: mount on the UI CanvasLayer top-right.
 	if _combo_label == null:
 		var ui: CanvasLayer = $UI as CanvasLayer
@@ -5348,7 +5359,14 @@ func _heart_verts_polygon() -> PackedVector2Array:
 			Vector2(-4, 3),     # left lower curve
 		])
 	return _heart_verts_cache
-const HEART_PIP_SIZE: float = 30.0
+# iter-245 / Director Phase 3 — pip size bumped 30 → 36 (+20%). Director
+# audit feedback: hearts felt small relative to the action — a 4-px slime
+# kill flash was bigger than the heart they were burning to score it. The
+# pip is now closer to "iconic HP" weight without overpowering the chrome.
+# HeartRow's HBoxContainer auto-resizes to the new pip width; the next-row
+# placements (RoomProgress / Relics) are offset by the pip's vertical
+# footprint via main.tscn anchors so they slide down with the row.
+const HEART_PIP_SIZE: float = 36.0
 # Iter 170 — pip colors brightened. Pre-iter-170 the hearts read as
 # dim-red-on-dark and merged with the dungeon's warm-brown floor in
 # screenshots (user-reported "hearts almost gone behind tints"). Now:
@@ -5820,7 +5838,19 @@ func _update_active_relic_label() -> void:
 	# have on the button.
 	var active_id: String = GameState.get_owned_active_id()
 	if active_id == "":
-		active_relic_label.visible = false
+		# iter-245 / Director Phase 3 — was: hide entirely when no active
+		# relic owned. Now: show a dim placeholder "[R] —" at 0.45 alpha
+		# so the player learns the [R] keybind EXISTS even before they
+		# pick up their first active (Isaac's D6 pattern — the slot is
+		# part of the kit grammar, not a surprise reveal). Subtle stone
+		# color so it doesn't compete with the lit chip when an active
+		# is later acquired.
+		active_relic_label.visible = true
+		active_relic_label.text = "[R] —"
+		active_relic_label.modulate.a = 1.0
+		active_relic_label.add_theme_color_override(
+			"font_color", Color(0.62, 0.58, 0.64, 0.45)
+		)
 		return
 	active_relic_label.visible = true
 	# Short-label lookup — keep the chip compact. Falls back to the
@@ -5889,12 +5919,21 @@ func _build_ability_cooldown_strip() -> void:
 		return
 	_ability_cd_strip = HBoxContainer.new()
 	_ability_cd_strip.name = "AbilityCooldownStrip"
-	# Anchor top-left, position below the ActiveRelicLabel row (which
-	# ends at y=144). 4 chips ≈ 220px wide total at our font size.
-	_ability_cd_strip.offset_left = 20.0
-	_ability_cd_strip.offset_top = 148.0
-	_ability_cd_strip.offset_right = 280.0
-	_ability_cd_strip.offset_bottom = 168.0
+	# iter-245 / Director Phase 3 — RELOCATED to top-RIGHT cluster (was
+	# top-left at y≈148). Sits 6 px below the relocated ActiveRelicLabel
+	# (which now ends at y≈86), forming the second row of the top-right
+	# stack: ActiveRelic → cooldown chips → ReactionWeb. Right-edge
+	# alignment at viewport-right - 24px; anchor right=1.0 so the strip
+	# tracks viewport resizes. alignment=ALIGNMENT_END so chips collapse
+	# rightward when only 1-2 are active (no left-edge gap).
+	_ability_cd_strip.anchor_left = 1.0
+	_ability_cd_strip.anchor_right = 1.0
+	_ability_cd_strip.offset_left = -244.0
+	_ability_cd_strip.offset_top = 92.0
+	_ability_cd_strip.offset_right = -24.0
+	_ability_cd_strip.offset_bottom = 112.0
+	_ability_cd_strip.grow_horizontal = 0
+	_ability_cd_strip.alignment = BoxContainer.ALIGNMENT_END
 	_ability_cd_strip.add_theme_constant_override("separation", 10)
 	# Don't block clicks on whatever's behind us (combat playfield).
 	_ability_cd_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -6014,13 +6053,22 @@ func _build_reaction_web_chips() -> void:
 		return
 	_reaction_web_strip = VBoxContainer.new()
 	_reaction_web_strip.name = "ReactionWebStrip"
-	# Anchor below the ability cooldown strip (which ends at y≈168). The
-	# 340 px right edge gives partial hints ("SHATTER · needs SLOW") room
-	# to render without truncation at 12 pt.
-	_reaction_web_strip.offset_left = 20.0
-	_reaction_web_strip.offset_top = 174.0
-	_reaction_web_strip.offset_right = 340.0
-	_reaction_web_strip.offset_bottom = 320.0
+	# iter-245 / Director Phase 3 — RELOCATED to top-RIGHT cluster (was
+	# top-left at y≈174). Director audit: reaction web is BUILD-STATE
+	# info (Hades' boon panel pattern), not primary combat read — left
+	# side is the player's primary scan zone for hearts and should stay
+	# uncluttered. Right side is the proper home. Sits 6 px below the
+	# ability cooldown strip (which ends at y≈112). Chips are right-
+	# aligned via the Label horizontal_alignment override in
+	# _build_reaction_web_chips. Width 320 px lets armed combo names
+	# ("SCATTER FLAMES") render without truncation at 11 pt.
+	_reaction_web_strip.anchor_left = 1.0
+	_reaction_web_strip.anchor_right = 1.0
+	_reaction_web_strip.offset_left = -344.0
+	_reaction_web_strip.offset_top = 118.0
+	_reaction_web_strip.offset_right = -24.0
+	_reaction_web_strip.offset_bottom = 280.0
+	_reaction_web_strip.grow_horizontal = 0
 	_reaction_web_strip.add_theme_constant_override("separation", 2)
 	_reaction_web_strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui_root.add_child(_reaction_web_strip)
@@ -6037,6 +6085,11 @@ func _build_reaction_web_chips() -> void:
 			"font_outline_color", Color(0.04, 0.02, 0.05, 0.92)
 		)
 		chip.add_theme_constant_override("outline_size", 1)
+		# iter-245 — chips right-align inside the relocated top-right
+		# strip so the armed-combo text sits flush against the right
+		# edge rather than reading like a left-aligned wall of names.
+		chip.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# Stash combo_id meta for the updater so we can iterate chip
 		# values without re-walking the COMBO_REQUIREMENTS keys array.
 		chip.set_meta("combo_id", str(combo_id))

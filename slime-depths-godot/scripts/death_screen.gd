@@ -329,6 +329,14 @@ func _rebuild_combat_summary() -> void:
 	var biggest: int = int(GameState.get("last_run_biggest_hit"))
 	if biggest > 0:
 		segments.append("BIGGEST HIT %d" % biggest)
+	# iter-245 / Director Phase 3 — surface the longest hit-streak alongside
+	# the biggest single hit. Twin numbers for "your biggest moment of
+	# damage" + "your biggest moment of flow." Reads "BIGGEST COMBO 73"
+	# next to "BIGGEST HIT 28". Hidden when the value is 0 so the line
+	# stays tight on short runs that never racked a real streak.
+	var best_combo: int = int(GameState.get("best_combo_this_run"))
+	if best_combo > 0:
+		segments.append("BIGGEST COMBO %d" % best_combo)
 	var counts_v: Variant = GameState.get("last_run_combo_counts")
 	if counts_v is Dictionary:
 		var counts: Dictionary = counts_v as Dictionary

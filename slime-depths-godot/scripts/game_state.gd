@@ -54,6 +54,13 @@ var last_run_biggest_hit: int = 0
 # Dictionary[String,int] e.g. {"shatter": 4, "kindle": 2}. Empty means
 # no combos fired this run — death_screen suppresses the line.
 var last_run_combo_counts: Dictionary = {}
+# iter-245 / Director Phase 3 — biggest hit-streak this run. Bumped from
+# main.gd._on_hero_combo_changed every time the live combo counter sets
+# a new high. Reset to 0 in start_dungeon_run. Surfaced on the death
+# screen so a player who racked a 73-hit streak gets to SEE that fact
+# next to "BIGGEST HIT" — twin numbers for "your biggest moment of
+# damage" + "your biggest moment of flow."
+var best_combo_this_run: int = 0
 
 # HP carryover between rooms within a single floor run. -1 = no carry
 # (Hero uses MAX_HP + max_hp_bonus on spawn). Set by Hero.gd's
@@ -1506,6 +1513,10 @@ func start_dungeon_run() -> void:
 	last_run_death_source = ""
 	last_run_biggest_hit = 0
 	last_run_combo_counts = {}
+	# iter-245 / Director Phase 3 — biggest combo streak this run. Clear
+	# alongside the other intra-run summary stats so each fresh run
+	# starts at 0 regardless of how big the prior run's streak got.
+	best_combo_this_run = 0
 	# iter-239 / Fun Ideas Team R4 — DO NOT clear active_floor_modifiers
 	# here. The pre-run modal (main_menu.gd) writes to the field BEFORE
 	# calling start_dungeon_run(), so a clear here would wipe the

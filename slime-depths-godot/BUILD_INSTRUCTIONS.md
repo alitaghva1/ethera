@@ -15,7 +15,7 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (34 tests)
+# Full audit (35 tests)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -31,12 +31,13 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter238_tuskbrod test_iter239_floor_modifiers \
          test_iter240_modal_polish test_iter241_modifier_modal \
          test_iter242_soul_gem test_iter242_loop_constants \
-         test_iter243_phase1_feel test_iter244_phase2_visual; do
+         test_iter243_phase1_feel test_iter244_phase2_visual \
+         test_iter245_phase3_hud; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 34 should print PASS / OK.
+All 35 should print PASS / OK.
 
 ## Export presets (set up in Godot editor)
 
