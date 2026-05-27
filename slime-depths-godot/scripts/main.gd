@@ -200,8 +200,18 @@ const HAZARD_SCENES := {
 # Iter 15 — pacing pass. Earlier values felt sluggish: 1.6s between
 # waves left dead-air, and 1.0s pre-first-wave kept the player idle on
 # room entry. Tighter values keep the loop pumping.
-const WAVE_CLEAR_PAUSE  := 0.9     # seconds between waves
-const INITIAL_WAVE_DELAY := 0.6    # seconds from _ready to wave 1 spawn
+# iter-242 / Loop Tightening — second pacing pass.
+# Loop diagnosis agent profiled: 1.95 s of UI ceremony fired between
+# door-traverse and first attackable enemy. That's 25 % of an average
+# 8-second combat encounter spent watching banners. VS / Isaac / Hades
+# all push the player into combat in well under a second — peer competitor
+# average is ~0.5 s from room load to first threat.
+# Cut both: WAVE_CLEAR_PAUSE 0.9 → 0.3 (between waves), INITIAL_WAVE_DELAY
+# 0.6 → 0.2 (room entry). Banner hold also drops to 0.6 s so the room name
+# fade-out OVERLAPS the first spawn ramp — the player sees the banner
+# dissolve as the first enemy materializes. See ROOM_BANNER_HOLD below.
+const WAVE_CLEAR_PAUSE  := 0.3     # seconds between waves
+const INITIAL_WAVE_DELAY := 0.2    # seconds from _ready to wave 1 spawn
 # Stagger between enemies WITHIN a wave. ALL-at-once spawning made each
 # wave feel chaotic; spacing the spawns ~0.18s apart sells "enemies are
 # arriving" instead of "enemies popped." Combined with the spawn-in fade
@@ -501,6 +511,14 @@ var _prev_kills: int = -1
 # fight). Same kill-previous-tween pattern as ScreenFlash._flash_tween.
 var _hp_pulse_tween: Tween = null
 var _kills_pulse_tween: Tween = null
+# iter-242 / Loop Tightening LEVER 3 — cached pedestal position written
+# during _on_pickup_claimed. Used in _spawn_door so the single-floor-exit
+# door materializes right next to where the player is already standing,
+# eliminating the ~2.5 s pedestal → east-wall walk dead-time. Sentinel
+# Vector2.INF means "no pedestal claimed this room yet" (a defensive
+# value — shouldn't happen in practice because the door spawn is gated
+# on pickup completion). Reset to Vector2.INF in _ready before each room.
+var _last_pedestal_position: Vector2 = Vector2.INF
 # iter-144: wave-clear pulse on the corner wave_label. Same pulse-cache
 # pattern as _hp_pulse_tween / _kills_pulse_tween. Pulses on every
 # mid-wave clear (not the final room clear — that one fires
@@ -3623,7 +3641,15 @@ func _spawn_centerpiece_rune_circle(pos: Vector2) -> void:
 # _update_room_label still writes the text (so the banner shows the
 # right thing on entry); the modulate alpha controls visibility.
 const ROOM_BANNER_FADE_IN: float = 0.30
-const ROOM_BANNER_HOLD: float = 1.50
+# iter-242 / Loop Tightening — hold time 1.50 → 0.60 s. Combined with the
+# INITIAL_WAVE_DELAY drop (0.6 → 0.2 s), the first wave begins spawning at
+# t ≈ 0.20 s while the banner is still in its hold phase. The fade-out
+# (1.20 s) then runs DURING combat — the banner gracefully dissolves as
+# the player engages instead of holding center-screen attention while the
+# room is empty. Total pre-combat window: ~0.20 s (room load → first
+# enemy spawn timer fires), down from ~1.95 s. The banner's HOLD slice
+# is now subliminal — readable on a sustained glance, ignorable in motion.
+const ROOM_BANNER_HOLD: float = 0.60
 const ROOM_BANNER_FADE_OUT: float = 1.20
 const ROOM_BANNER_START_SCALE: float = 1.7
 const ROOM_BANNER_END_SCALE: float = 1.0
@@ -4517,6 +4543,27 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# 20 filter rejects them by default; explicit pass-through here.
 	if not GameState.RELIC_REGISTRY.has(_name) and not _name.begins_with("shrine_"):
 		return
+	# iter-242 / Loop Tightening LEVER 3 — capture the pedestal position
+	# so the single-door spawn (in _spawn_door, see DOOR_POSITION override
+	# block) can place the door right next to where the player is already
+	# standing. Pre-iter-242 the player picked up at room-center then
+	# walked ~2.5 s east to the door — the single worst dead-time event in
+	# the loop. _world_pos is the pedestal's global_position (set by
+	# pedestal.gd's Events.pickup_claimed.emit(global_position, relic_id)).
+	# Branch doors keep their east-edge positions (the iter-32 DAG fork is
+	# spatial; doors must remain reachable as distinct destinations).
+	_last_pedestal_position = _world_pos
+	# Iter 242 / Loop Tightening LEVER 4 — tier-differentiated pickup audio.
+	# Pre-iter-242 every claim (common → mythic) played the same chime;
+	# the player got no audible signal of payoff magnitude. Mythic already
+	# layers pickup_mythic via pedestal.gd's tier check, but the three
+	# lower tiers were indistinguishable. Audio.gd's generic _on_pickup_claimed
+	# fires for all tiers; we layer a TIER-SPECIFIC chime on top so the
+	# baseline + tier chimes stack. The tier chime is the dominant cue
+	# (louder + longer); the generic one provides a stable "you got
+	# something" floor across all tiers.
+	if GameState.RELIC_REGISTRY.has(_name):
+		_play_tier_pickup_audio(_name, _world_pos)
 	# Iter 72 — spawn the celebratory pickup banner (480-px frame,
 	# theme-colored border, ~3.35 s standard / ~5.5 s + mythic wash).
 	# Shrine pickups aren't in RELIC_REGISTRY so the registry check
@@ -4540,6 +4587,38 @@ func _on_pickup_claimed(_world_pos: Vector2, _name: String) -> void:
 	# prompt out + flags completion in _finalize_tutorial.
 	if _tutorial_state == TutorialState.WAIT_PICKUP and GameState.RELIC_REGISTRY.has(_name):
 		_advance_tutorial(TutorialState.DONE, "")
+
+# iter-242 / Loop Tightening LEVER 4 — dispatch a tier-specific pickup chime.
+# Layers ON TOP of the generic pickup_claimed beat (which still fires via
+# Audio's own _on_pickup_claimed subscriber). Result: every claim plays both
+# the baseline + the tier-coded chime so the floor cue is preserved while
+# the tier reads as a distinct audible signature.
+# Mythic uses pickup_mythic via pedestal.gd's existing emit — we skip mythic
+# here to avoid stacking it twice (pedestal.gd fires Events.pickup_mythic
+# which Audio handles on its own).
+func _play_tier_pickup_audio(relic_id: String, world_pos: Vector2) -> void:
+	if Audio == null or not Audio.has_method("_play"):
+		return
+	var info: Dictionary = GameState.relic_info(relic_id)
+	if info.is_empty():
+		return
+	var tier: String = str(info.get("tier", "common"))
+	match tier:
+		"common":
+			Audio._play("pickup_common", world_pos, -2.0)
+		"rare":
+			Audio._play("pickup_rare", world_pos, 0.0)
+		"legendary":
+			Audio._play("pickup_legendary", world_pos, 2.0)
+		"mythic":
+			# Mythic chime already routed through Events.pickup_mythic from
+			# pedestal.gd::_claim. No extra dispatch needed here — stacking
+			# would double-play a single relic acquisition.
+			pass
+		_:
+			# Unknown tier — fall back to common chime so the player still
+			# hears SOMETHING above the generic pickup_claimed.
+			Audio._play("pickup_common", world_pos, -2.0)
 
 # iter-118: Portal placement clearance. Doors visually want at least
 # DOOR_CLEARANCE_RADIUS px of free space around their spawn position so
@@ -4611,10 +4690,35 @@ func _spawn_door() -> void:
 	if _room != null and not _room.branches.is_empty():
 		_spawn_branch_doors(_room.branches)
 		return
+	# iter-242 / Loop Tightening LEVER 3 — pedestal-anchored door spawn.
+	# Pre-iter-242 a non-branch door always spawned at DOOR_POSITION
+	# (1140, 384) — the room's east edge. After claiming a pedestal at
+	# room-center the player walked ~500 px east just to traverse, a
+	# pure-dead-time event the loop diagnosis ranked the single worst
+	# pace killer at ~2.5 s of empty walk per non-boss room.
+	#
+	# New behavior: if we have a captured pedestal position (set by
+	# _on_pickup_claimed via Events.pickup_claimed), drop the door 40 px
+	# east of that position so the player is essentially already standing
+	# on it on claim. Door collision still requires player approach (not
+	# auto-trigger), so the player retains agency to read the iter-199
+	# preview label before stepping in.
+	#
+	# Branch doors are EXCLUDED from this shortcut (they took the early
+	# return above) — their east-edge ladder layout is the iter-32 DAG
+	# fork's spatial language, not a coincidence.
+	var door_pos: Vector2 = DOOR_POSITION
+	if _last_pedestal_position != Vector2.INF:
+		door_pos = _last_pedestal_position + Vector2(40, 0)
+		# Clamp X to inside the east wall (room width ~1180; wall at ~1180;
+		# DOOR_POSITION.x=1140 is the canonical east-spawn limit). Without
+		# this a pedestal authored very near the east wall could push the
+		# door into the wall collider.
+		door_pos.x = clamp(door_pos.x, 200.0, DOOR_POSITION.x)
 	# iter-118: validate placement against authored obstacles before spawn.
-	_validate_door_placement([DOOR_POSITION])
+	_validate_door_placement([door_pos])
 	var door: Door = DOOR_SCENE.instantiate()
-	door.global_position = DOOR_POSITION
+	door.global_position = door_pos
 	# Iter 199 — Hades-style reward preview. Single-door rooms now
 	# carry a label hinting what's beyond so the player can plan one
 	# room ahead instead of stepping into the unknown. Agent ranked
@@ -4777,6 +4881,30 @@ func _on_enemy_died(world_pos: Vector2) -> void:
 	# reference's drawRoomMarks atmosphere — empty space after a kill
 	# carries narrative of what happened.
 	BloodMark.spawn(self, world_pos)
+	# iter-242 / Loop Tightening LEVER 1 — spawn the per-kill soul gem.
+	# Reads as "kill → collectible spawns → flies to hero." Same loop
+	# grammar as Vampire Survivors XP gems / Risk of Rain item drops /
+	# Isaac's pickups, minus the XP/level layer (no system yet to feed —
+	# the gem is pure tactile feedback). See scripts/soul_gem.gd for the
+	# magnetism + pickup logic.
+	_spawn_soul_gem(world_pos)
+
+# iter-242 / Loop Tightening LEVER 1 — soul gem spawn helper. Isolated so
+# the future XP system (or a Floor Modifier that disables gems) can swap
+# the spawn behavior without touching the kill handler.
+const SOUL_GEM_SCENE = preload("res://scenes/soul_gem.tscn")
+func _spawn_soul_gem(world_pos: Vector2) -> void:
+	var gem: Node2D = SOUL_GEM_SCENE.instantiate() as Node2D
+	if gem == null:
+		return
+	gem.global_position = world_pos
+	add_child(gem)
+	# Bind the hero + Audio refs so the gem can gravitate + chime on
+	# contact. Defensive get for hero in case the hero was freed in the
+	# same tick (shouldn't happen — the enemy_died signal fires while
+	# the hero is still alive — but the gem's _physics_process re-checks).
+	if gem.has_method("bind"):
+		gem.bind(hero, Audio)
 
 func _on_hero_swing_connected(hit_count: int, any_crit: bool = false) -> void:
 	# Iter 21 — bridge to the audio bus. audio.gd subscribes to
@@ -5309,13 +5437,49 @@ const HP_LOW_PULSE_DUR: float = 0.9
 const HP_LOW_PULSE_SCALE: float = 1.08
 
 func _update_kills() -> void:
-	kills_label.text = "KILLS  %d" % _kills
+	# iter-242 / Loop Tightening LEVER 1 — visible kill counter chip.
+	# Pre-iter-242 this label was hidden (iter-124 design call: kill count
+	# is meta-score, not gameplay-critical). With per-kill soul gems now
+	# flying to the hero the chip becomes the visible target for that loop
+	# — the player sees the gem land AND the count tick up. Format swap:
+	# "KILLS  N" → "☠ N" so the chip reads at-a-glance with one glyph + a
+	# number. Glyph kept small + neutral so it doesn't ape relic strip
+	# language.
+	kills_label.text = "☠ %d" % _kills
 	# iter-113: punch the kill counter on every increment. Only ever
 	# pulses up (kills are monotonic), so no direction branching. Skipping
 	# the pulse on the initial set (_prev_kills == -1) matches the
 	# _update_hp pattern — no phantom-flash on scene load.
+	# iter-242: punch scale 1.18 → 1.20 (matches lever spec "scale 1.0→1.2
+	# over 80 ms"). Duration tightened 0.30 → 0.18 s so the pulse settles
+	# before the next gem arrives — a wave clear could otherwise stack
+	# scale tweens. The _pulse_label kill-previous-tween guard handles
+	# overlap correctly but the visual still benefits from a faster decay.
 	if _prev_kills >= 0 and _kills > _prev_kills:
-		_pulse_label(kills_label, "_kills_pulse_tween", 1.18, KILLS_FLASH_MODULATE, 0.30)
+		_pulse_label(kills_label, "_kills_pulse_tween", 1.20, KILLS_FLASH_MODULATE, 0.18)
+		# iter-242 / Loop Tightening LEVER 1 — milestone flash.
+		# At every 5/10/25/50/100 kill mark, layer a hotter gold pulse +
+		# play kill_milestone chime. The cadence reads as the "downbeat"
+		# of the per-kill rhythm — gems are the metronome, milestones are
+		# the snare. Picked values that line up with typical wave/room
+		# counts so the player hits a milestone roughly every 1-2 rooms
+		# on average.
+		var milestones: Array = [5, 10, 25, 50, 100]
+		if _kills in milestones:
+			# Extra gold flash on top of the regular punch. Pulses fade
+			# fast (0.45 s) and don't gate gameplay — they're pure feedback.
+			_pulse_label(
+				kills_label,
+				"_kills_pulse_tween",
+				1.45,
+				Color(1.8, 1.6, 0.9, 1.0),
+				0.45,
+			)
+			if Audio != null and Audio.has_method("_play"):
+				var pos: Vector2 = (hero.global_position
+					if (hero != null and is_instance_valid(hero))
+					else Vector2.ZERO)
+				Audio._play("kill_milestone", pos, 1.0)
 	_prev_kills = _kills
 
 # Shared scale + modulate flash helper. Pivot is set to the label's

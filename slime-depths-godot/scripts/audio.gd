@@ -60,6 +60,42 @@ const SOUND_CONFIGS := {
 	"enemy_died":    { "freq_start": 320.0, "freq_end":  95.0, "duration": 0.28, "wave": "sin",    "gain": 0.50, "decay_pow": 1.6 },
 	# Pickups / UI
 	"pickup_claimed":{ "freq_start": 600.0, "freq_end":1280.0, "duration": 0.22, "wave": "sin",    "gain": 0.50, "decay_pow": 1.4 },
+	# iter-242 / Loop Tightening LEVER 4 — tier-differentiated pickup audio.
+	# Pre-iter-242 every relic claim (common → mythic) played the same
+	# pickup_claimed chime above. Players got zero audible signal of which
+	# tier they grabbed, robbing rare/legendary pickups of weight. Mythic
+	# already layered pickup_mythic (above) on top, but the three lower
+	# tiers were indistinguishable. Three new chimes covering the spread:
+	#
+	# pickup_common — short single 800 Hz tone, 120 ms, gentle decay. Reads
+	#   as "small chime, nothing to write home about" — mirrors the
+	#   common-tier visual (no halo, neutral palette).
+	# pickup_rare — 2-note rising sweep 600→900 Hz, 200 ms, slightly hotter.
+	#   The rise tells the ear "this is a step up" without needing a second
+	#   peak.
+	# pickup_legendary — broader sweep 600→1200 Hz over 320 ms with a
+	#   bell-like decay (pow 1.0 = linear, longer ring than common/rare).
+	#   Synthesized as a fast 4-step suggestion via the single freq_start
+	#   → freq_end curve our _synthesize pipeline supports. Reads as
+	#   "ceremonial chime" — payoff weight.
+	#
+	# All three play LAYERED on top of pickup_claimed (which still fires
+	# at -2 dB) so the floor "you got something" cue is preserved across
+	# tiers. Mythic continues to use pickup_mythic via pedestal.gd's
+	# existing emit. See main.gd::_play_tier_pickup_audio for dispatch.
+	"pickup_common":   { "freq_start": 800.0, "freq_end": 800.0, "duration": 0.12, "wave": "sin",    "gain": 0.42, "decay_pow": 1.8 },
+	"pickup_rare":     { "freq_start": 600.0, "freq_end": 900.0, "duration": 0.20, "wave": "sin",    "gain": 0.52, "decay_pow": 1.4 },
+	"pickup_legendary":{ "freq_start": 600.0, "freq_end":1200.0, "duration": 0.32, "wave": "sin",    "gain": 0.60, "decay_pow": 1.0 },
+	# iter-242 / Loop Tightening LEVER 1 — soul-gem grammar.
+	# gem_pickup — tiny ascending blip 1100→1500 Hz, 70 ms. Fires when a
+	#   soul gem (the per-kill collectible) reaches the hero. Quiet (0.22
+	#   gain) because it can fire 5+ times per second during a wave clear.
+	# kill_milestone — broader, hotter chime 600→1600 Hz, 0.35 s.
+	#   Fires at every 5/10/25/50/100 kill mark. Reads as "you reached
+	#   something" — distinct from gem_pickup (per-kill) so the rhythm of
+	#   the loop has both a steady metronome and bigger downbeats.
+	"gem_pickup":      { "freq_start":1100.0, "freq_end":1500.0, "duration": 0.07, "wave": "sin",    "gain": 0.22, "decay_pow": 2.4 },
+	"kill_milestone":  { "freq_start": 600.0, "freq_end":1600.0, "duration": 0.35, "wave": "sin",    "gain": 0.55, "decay_pow": 1.1 },
 	# Footstep — short low-energy noise puff every STEP_INTERVAL px of
 	# travel (hero.gd emits Events.hero_stepped). Kept quiet (-12 dB at
 	# play site) because it fires multiple times per second during walk.

@@ -238,29 +238,28 @@ vertical_alignment = 1
 ; ── RIGHT — wave only. KillsLabel hidden during gameplay (it lives on
 ; for the death screen which reads _kills directly from main.gd).
 ;
-; Iter-124 game-design pass: genre peers (Hades / Dead Cells / Hyper
-; Light Drifter / Diablo / Enter the Gungeon) all surface run-score
-; data at the END of a run, not during combat. Live kills counter is
-; meta-score, not gameplay-critical; surfacing it during play just adds
-; visual noise. Hidden via `visible = false` so the node + the
-; _update_kills code keeps working (writes still go through; just the
-; screen never shows them).
+; Iter-124 originally hid this chip because a live kill counter felt like
+; visual noise. iter-242 / Loop Tightening — flipped back on. With per-kill
+; soul gems flying to the hero, the player needs a visible target for "this
+; tick of feedback added to a thing." Hades / VS / Isaac all surface a
+; persistent count of the per-kill collectible — Ethera now matches that
+; loop grammar. Re-styled at top-LEFT (not the old top-right slot, which
+; is now WaveLabel + RunTimer territory) with a skull glyph + smaller font
+; so it reads as a peripheral chip, not a competing center-screen number.
 [node name="KillsLabel" type="Label" parent="UI"]
-visible = false
 anchors_preset = 1
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -220.0
-offset_top = 14.0
-offset_right = -20.0
-offset_bottom = 38.0
-grow_horizontal = 0
-theme_override_font_sizes/font_size = 16
-theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.78)
-theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
+anchor_left = 0.0
+anchor_right = 0.0
+offset_left = 20.0
+offset_top = 80.0
+offset_right = 200.0
+offset_bottom = 104.0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.86, 0.78, 1.0, 0.92)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.10, 0.92)
 theme_override_constants/outline_size = 1
-text = "KILLS  0"
-horizontal_alignment = 2
+text = "☠ 0"
+horizontal_alignment = 0
 vertical_alignment = 1
 
 ; Wave indicator. Iter-124: now transient — _process_wave_fade polls

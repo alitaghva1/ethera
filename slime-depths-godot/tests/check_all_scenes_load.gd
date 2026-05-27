@@ -31,6 +31,8 @@ const SCENES_TO_LOAD: Array[String] = [
 	"res://scenes/lore_stone.tscn",
 	"res://scenes/fire_pool.tscn",
 	"res://scenes/hazards/slow_zone.tscn",
+	# iter-242 / Loop Tightening LEVER 1 — per-kill soul gem collectible.
+	"res://scenes/soul_gem.tscn",
 ]
 
 func _initialize() -> void:

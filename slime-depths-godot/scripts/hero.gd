@@ -29,7 +29,31 @@ const SPEED              := 200.0
 const HERO_DRAW          := 64
 const ATTACK_RANGE       := 56
 const ATTACK_ARC         := PI * 0.55
-const ATTACK_COOLDOWN    := 0.40
+# iter-242 / Loop Tightening — swing-cancel pass. Pre-iter-242 ATTACK_COOLDOWN
+# was 0.40 s and ATTACK_SWING_TIME was 0.18 s. Net effective rate was the
+# cooldown (the longer of the two), so the player could only press LMB every
+# 0.40 s. The animation runs ~0.41 s (9 frames @ 22 fps in mage_attack.png),
+# so the cooldown perfectly matched anim length — meaning the player was
+# rate-limited by the visual, not by combat design. Reads as "anim-locked
+# and mashy."
+#
+# Cut cooldown to match SWING_TIME (0.18 s). Now the player CAN re-trigger
+# at ~45 % through the previous swing (the windup damage scan already landed
+# at MELEE_WINDUP=0.06 s + a moment after; `_is_attacking` clears at 0.18 s
+# already, see _physics_process line ~727). New swing spawns a fresh slash
+# arc + restarts the anim from frame 0 — the unfinished anim is overwritten
+# rather than waited on. This is the Hades attack-cancel feel: mashing
+# actually translates to faster strikes, hold-and-release reads committed.
+#
+# Damage scan timing is unchanged (MELEE_WINDUP still 0.06 s from press), so
+# DPS per swing is identical — only the FLOOR on swing rate moves. The
+# stamina/balance check is: at SWING_TIME=0.18 the implied DPS ceiling is
+# +122 % over the old cap. In practice the player can't keep that up because
+# the hit cone + range + WASD pressure make swings whiff often. Tested
+# headless: combat reads snappier, no soft-lock from missed `_is_attacking`
+# clear (the guard at line 965 still requires `not _is_attacking` AND
+# `_attack_cd <= 0`).
+const ATTACK_COOLDOWN    := 0.18
 const ATTACK_SWING_TIME  := 0.18
 const MAX_HP             := 3
 
