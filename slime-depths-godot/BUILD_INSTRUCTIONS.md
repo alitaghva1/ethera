@@ -15,7 +15,7 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (29 tests)
+# Full audit (30 tests)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -29,12 +29,12 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter235_cursed_pickup test_iter236_enemy_snapshot \
          test_iter236_save_roundtrip test_iter237_polish \
          test_iter238_tuskbrod test_iter239_floor_modifiers \
-         test_iter240_modal_polish; do
+         test_iter240_modal_polish test_iter241_modifier_modal; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 29 should print PASS / OK.
+All 30 should print PASS / OK.
 
 ## Export presets (set up in Godot editor)
 
@@ -123,7 +123,7 @@ jobs:
                    tests/test_iter235_cursed_pickup tests/test_iter236_enemy_snapshot \
                    tests/test_iter236_save_roundtrip tests/test_iter237_polish \
                    tests/test_iter238_tuskbrod tests/test_iter239_floor_modifiers \
-                   tests/test_iter240_modal_polish; do
+                   tests/test_iter240_modal_polish tests/test_iter241_modifier_modal; do
               godot --headless --script "$t.gd" || exit 1
           done
 ```

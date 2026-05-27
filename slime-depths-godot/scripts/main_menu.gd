@@ -1040,138 +1040,209 @@ func _close_achievements_panel() -> void:
 # at the bottom; CONFIRM finalizes + walks the original BEGIN flow,
 # SKIP clears modifiers + proceeds, CANCEL returns to the menu.
 #
-# Pattern mirrors _show_upgrade_panel + _show_achievements_panel — full-
-# screen dim + centered VBox + scroll-friendly. Tested visually at
-# 1280×720; the 5 rows fit without scrolling but the layout is
-# scroll-tolerant if the catalog ever grows.
+# ── Iter 241 / Polish Team R5 patch — adopts iter-240 panel doctrine ──
+# The iter-239 modal predated _build_themed_modal_panel, so it shipped
+# as raw Labels on a dim ColorRect — same regression iter-240 fixed for
+# Bindings + Achievements. Symptoms observed in the user playtest screenshot:
+#   • ETHERA title + all 5 main-menu buttons (BEGIN/UPGRADES/ACHIEVEMENTS/
+#     SETTINGS/QUIT) bled through the modal text — no backing panel
+#     to occlude the menu.
+#   • Toggle buttons looked identical regardless of state. INACTIVE +
+#     ACTIVE only differed in label text; no border / fill change so
+#     the player couldn't see at a glance which pacts they had bound.
+#   • Long descriptions ("DARKER PATHS" → "Pedestal offers drop one
+#     tier…", "CLOCKED" → "Enemies spawn 25% sooner per room.")
+#     wrapped to two lines and broke the row's vertical rhythm.
+#   • "Reward: 1.00× ether shards" was a plain centered Label, not the
+#     gold-bordered chip the bindings panel uses for its ETHER total.
+#   • BEGIN / NO MODIFIERS / CANCEL all rendered as default Buttons,
+#     visually identical despite the semantic split (primary action vs.
+#     two dismiss/secondary actions).
+#
+# Fix: route the modal through _build_themed_modal_panel exactly like
+# _show_upgrade_panel / _show_achievements_panel do. Every helper
+# (panel chrome, button styleboxes, currency chip) is reused verbatim
+# from iter-240 — no new styling vocabulary, no parallel implementation.
 var _modifiers_panel: Control = null
 var _modifiers_total_label: Label = null
+var _modifiers_chip: PanelContainer = null
 
 func _show_modifiers_modal() -> void:
 	if _modifiers_panel != null and is_instance_valid(_modifiers_panel):
 		return
-	_modifiers_panel = Control.new()
+	# iter-241 — themed-modal chrome (scrim + gold-bordered PanelContainer
+	# + title + sub-header). Wider than the upgrade/achievement panels
+	# (720 × 540 vs 580 × 480 / 640 × 540) because the modifier
+	# descriptions are the longest of any modal row in the game.
+	var modal: Dictionary = _build_themed_modal_panel(
+		"ENTER THE DEPTHS",
+		"Bind yourself to a harsher path — earn more ether.",
+		Vector2(720, 540),
+	)
+	_modifiers_panel = modal["root"]
 	_modifiers_panel.name = "ModifiersPanel"
-	_modifiers_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_modifiers_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_modifiers_panel)
-	var dim: ColorRect = ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0, 0, 0, 0.78)
-	_modifiers_panel.add_child(dim)
-	var center: CenterContainer = CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_modifiers_panel.add_child(center)
-	var box: VBoxContainer = VBoxContainer.new()
-	box.custom_minimum_size = Vector2(640, 0)
-	box.add_theme_constant_override("separation", 10)
-	center.add_child(box)
-	# Header — "PACT OF PUNISHMENT" framing, gold accent matching
-	# achievements panel for visual consistency.
-	var title: Label = Label.new()
-	title.text = "ENTER THE DEPTHS"
-	title.add_theme_color_override("font_color", Color(0.96, 0.88, 0.68))
-	title.add_theme_font_size_override("font_size", 28)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(title)
-	var sub: Label = Label.new()
-	sub.text = "Bind yourself to a harsher path — earn more ether."
-	sub.add_theme_color_override("font_color", Color(0.78, 0.82, 0.95))
-	sub.add_theme_font_size_override("font_size", 14)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(sub)
-	# One row per modifier.
+	var body: VBoxContainer = modal["body"]
+	# Currency-chip row — same idiom as the bindings panel ETHER chip,
+	# but here it carries the live ether multiplier so the player feels
+	# the trade. Rebuilt on every toggle via _refresh_modifiers_total_label.
+	var chip_row: HBoxContainer = HBoxContainer.new()
+	chip_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	body.add_child(chip_row)
+	_modifiers_chip = _build_modifier_multiplier_chip()
+	chip_row.add_child(_modifiers_chip)
+	# One row per modifier (5 catalog entries → 5 rows).
 	for entry in FloorModifiers.catalog():
-		box.add_child(_build_modifier_row(entry))
-	# Footer — running total ether multiplier display.
+		body.add_child(_build_modifier_row(entry))
+	# Spacer before the action row.
 	var spacer: Control = Control.new()
-	spacer.custom_minimum_size = Vector2(0, 8)
-	box.add_child(spacer)
-	_modifiers_total_label = Label.new()
-	_modifiers_total_label.text = ""
-	_modifiers_total_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.50))
-	_modifiers_total_label.add_theme_font_size_override("font_size", 18)
-	_modifiers_total_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(_modifiers_total_label)
-	_refresh_modifiers_total_label()
-	# Button row.
+	spacer.custom_minimum_size = Vector2(0, 6)
+	body.add_child(spacer)
+	# Action row — BEGIN (primary, "affordable" filled gold) +
+	# NO MODIFIERS + CANCEL (both secondary, "close" cream-bordered).
+	# Distinct widths (160 / 160 / 120 px) so the primary visually
+	# leads and CANCEL reads as the smallest dismiss.
 	var button_row: HBoxContainer = HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	button_row.add_theme_constant_override("separation", 14)
-	box.add_child(button_row)
+	body.add_child(button_row)
 	var confirm_btn: Button = Button.new()
 	confirm_btn.text = "BEGIN"
 	confirm_btn.custom_minimum_size = Vector2(160, 38)
+	_style_modal_button(confirm_btn, "affordable")
 	confirm_btn.pressed.connect(_on_modifiers_confirm)
 	button_row.add_child(confirm_btn)
 	var skip_btn: Button = Button.new()
 	skip_btn.text = "NO MODIFIERS"
 	skip_btn.custom_minimum_size = Vector2(160, 38)
+	_style_modal_button(skip_btn, "close")
 	skip_btn.pressed.connect(_on_modifiers_skip)
 	button_row.add_child(skip_btn)
 	var cancel_btn: Button = Button.new()
 	cancel_btn.text = "CANCEL"
 	cancel_btn.custom_minimum_size = Vector2(120, 38)
+	_style_modal_button(cancel_btn, "close")
 	cancel_btn.pressed.connect(_on_modifiers_cancel)
 	button_row.add_child(cancel_btn)
 	confirm_btn.grab_focus()
 
-# Build a single modifier row: label / description / toggle button.
-# Tested layout: 220 + 260 + 100 px columns fit cleanly inside the
-# 640 px box width with 16 px of separator slack.
+# iter-241 — single modifier row using the iter-240 column doctrine.
+# Columns (matches _build_upgrade_row layout):
+#   1. name (200 px, cream-gold if active / muted cream if inactive)
+#   2. description (single line, clip_text — no more 2-line wrap that
+#      broke the row rhythm on DARKER PATHS / CLOCKED)
+#   3. toggle button (110 px, state-styled — "affordable" gold-border
+#      for ACTIVE, "unaffordable" violet-border for INACTIVE)
+# Total row width fits cleanly inside the 720 px panel inner width.
 func _build_modifier_row(entry: Dictionary) -> HBoxContainer:
 	var row: HBoxContainer = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
+	row.add_theme_constant_override("separation", 16)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var mod_id: String = str(entry.get("id", ""))
 	var is_active: bool = mod_id in GameState.active_floor_modifiers
-	# Label (gold-tinted, fixed 220 px column).
+	# Column 1 — name. 200 px fixed so all 5 rows align.
 	var name_label: Label = Label.new()
 	name_label.text = str(entry.get("label", mod_id))
-	name_label.custom_minimum_size = Vector2(220, 0)
+	name_label.custom_minimum_size = Vector2(200, 0)
 	name_label.add_theme_font_size_override("font_size", 16)
 	if is_active:
-		name_label.add_theme_color_override("font_color", Color(0.95, 0.55, 0.32))  # active = burnt orange
+		name_label.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
 	else:
-		name_label.add_theme_color_override("font_color", Color(0.78, 0.74, 0.66))
+		name_label.add_theme_color_override("font_color", MODAL_BODY_COLOR)
 	row.add_child(name_label)
-	# Description — autowrap, fills remaining width.
+	# Column 2 — description. Includes the per-modifier bonus inline
+	# so the player can scan the cost/benefit per row without leaving
+	# the description column. Single line via clip_text (descriptions
+	# are short enough that clipping doesn't trigger in practice; the
+	# defensive clip prevents a future 60-char description from
+	# breaking the rhythm).
 	var desc_label: Label = Label.new()
 	desc_label.text = "%s   (+%d%% ether)" % [
 		str(entry.get("description", "")),
 		int(round(float(entry.get("ether_bonus", 0.0)) * 100.0))
 	]
-	desc_label.add_theme_font_size_override("font_size", 12)
-	desc_label.add_theme_color_override("font_color", Color(0.78, 0.78, 0.74))
-	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	desc_label.custom_minimum_size = Vector2(280, 0)
+	desc_label.add_theme_font_size_override("font_size", 13)
+	desc_label.add_theme_color_override("font_color", MODAL_MUTED_COLOR)
+	desc_label.clip_text = true
 	desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(desc_label)
-	# Toggle button.
+	# Column 3 — state-styled toggle button. "affordable" = gold-border
+	# bright cream (ACTIVE — visibly "lit"), "unaffordable" = dim violet
+	# border grey text (INACTIVE — visibly off). Reuses iter-240's
+	# stylebox factory verbatim.
 	var btn: Button = Button.new()
 	btn.text = "ACTIVE" if is_active else "INACTIVE"
-	btn.custom_minimum_size = Vector2(100, 32)
+	btn.custom_minimum_size = Vector2(110, 32)
+	if is_active:
+		_style_modal_button(btn, "affordable")
+	else:
+		_style_modal_button(btn, "unaffordable")
+		# unaffordable styling sets disabled=false implicitly; we want
+		# the button clickable (toggle ON), just visually dim. Force
+		# disabled=false to be sure no parent override stuck.
+		btn.disabled = false
 	btn.pressed.connect(_on_modifier_toggle.bind(mod_id))
 	row.add_child(btn)
 	return row
+
+# iter-241 — multiplier chip (gold-bordered pill) replaces the plain
+# Label "Reward: 1.00× ether shards" line. Visually mirrors the ETHER
+# chip in the BINDINGS modal so the meta-currency surface stays
+# coherent. Rebuilt on every toggle (cheap — 1 PanelContainer + Label).
+func _build_modifier_multiplier_chip() -> PanelContainer:
+	var chip: PanelContainer = PanelContainer.new()
+	var chip_sb: StyleBoxFlat = StyleBoxFlat.new()
+	chip_sb.bg_color = Color(0.14, 0.10, 0.06, 0.94)
+	chip_sb.border_color = MODAL_BUTTON_GOLD
+	chip_sb.border_width_left = 1
+	chip_sb.border_width_top = 1
+	chip_sb.border_width_right = 1
+	chip_sb.border_width_bottom = 1
+	chip_sb.corner_radius_top_left = 6
+	chip_sb.corner_radius_top_right = 6
+	chip_sb.corner_radius_bottom_left = 6
+	chip_sb.corner_radius_bottom_right = 6
+	chip_sb.content_margin_left = 14
+	chip_sb.content_margin_right = 14
+	chip_sb.content_margin_top = 4
+	chip_sb.content_margin_bottom = 4
+	chip.add_theme_stylebox_override("panel", chip_sb)
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var label: Label = Label.new()
+	var mul: float = FloorModifiers.compute_ether_multiplier()
+	var pct: int = int(round((mul - 1.0) * 100.0))
+	if pct <= 0:
+		label.text = "REWARD  ◇  1.00× ETHER"
+	else:
+		label.text = "REWARD  ◇  %.2f× ETHER  (+%d%%)" % [mul, pct]
+	label.add_theme_color_override("font_color", MODAL_TITLE_COLOR)
+	label.add_theme_font_size_override("font_size", 18)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip.add_child(label)
+	_modifiers_total_label = label
+	return chip
 
 func _on_modifier_toggle(mod_id: String) -> void:
 	Audio.play_ui_cue("ui_press", -4.0)
 	FloorModifiers.toggle(mod_id)
 	# Cheap rebuild — the row count is small enough (5) that a full
 	# panel redraw isn't a perf concern, and rebuilding ensures every
-	# label's color + total field reflect the new state.
+	# label's color + total chip reflect the new state.
 	_close_modifiers_modal_internal()
 	_show_modifiers_modal()
 
+# Retained for back-compat with iter-239 (no direct callers left in
+# the modal, but the chip's label is _modifiers_total_label so any
+# future "live update without rebuild" code path has the same hook).
 func _refresh_modifiers_total_label() -> void:
 	if _modifiers_total_label == null:
 		return
 	var mul: float = FloorModifiers.compute_ether_multiplier()
 	var pct: int = int(round((mul - 1.0) * 100.0))
 	if pct <= 0:
-		_modifiers_total_label.text = "Reward: 1.00× ether shards"
+		_modifiers_total_label.text = "REWARD  ◇  1.00× ETHER"
 	else:
-		_modifiers_total_label.text = "Reward: %.2f× ether shards  (+%d%%)" % [mul, pct]
+		_modifiers_total_label.text = "REWARD  ◇  %.2f× ETHER  (+%d%%)" % [mul, pct]
 
 func _on_modifiers_confirm() -> void:
 	Audio.play_ui_cue("ui_press", -2.0)
@@ -1197,3 +1268,4 @@ func _close_modifiers_modal_internal() -> void:
 		_modifiers_panel.queue_free()
 		_modifiers_panel = null
 	_modifiers_total_label = null
+	_modifiers_chip = null
