@@ -4,6 +4,69 @@ A handoff document for outside collaborators (ChatGPT, design reviewers,
 new contributors). Snapshot of the game as it stands today. Keep updated
 when major systems change.
 
+Date of snapshot: 2026-05-21 (Director audit P1-P4 + Combat refactor + BoI/Noita/Hades feel pass)
+Branch: `claude/wizard-kit-sprint-3` @ commit `63e933d` (80+ commits ahead of `main`)
+
+**Director Audit (iter-243..246, 4 phases)** — feel, visuals, HUD, progression.
+  Damage numbers at impact + 50% larger + crit gold. Enemy melee
+  telegraph arcs paint the swing radius. Reaction Web armed-only.
+  Slow zone retinted yellow→violet (danger semantics). Pedestal
+  triangle shifts 120 px up when central hazard exists. HUD compacted
+  (hearts + ☠ inline top-left; chip stack top-right). Per-room XP
+  bar with mid-room boon pedestals. First-3-pedestals rare-biased.
+  Boss cinematic 1.8 s slow-mo + gold-rain rising particles + 1.08×
+  camera punch. RESONANCE build-moment stinger (5 themes × 2 tiers).
+
+**Combat Refactor (iter-247..251, Path B)** — 5 verbs → 4.
+  Parry (Q) REMOVED, folded into PERFECT DODGE (same-button timing,
+  last 0.10 s of dodge active frames). Sword 3-HIT COMBO with jab-
+  jab-HEAVY rhythm (combo window 0.50 s, hit 3 = 2× dmg + 1.5×
+  knockback, ×only-cancel-into-dodge). Blast WINDUP 0.10 s commit
+  + 0.30 s recovery. Dodge retuned (cd 0.9→0.6, dur 0.28→0.24).
+  Brutal mid-dodge attack penalty (Hades pattern). Perfect dodge =
+  Engine.time_scale 0.4 slow-mo + violet phase blur + brass chime +
+  +50 % dmg + guaranteed crit on next sword strike (1.5 s buffer).
+  Hits 3-hit combo land via blade tint glow amber → orange → red.
+
+**BoI/Noita/Hades Feel Pass (iter-252..258, 7 waves)**:
+  • Wave 2 — Dynamic Lights Everywhere. PointLight2D on projectiles
+    (violet pool follows the orb), soul gems (small violet), fire
+    pools (warm flicker via Time.get_ticks_msec), pedestals (gold
+    breathing pulse + claim flash). Cave lights up when you cast.
+  • Wave 3 — HAZARD × HAZARD REACTIVITY MATRIX. 5 named mixings
+    (BOILING_ACID, ELECTRIFIED_FONT, BURNING_SPIKES, SUBMERGED_SPIKES,
+    GREATER_FIRE) when hazards overlap. New `hazard_interactions.gd`
+    autoload + `hazard_mix.gd` per-reaction scene. Authored chemistry
+    without pixel sim.
+  • Wave 5A — Room shape variety. room_04 → RING (center wall block;
+    orbital combat); room_06 → MULTI-CHAMBER (two chambers + 64 px
+    bridge; mid-fight spike pit appears in chokepoint).
+  • Wave 4 — Atmospheric Density Bomb. Ambient motes 2-3× per biome;
+    SECOND aerial layer per biome (candle-ash / bone chunks / heat-
+    haze / divine sparks); palette 22 % darker baseline; torch +18 %
+    radius / +20 % energy; hero rim 0.6 → 0.85 / 1.5 → 1.85.
+  • Wave 5B+5C — Destructibles + Secrets. Pillars (5 HP, break under
+    sword Hit 3 / dash → rubble pile blocks movement). Lanterns
+    (1 HP, spawn 3 s fire pool + light goes dark). Sarcophagi (2 HP,
+    50 % gold drop / 50 % spawn ember). SECRET CRACKABLE WALLS:
+    30 %/non-boss room, dim violet glow, 2 hits → +30 ◇ cache.
+  • Wave 6 — Enemy Death Drama. Per-enemy-type persistent corpse
+    decals (slime green splat / skeleton bone shards + dust /
+    ember ash cloud / blood pool / ghost mist / soot pile). 7 s
+    lifetime, 1.5 s fade. Room "remembers" the fight.
+  • Wave 7 — Music Dynamics + Boss Swell. Combat-intensity tracker
+    drives music `volume_db` + low-pass `cutoff_hz` per frame. Calm =
+    800 Hz / -14 dB (muffled). Active = 18 kHz / -10 dB (clear).
+    Boss room intensity floor 0.4 (tension lingers between waves).
+    Per-kill 0.15 micro-pulses. SFX/UI bypass the filter via separate
+    bus.
+
+**44 audit tests green** (was 36 at session start).
+
+---
+
+## SESSION-START ANCHOR (preserved for history)
+
 Date of snapshot: 2026-05-20 (iter-242 = Loop Tightening sprint complete)
 Branch: `claude/wizard-kit-sprint-3` @ commit `aa9665e` (60 commits ahead of `main`)
 
