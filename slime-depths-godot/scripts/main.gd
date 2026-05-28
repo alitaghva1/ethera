@@ -779,6 +779,17 @@ func _ready() -> void:
 				Audio.play_boss_music()
 			elif Audio.has_method("play_music_for_biome"):
 				Audio.play_music_for_biome(_room.biome)
+			# iter-258 / Wave 7 — reset music dynamics on room entry. The
+			# music starts at CALM intensity (0.0) and ramps to combat
+			# (1.0 or 1.2 boss) the moment the first wave fires from the
+			# INITIAL_WAVE_DELAY timer below. Boss rooms also pin a 0.4
+			# floor so the music never goes fully calm between boss waves
+			# — tension lingers. Cleared on next room's _ready when this
+			# code re-runs and the floor goes back to 0.0.
+			if Audio.has_method("set_combat_intensity"):
+				Audio.set_combat_intensity(0.0)
+			if Audio.has_method("set_intensity_floor"):
+				Audio.set_intensity_floor(0.4 if _room.is_last_room else 0.0)
 		_spawn_torches(_room.torch_positions)
 		# Decor — collidable stone pillars + breakable chests. Both spawn
 		# from per-room arrays in the same data-driven shape as torches.
@@ -4075,6 +4086,16 @@ func _start_wave(idx: int) -> void:
 	_wave_index = idx
 	_wave_state = WaveState.ACTIVE
 	wave_label.text = "WAVE %d / %d" % [idx + 1, _waves.size()]
+	# iter-258 / Wave 7 — music dynamics: ramp UP to combat intensity.
+	# Boss rooms push to 1.2 (extra +0.8 dB volume + already-max cutoff)
+	# so the boss music swell is brighter than regular waves. Audio
+	# autoload lerps to this target over ~0.55s — the music FEELS like
+	# it's leaning in just before the spawn timers fire (SPAWN_STAGGER
+	# is ~0.4s/enemy so the first enemy hits the floor right as the
+	# music finishes its swell).
+	if Audio != null and Audio.has_method("set_combat_intensity"):
+		var target_intensity: float = 1.2 if (_room != null and _room.is_last_room) else 1.0
+		Audio.set_combat_intensity(target_intensity)
 	# Iter 22 — center-screen wave banner. Punctuation between rounds;
 	# the corner wave_label stays as the persistent readout.
 	_show_wave_banner(idx + 1, _waves.size())
@@ -4240,6 +4261,13 @@ func _on_wave_cleared() -> void:
 	# Iter 222 / Beta M3 — room/wave clear SFX (was silent per A/V audit).
 	if Audio != null and Audio.has_method("_play"):
 		Audio._play("room_clear", hero.global_position if hero != null else Vector2(640, 384))
+	# iter-258 / Wave 7 — music dynamics: drop intensity back to CALM.
+	# In a boss room the 0.4 floor (set in _ready on room entry) keeps
+	# the music brighter than ordinary exploration even between waves —
+	# boss tension lingers. In regular rooms the floor is 0.0 so the
+	# music fully relaxes into between-wave calm before the next swell.
+	if Audio != null and Audio.has_method("set_combat_intensity"):
+		Audio.set_combat_intensity(0.0)
 	# iter-79: portal close-call removed along with the portal system.
 	if _wave_index + 1 < _waves.size():
 		wave_label.text = "WAVE %d CLEAR  ·  next in %.1fs" % [_wave_index + 1, WAVE_CLEAR_PAUSE]

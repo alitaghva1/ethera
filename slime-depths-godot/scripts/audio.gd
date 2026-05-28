@@ -297,6 +297,12 @@ func _ready() -> void:
 	# iter-101: boss phase-3 + achievement audio (previously silent).
 	Events.boss_phase_3.connect(_on_boss_phase_3)
 	Events.achievement_unlocked.connect(_on_achievement_unlocked)
+	# iter-258 / Wave 7 — enemy_died micro-pulse for music dynamics.
+	# Separate from _on_enemy_died (which plays the death thud SFX) so
+	# the two handlers can evolve independently. enemy_died is already
+	# connected once above; a second connect targets a different method
+	# and Godot dispatches both.
+	Events.enemy_died.connect(_on_enemy_died_for_intensity)
 
 # ── Synthesis ──────────────────────────────────────────────────────────
 
@@ -963,6 +969,64 @@ var _music_live_is_a: bool = true
 var _music_current_track: String = ""
 var _music_fade_tween: Tween = null
 
+# ══════════════════════════════════════════════════════════════════════
+# Iter 258 / Wave 7 — Music dynamics (Hades-style reactive intensity)
+# ══════════════════════════════════════════════════════════════════════
+#
+# Why this exists:
+#   Pre-iter-258 the per-biome OGG track played at a fixed -14 dB volume
+#   with full frequency content from the moment the room loaded through
+#   the entire combat sequence. That meant the music FEELS identical
+#   between waves (calm exploration) and during a wave (full combat) —
+#   no audio cue for tension peaks, no contrast between "you're picking
+#   your moment" and "you're in the thick of it."
+#
+#   Hades / Risk of Rain 2 / Diablo all solve this with multi-stem
+#   tracks (one calm bed + one combat layer that mixes in/out per
+#   intensity). We don't have multi-stem OGGs — only single-track
+#   files per biome — so this layer modulates a single SINGLE track
+#   via two cheap real-time controls:
+#
+#     1. Volume boost (-14 dB baseline ± 4 dB intensity boost; +4.8 dB
+#        at boss-room max intensity 1.2).
+#     2. Low-pass filter cutoff_hz on a dedicated "Music" bus. Idle
+#        clamps the cutoff to 800 Hz so the music feels DISTANT and
+#        muffled (treble removed, low-mids retained — like hearing
+#        the score from another room). Full combat opens to 18 kHz
+#        for full-spectrum clarity.
+#
+# Intensity model:
+#   _combat_intensity ∈ [0.0, 1.2]. Sources of intensity:
+#     • Wave start → 1.0 (1.2 if boss room)
+#     • Wave clear → 0.0 (but boss-room floor holds at 0.4 — see
+#       _intensity_floor — so the boss-tension lingers in between
+#       boss-room waves).
+#     • Per-kill micro-pulse via pulse_combat_intensity_briefly(0.15,
+#       0.2) → tiny additive bump that decays without affecting the
+#       sustained target.
+#
+#   The target is lerped each frame with rate 1.8 → reaches ~95% of
+#   a new target in 0.55s. Smooth ramp, no jarring snaps.
+#
+# Bus topology:
+#   We add a runtime "Music" bus (index 1) with a single AudioEffectLow-
+#   PassFilter at slot 0. Music players (A + B) route to "Music" instead
+#   of "Master". SFX and UI cues continue to play through "Master" and
+#   are NOT filtered — only music is dimmed/muffled in between waves.
+#   The "Music" bus's send routes to "Master" at unity (Godot default).
+
+const INTENSITY_LERP_RATE: float = 1.8       # reaches 95% in ~0.55s
+const INTENSITY_DB_GAIN: float = 4.0         # volume boost at intensity 1.0
+const INTENSITY_CUTOFF_IDLE_HZ: float = 800.0    # muffled, distant
+const INTENSITY_CUTOFF_ACTIVE_HZ: float = 18000.0 # full spectrum
+
+var _combat_intensity: float = 0.0           # smoothed current value
+var _combat_intensity_target: float = 0.0    # what we're lerping toward
+var _intensity_floor: float = 0.0            # held minimum (e.g. boss room: 0.4)
+var _pulse_bonus: float = 0.0                # transient micro-pulse (auto-decays)
+var _music_lowpass_effect: AudioEffectLowPassFilter = null
+var _music_bus_index: int = -1               # cached after _ensure_music_bus
+
 # Bootstrap. Called from _ambient_init (we piggyback off the same
 # deferred entry-point so both subsystems initialize after _ready in
 # the same frame batch).
@@ -974,21 +1038,65 @@ func _music_init() -> void:
 	for track_id in MUSIC_TRACKS:
 		var stream: AudioStreamOggVorbis = MUSIC_TRACKS[track_id]
 		stream.loop = true
+	# iter-258 — Music bus + low-pass filter for reactive dynamics.
+	# Build BEFORE the players so they can route to the bus.
+	_ensure_music_bus()
 	_build_music_players()
 	# Resolve the initial scene's music once — tree_changed already
 	# fired for ambient and may not fire again for the same scene, so
 	# we need a one-shot bootstrap call.
 	_resolve_music_for_current_scene()
 
+# iter-258 — Create a runtime "Music" bus if it doesn't already exist,
+# attach a single AudioEffectLowPassFilter at slot 0, and cache the
+# effect + bus index so _process can modulate cutoff_hz each frame.
+# Re-entrant: if the bus already exists (e.g. project.godot defines it
+# later, or this is called a second time on a reload), we just rebind.
+func _ensure_music_bus() -> void:
+	var idx: int = AudioServer.get_bus_index("Music")
+	if idx < 0:
+		# Bus doesn't exist — add it at the end and rename. Newly-added
+		# buses default to bus_count-1 with name "New Bus N"; rename
+		# immediately so we can resolve by name.
+		AudioServer.add_bus(AudioServer.bus_count)
+		idx = AudioServer.bus_count - 1
+		AudioServer.set_bus_name(idx, "Music")
+		# Route to Master at unity gain. Default send IS Master so this
+		# is belt-and-suspenders for clarity.
+		AudioServer.set_bus_send(idx, "Master")
+	_music_bus_index = idx
+	# Make sure we have exactly one low-pass effect on the bus. If a
+	# previous init already added one, reuse it (don't double-up).
+	var existing_lp: AudioEffectLowPassFilter = null
+	var ec: int = AudioServer.get_bus_effect_count(idx)
+	for i in ec:
+		var fx_existing: AudioEffect = AudioServer.get_bus_effect(idx, i)
+		if fx_existing is AudioEffectLowPassFilter:
+			existing_lp = fx_existing
+			break
+	if existing_lp != null:
+		_music_lowpass_effect = existing_lp
+	else:
+		var lp := AudioEffectLowPassFilter.new()
+		# Default db = -6; we let cutoff modulation do the lifting.
+		lp.cutoff_hz = INTENSITY_CUTOFF_IDLE_HZ
+		AudioServer.add_bus_effect(idx, lp)
+		_music_lowpass_effect = lp
+
 # ── Music players + scene-change crossfade ────────────────────────────
 
 func _build_music_players() -> void:
+	# iter-258 — route music to the dedicated "Music" bus (set up in
+	# _ensure_music_bus) so the low-pass filter modulates ONLY the music,
+	# never SFX/UI. If the bus failed to create for some reason, fall
+	# back to Master so audio still plays (just without dynamics).
+	var bus_name: String = "Music" if AudioServer.get_bus_index("Music") >= 0 else "Master"
 	_music_player_a = AudioStreamPlayer.new()
-	_music_player_a.bus = "Master"
+	_music_player_a.bus = bus_name
 	_music_player_a.volume_db = MUSIC_FADE_FLOOR_DB
 	add_child(_music_player_a)
 	_music_player_b = AudioStreamPlayer.new()
-	_music_player_b.bus = "Master"
+	_music_player_b.bus = bus_name
 	_music_player_b.volume_db = MUSIC_FADE_FLOOR_DB
 	add_child(_music_player_b)
 
@@ -1038,3 +1146,101 @@ func _crossfade_music_to(track_id: String) -> void:
 
 	_music_current_track = track_id
 	_music_live_is_a = not _music_live_is_a
+
+# ══════════════════════════════════════════════════════════════════════
+# iter-258 / Wave 7 — Reactive intensity per-frame application
+# ══════════════════════════════════════════════════════════════════════
+
+# Per-frame: lerp _combat_intensity toward (target ⊔ floor) + pulse,
+# then push the resulting value into the live music player's volume_db
+# and the music bus's low-pass cutoff_hz. Cheap — three float ops + two
+# property writes per frame. No measurable cost vs the existing audio
+# pipeline.
+func _process(delta: float) -> void:
+	# Decay any active pulse first so it doesn't linger when the timer
+	# already restored the base target. The pulse timer uses a callback,
+	# but as a safety net we also let the pulse_bonus drift back to 0
+	# if no fresh pulses arrive — exp-decay with same rate as the lerp.
+	if _pulse_bonus > 0.0:
+		_pulse_bonus = lerpf(_pulse_bonus, 0.0, clampf(delta * (INTENSITY_LERP_RATE * 2.0), 0.0, 1.0))
+		if _pulse_bonus < 0.001:
+			_pulse_bonus = 0.0
+
+	# Effective target combines the sustained set + any held floor (boss
+	# room minimum) + the transient pulse_bonus. Clamped to the same
+	# [0, 1.2] envelope as set_combat_intensity so a piled-on pulse
+	# during boss mode doesn't push the volume into harsh territory.
+	var effective_target: float = maxf(_combat_intensity_target, _intensity_floor) + _pulse_bonus
+	effective_target = clampf(effective_target, 0.0, 1.2)
+
+	_combat_intensity = lerpf(
+		_combat_intensity,
+		effective_target,
+		clampf(delta * INTENSITY_LERP_RATE, 0.0, 1.0),
+	)
+
+	# Apply to live music player's volume_db (only if a track is loaded).
+	# We do NOT modify the volume during an active crossfade — the tween
+	# manages volume_db over its 1.2s ramp and our per-frame write would
+	# fight it. The crossfade target IS MUSIC_TARGET_DB, so as soon as
+	# the fade completes the next frame's write picks up where the tween
+	# left off.
+	if _music_current_track != "" and (_music_fade_tween == null or not _music_fade_tween.is_valid()):
+		var live: AudioStreamPlayer = _music_player_a if _music_live_is_a else _music_player_b
+		if live != null and live.playing:
+			live.volume_db = MUSIC_TARGET_DB + (_combat_intensity * INTENSITY_DB_GAIN)
+
+	# Apply to the music bus low-pass cutoff. lerp 800 Hz (muffled) →
+	# 18 kHz (full spectrum). Bus is shared by both A/B music players
+	# so this works regardless of which one is currently live.
+	if _music_lowpass_effect != null:
+		var cutoff: float = lerpf(INTENSITY_CUTOFF_IDLE_HZ, INTENSITY_CUTOFF_ACTIVE_HZ, clampf(_combat_intensity, 0.0, 1.0))
+		_music_lowpass_effect.cutoff_hz = cutoff
+
+# ── Public API — combat intensity ─────────────────────────────────────
+
+# Set the sustained combat intensity target. Clamped to [0.0, 1.2] —
+# 1.0 = full wave engaged, 1.2 = boss-room max (extra volume + cutoff
+# headroom for the boss music swell). The actual _combat_intensity
+# value lerps toward this each frame; callers don't need to drive
+# anything per-frame, just emit the desired state.
+func set_combat_intensity(target: float) -> void:
+	_combat_intensity_target = clampf(target, 0.0, 1.2)
+
+# Hold a minimum intensity even when set_combat_intensity(0.0) is called.
+# Use case: between waves in a boss room, the music should NOT fully relax
+# back to "calm exploration" — boss tension lingers. Setting
+# set_intensity_floor(0.4) keeps the music at least mid-bright between
+# boss-room waves. Cleared via set_intensity_floor(0.0) on room exit.
+func set_intensity_floor(value: float) -> void:
+	_intensity_floor = clampf(value, 0.0, 1.2)
+
+# Brief additive bump on top of the sustained target. Use for short
+# punctuating events (a big kill, a boss tell connecting) where you want
+# a transient music reaction without changing the steady-state. The
+# bonus auto-decays after `duration` via a SceneTreeTimer so callers
+# don't have to coordinate cleanup. Multiple overlapping pulses stack
+# additively but the per-frame clamp keeps the effective value sane.
+func pulse_combat_intensity_briefly(amount: float = 0.6, duration: float = 0.4) -> void:
+	_pulse_bonus = maxf(_pulse_bonus, amount)
+	# Auto-clear after the requested duration. We use a one-shot timer
+	# instead of a fixed schedule so overlapping pulses each get their
+	# own decay window (the lerp_to_zero in _process handles the actual
+	# decay; this timer ensures we eventually drop to zero even if no
+	# frames are processing fast enough).
+	var t: SceneTreeTimer = get_tree().create_timer(duration)
+	t.timeout.connect(func ():
+		# Only clear if no fresh pulse has come in since this one started.
+		# We snapshot the amount and only zero if the current bonus is at
+		# or below what we set — otherwise a louder pulse arrived and
+		# should own the decay window.
+		if _pulse_bonus <= amount + 0.001:
+			_pulse_bonus = 0.0
+	)
+
+# iter-258 — micro-pulse on enemy_died. Each kill nudges the music
+# brightness by a tiny amount for 200 ms. Sustained intensity (set via
+# set_combat_intensity from wave start/clear) is unchanged; this adds
+# a subtle "music reacts to combat success" feel — Hades-style.
+func _on_enemy_died_for_intensity(_world_pos: Vector2) -> void:
+	pulse_combat_intensity_briefly(0.15, 0.2)
