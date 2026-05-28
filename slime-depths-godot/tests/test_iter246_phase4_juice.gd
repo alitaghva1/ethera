@@ -60,8 +60,12 @@ func _initialize() -> void:
 	if not ("var _room_xp" in main_src):
 		printerr("FAIL: main.gd missing _room_xp field")
 		ok = false
-	if not ("_spawn_mid_room_boon" in main_src):
-		printerr("FAIL: main.gd missing _spawn_mid_room_boon function")
+	# iter-259 / Wave 8 — _spawn_mid_room_boon was renamed to
+	# _show_level_up_choice when the silent pedestal spawn became the
+	# VS-style pause-and-pick modal. Grep for the new name; either name
+	# proves the boon-trigger function still exists in some form.
+	if not ("_show_level_up_choice" in main_src) and not ("_spawn_mid_room_boon" in main_src):
+		printerr("FAIL: main.gd missing the boon-trigger function (_show_level_up_choice or _spawn_mid_room_boon)")
 		ok = false
 	if not ("ROOM_XP_CAP" in main_src):
 		printerr("FAIL: main.gd missing ROOM_XP_CAP const")

@@ -250,6 +250,17 @@ const SOUND_CONFIGS := {
 	# without competing with combat chime. Gain 0.55 — present but
 	# does not eclipse a kill cascade audio environment.
 	"boon_unlocked":     { "freq_start": 660.0, "freq_end":1320.0, "duration": 0.32, "wave": "sin", "gain": 0.55, "decay_pow": 1.2 },
+	# iter-259 / Wave 8 — level-up choice modal swell. Fires the instant
+	# the boon-choice modal mounts (see boon_modal.gd::_ready). Broad
+	# ascending brass-feel sweep — 220 → 1320 Hz over 1.0 s, linear
+	# decay so the tone RINGS rather than snaps. Distinct from
+	# resonance_stinger (220→880, 0.60 s) — level_up_swell pushes
+	# HIGHER (1320 Hz peak) + LONGER (1.0 s) because the pause-the-
+	# world drama justifies a more announced cue. Gain 0.65 matches
+	# the resonance stinger so level-up + resonance both land as
+	# "moment" beats with the same audio weight. Sine for musicality
+	# at the upper end of the sweep (1300 Hz square is harsh).
+	"level_up_swell":    { "freq_start": 220.0, "freq_end":1320.0, "duration": 1.00, "wave": "sin", "gain": 0.65, "decay_pow": 1.0 },
 }
 
 # Number of AudioStreamPlayer2D nodes to pre-create per bus. Six is

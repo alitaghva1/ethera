@@ -38,6 +38,8 @@ const SCENES_TO_LOAD: Array[String] = [
 	# iter-256 / Wave 5B+5C — destructible sarcophagus + secret cracked wall.
 	"res://scenes/sarcophagus.tscn",
 	"res://scenes/secret_wall.tscn",
+	# iter-259 / Wave 8 — VS-style level-up boon choice modal.
+	"res://scenes/boon_modal.tscn",
 ]
 
 func _initialize() -> void:

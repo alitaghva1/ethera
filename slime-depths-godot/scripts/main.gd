@@ -47,6 +47,10 @@ const TURRET_SCRIPT: Script = preload("res://scripts/turret.gd")
 const DEATH_SCREEN_SCENE: PackedScene = preload("res://scenes/death_screen.tscn")
 const PAUSE_SCREEN_SCENE: PackedScene = preload("res://scenes/pause_screen.tscn")
 const RELIC_ICON_SCENE: PackedScene = preload("res://scenes/relic_icon.tscn")
+# iter-259 / Wave 8 — VS-style level-up choice modal. Replaces the
+# silent mid-room pedestal spawn from iter-246 with a full pause-the-
+# game, pick-one-of-three boon picker. See boon_modal.gd / boon_catalog.gd.
+const BOON_MODAL_SCENE: PackedScene = preload("res://scenes/boon_modal.tscn")
 
 # Enemy roster — iter 14 data-driven shape. ONE shared enemy.tscn for
 # all types; the type-specific data (sheets, stats, behavior, AI
@@ -6278,60 +6282,59 @@ func _advance_room_xp(delta_xp: int) -> void:
 		_xp_fill_tween = create_tween()
 		_xp_fill_tween.tween_property(_xp_bar_fill, "anchor_right", new_frac, 0.25)\
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Cross-100% — trigger the boon ONCE per room.
+	# Cross-100% — fire the level-up choice ONCE per room.
 	if not _boon_spawned_this_room and _room_xp >= ROOM_XP_CAP:
-		_spawn_mid_room_boon()
+		_show_level_up_choice()
 
-# When the XP bar fills, spawn a single common-tier relic pedestal
-# above the hero. The pedestal does NOT pause the action — combat
-# continues, the player can choose to claim or ignore. Visual / audio
-# cues: gold flash on the bar, banner above hero, brass chime.
-func _spawn_mid_room_boon() -> void:
+# iter-259 / Wave 8 — VS-style level-up choice. REPLACES the pre-iter-259
+# `_spawn_mid_room_boon` pedestal spawn (which silently materialized a
+# common-tier relic above the hero — useful, but no fanfare, no choice).
+# Now: when the per-room XP bar fills, we PAUSE the game and show a
+# 3-card modal. Player picks one card → boon mods fold into
+# GameState.shrine_bonuses → game resumes. The iconic Vampire Survivors
+# dopamine beat. See boon_modal.gd for the modal implementation +
+# boon_catalog.gd for the 15-boon catalog (3 per theme).
+#
+# Sentinel `_boon_spawned_this_room` keeps the original "once per room"
+# semantics — the player can't farm boons by re-crossing the cap on an
+# already-leveled-up room (XP is clamped at ROOM_XP_CAP anyway, but the
+# sentinel is the explicit guard).
+#
+# Pause-flip ownership lives in the modal (boon_modal.gd::_ready sets
+# get_tree().paused = true), NOT here. Same ownership pattern
+# pause_screen.gd uses for the ESC pause overlay — keeps the
+# responsibility colocated with the UI that knows when to unpause.
+func _show_level_up_choice() -> void:
 	if _boon_spawned_this_room:
 		return
 	_boon_spawned_this_room = true
-	# Pick a common-tier unowned relic. Falls back to rare if every
-	# common is already owned (unlikely on a fresh build but possible
-	# on a long deep run).
-	var common_pool: Array[String] = []
-	var rare_pool: Array[String] = []
-	for rid in GameState.RELIC_REGISTRY.keys():
-		if GameState.has_relic(rid):
-			continue
-		var info: Dictionary = GameState.relic_info(rid)
-		var tier: String = str(info.get("tier", "common"))
-		if tier == "common":
-			common_pool.append(rid)
-		elif tier == "rare":
-			rare_pool.append(rid)
-	var pool: Array[String] = common_pool if not common_pool.is_empty() else rare_pool
-	if pool.is_empty():
-		# Owns literally every common+rare. Skip the boon — no relic to grant.
-		return
-	var pick: String = pool[randi() % pool.size()]
-	var ped: Pedestal = PEDESTAL_SCENE.instantiate()
-	# Spawn above hero (-120 px). If the spot is off-screen / off-arena,
-	# fall back to the room center.
-	var spawn_pos: Vector2 = Vector2(640, 384)
-	if is_instance_valid(hero):
-		spawn_pos = hero.global_position + Vector2(0, -120)
-	ped.global_position = spawn_pos
-	ped.relic_id = pick
-	add_child(ped)
 	# Bar flash — punch fill color to bright cream then settle back.
+	# Kept from the iter-246 implementation so the bar still visually
+	# acknowledges the level-up; without it the bar fills and then sits
+	# at 100% silently while the modal mounts, missing a beat of
+	# feedback at the source location.
 	if _xp_bar_fill != null and is_instance_valid(_xp_bar_fill):
 		var prev_color: Color = ROOM_XP_BAR_FILL
 		_xp_bar_fill.color = ROOM_XP_BAR_FLASH
 		var ct: Tween = create_tween()
+		# tween must keep ticking while paused (the modal pauses
+		# immediately on _ready) — without TWEEN_PAUSE_PROCESS the bar
+		# would freeze mid-color-fade until the player picked a card.
+		ct.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 		ct.tween_property(_xp_bar_fill, "color", prev_color, 0.45).set_trans(Tween.TRANS_QUAD)
-	# Brass-like chime.
-	if Audio != null and Audio.has_method("_play"):
-		Audio._play("boon_unlocked", spawn_pos, 1.0)
-	# Floater banner above hero.
-	var banner_pos: Vector2 = spawn_pos + Vector2(0, -36)
-	var banner: DamageNumber = DamageNumber.spawn(banner_pos, "BOON", Color(1.0, 0.92, 0.55))
-	if banner != null:
-		add_child(banner)
+	# Mount the modal on the scene root. Adding it to `self` (main.gd's
+	# Node2D) puts it under the world rather than in screen space, which
+	# breaks anchoring; child of get_tree().current_scene keeps it at
+	# the scene root regardless of how main.gd is parented.
+	var modal: CanvasLayer = BOON_MODAL_SCENE.instantiate() as CanvasLayer
+	if modal == null:
+		# Defensive: fail gracefully if the scene didn't load. Without
+		# this branch a load error would crash on the add_child call;
+		# instead we just skip the modal for this level-up (the bar
+		# flash still fires above so the player sees SOMETHING happened).
+		push_warning("BoonModal failed to instantiate — skipping level-up choice")
+		return
+	add_child(modal)
 
 # Reset XP state on room enter — called from the room-load path (see
 # _ready / _on_load_room_complete). Resets the bar fill via anchor and
