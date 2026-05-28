@@ -1,0 +1,34 @@
+[gd_scene format=3 uid="uid://bns3rh5o8klsu"]
+
+[ext_resource type="Script" path="res://scripts/boss_intro.gd" id="1_script"]
+
+; Wizard-kit sprint 3 — boss intro name card. Thin scene wrapper
+; around boss_intro.gd, which builds a CanvasLayer + letterbox bars
+; + hairline flourishes + letterspaced name Label + subtitle in code
+; so the design + palette + tweens all live in one .gd alongside the
+; other cinematic banners (iter-22 _show_boss_intro_banner inside
+; main.gd, iter-71 floor_clear_burst.gd).
+;
+; Why scripted-construction rather than baked nodes in the .tscn:
+; - Six visual pieces (vignette, top + bottom letterbox bars, two
+;   hairlines, name Label, optional subtitle Label) need synchronized
+;   alpha tweens + a scale pulse on the name. Baking them in the .tscn
+;   would mean a long node tree, hand-tuned anchors, and a code-side
+;   stitch to find each by path. Building in code keeps the design
+;   intent in one place. Matches the floor_clear_burst pattern.
+; - Future variants (e.g. STORM-themed boss intro for a future storm
+;   boss) become a single-file edit on boss_intro.gd's palette consts.
+;
+; Spawn contract (see boss_intro.gd):
+;   BossIntro.spawn(host: Node, boss_display_name: String) -> Node
+;     - host: any Node; the intro is added as its child. main.gd passes
+;       itself; tests can pass a SceneTree root for headless verification.
+;     - boss_display_name: the EnemyType.display_name string (NOT
+;       upper-cased — boss_intro.gd handles casing + letter-spacing).
+;
+; The intro self-frees on tween-finish via tween_callback so it doesn't
+; need an external manager. Lifetime ~2.3s (fade-in 0.25 + hold 1.6 +
+; fade-out 0.45).
+
+[node name="BossIntro" type="Node"]
+script = ExtResource("1_script")

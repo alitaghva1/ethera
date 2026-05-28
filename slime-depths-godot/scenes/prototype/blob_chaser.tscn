@@ -1,0 +1,30 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3blobchaser01"]
+
+; BlobChaser — prototype enemy. Layer 4 (enemies), masks 1+2+8 = 11
+; (world walls + hero + gravestone). Walks through other enemies
+; freely so a pack doesn't traffic-jam.
+;
+; Visual: 28-px red circle. No anim, no shadow, no telegraph.
+
+[ext_resource type="Script" path="res://scripts/prototype/blob_chaser.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="blob_shape"]
+radius = 14.0
+
+[node name="BlobChaser" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 11
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("blob_shape")
+
+[node name="Visual" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(14, 0, 12.9, 5.4, 9.9, 9.9, 5.4, 12.9, 0, 14, -5.4, 12.9, -9.9, 9.9, -12.9, 5.4, -14, 0, -12.9, -5.4, -9.9, -9.9, -5.4, -12.9, 0, -14, 5.4, -12.9, 9.9, -9.9, 12.9, -5.4)
+color = Color(0.82, 0.30, 0.28, 1.0)
+
+; Faux eye — single dark dot at +4, -1 so the blob has a "face" and
+; the player can subconsciously read it as a creature, not a hitbox.
+[node name="Eye" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(2, -3, 6, -3, 6, 1, 2, 1)
+color = Color(0.08, 0.04, 0.08, 1.0)

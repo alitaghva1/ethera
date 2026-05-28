@@ -1,3 +1,9 @@
+// LEGACY (Phase 2 quarantine — see CANONICAL.md):
+//   The KeyM-bound DAG map screen exists for the OLD branching-floor flow.
+//   Canonical zones use a linear progression (no path selection); the
+//   `zoneHud` shows wave dots instead. Active only while `currentGraph`
+//   is set (post Phase-1 fix). Will be deleted in Phase 4.
+//
 // ============================================================================
 // FLOOR MAP SCREEN — branching DAG path selection
 //
@@ -32,6 +38,37 @@ const NODE_GLYPHS = {
   event:     '\u2726', // ✦ star
   sanctuary: '\u271A', // ✚ cross
   boss:      '\u265B', // ♛ queen/crown
+};
+
+// Round-7 — resolved sub-kinds for event nodes (altar / trove / chestroom /
+// challenge / miniboss). When a node's actualKind is one of these, the map
+// reads through these tables instead of the generic 'event' entry above.
+// Kept as separate consts because the original NODE_GLYPHS uses \uXXXX
+// escapes for cross-platform safety; mixing literals into the existing
+// table caused encoding mismatches at file-write time.
+const SUBKIND_GLYPHS = {
+  altar:     '⛧', // flame-altar (occult symbol)
+  trove:     '◈', // gem
+  chestroom: '⊞', // chest (squared plus)
+  challenge: '⚐', // flag
+  miniboss:  '♜', // rook
+  shop:      '⚖', // scales — merchant
+};
+const SUBKIND_LABELS = {
+  altar:     'ALTAR',
+  trove:     'TROVE',
+  chestroom: 'CHEST',
+  challenge: 'CHALLENGE',
+  miniboss:  'MINI-BOSS',
+  shop:      'SHOP',
+};
+const SUBKIND_COLORS = {
+  altar:     '#ff6a85',
+  trove:     '#f4d9a0',
+  chestroom: '#ffd680',
+  challenge: '#ffb265',
+  miniboss:  '#e07070',
+  shop:      '#86e3a8',
 };
 
 // Per-kind accent color — legible against the card's dark gradient.
@@ -216,8 +253,14 @@ function renderNode(n, p, currentNode) {
   // to it. Kind-specific flourishes are suppressed for hidden nodes so the
   // player can't plan around them.
   const hidden = n._hidden && !n.visited && !isCurrent;
-  const color = hidden ? '#8a7a5a' : (NODE_COLORS[n.kind] || '#c9a86a');
-  const glyph = hidden ? '?' : (NODE_GLYPHS[n.kind] || '?');
+  // Round-7 — read through actualKind first (the resolved sub-kind for
+  // event nodes), falling back to the graph kind. SUBKIND_* tables hold
+  // the per-altar/trove/chest/challenge/miniboss visuals.
+  const displayKind = n.actualKind || n.kind;
+  const color = hidden ? '#8a7a5a'
+    : (SUBKIND_COLORS[displayKind] || NODE_COLORS[displayKind] || '#c9a86a');
+  const glyph = hidden ? '?'
+    : (SUBKIND_GLYPHS[displayKind] || NODE_GLYPHS[displayKind] || '?');
   const s = hidden
     ? { badgeSize: 44, glyphSize: 22, wrapperSize: 56, ringWidth: 1.5,
         ringStyle: 'solid', extraShadow: '', extraAnimation: '', halo: '' }
@@ -260,9 +303,102 @@ function renderNode(n, p, currentNode) {
       font-size:9.5px;letter-spacing:2.2px;font-weight:bold;
       opacity:${clickable || isCurrent ? 0.95 : 0.65};
       font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
-    ">${NODE_LABELS[n.kind] || ''}</div>
+    ">${SUBKIND_LABELS[displayKind] || NODE_LABELS[displayKind] || ''}</div>
+    ${hidden ? '' : pathSublabelHtml(n, clickable, isCurrent, color)}
   </div>`;
 }
+
+// Sub-label under the node name — telegraphs the path cost/reward so forks
+// feel strategic ("I'm picking RISK for RARE+") instead of aesthetic
+// ("combat vs combat"). Only shown on elite (perilous) + sanctuary (safe)
+// since standard combat/event are the implicit baseline.
+function pathSublabelHtml(n, clickable, isCurrent, color) {
+  // Round-7 \u2014 sealed nodes render their BLOOD GATE chip first, in
+  // crimson, so the HP cost is visible from the M-key map BEFORE
+  // committing to that path. Players can plan "do I have enough HP
+  // to break this seal AND survive the room?" multiple steps ahead.
+  if (n.sealed) {
+    const cost = n.sealCost || 1;
+    const alive = clickable || isCurrent;
+    const alpha = alive ? 0.95 : 0.55;
+    return `
+      <div style="
+        color:${alive ? '#ff8088' : '#7a5050'};
+        font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+        opacity:${alpha};margin-top:-1px;
+        font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+      ">SEAL \u00b7 ${cost} HP \u00b7 LEGENDARY</div>`;
+  }
+  // Non-sealed \u2014 read from the per-node roomReward tag (Phase 1 of the
+  // rooms-redesign plan). Was previously hardcoded "RISK \u00b7 RARE+" for
+  // every elite, which became stale once roomReward varied per-node;
+  // now reads the actual tag. Sanctuaries fall back to "REST" since
+  // their roomReward is null by design (kind label "REST" already
+  // implies the heal).
+  let text = null;
+  let chipColor = color;
+  if (n.kind === 'sanctuary') text = 'REST';
+  else if (n.roomReward) {
+    text = REWARD_LABELS[n.roomReward] || n.roomReward.toUpperCase();
+    chipColor = REWARD_COLORS[n.roomReward] || color;
+  }
+  // Phase 3 audit fix #1 — append an affix sub-label for elite nodes
+  // with a pre-rolled affix. Sits below the reward chip so the order
+  // reads "ELITE / RARE+ / FROST" — kind, then reward, then threat.
+  // Players reading the map can plan "I need fire resist for that
+  // ember room two layers up" before committing to a fork.
+  let affixHtml = '';
+  if (n.eliteAffixId) {
+    const af = AFFIX_LABELS[n.eliteAffixId];
+    if (af) {
+      const alive = clickable || isCurrent;
+      const alpha = alive ? 0.85 : 0.5;
+      affixHtml = `
+    <div style="
+      color:${alive ? af.color : '#7a6d5e'};
+      font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+      opacity:${alpha};margin-top:-1px;
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    ">${af.label}</div>`;
+    }
+  }
+  if (!text) return affixHtml;
+  const alive = clickable || isCurrent;
+  const alpha = alive ? 0.85 : 0.5;
+  return `
+    <div style="
+      color:${alive ? chipColor : '#8a7c5e'};
+      font-size:7.5px;letter-spacing:1.6px;font-weight:bold;
+      opacity:${alpha};margin-top:-1px;
+      font-family:Georgia,serif;text-shadow:0 1px 2px rgba(0,0,0,0.6);
+    ">${text}</div>${affixHtml}`;
+}
+// Phase 3 audit fix #1 — affix display table mirrored from doorPortals.js
+// AFFIX_LABELS so the door card and the map node show the same label +
+// color for the same affix. Could share via a tiny module but mirroring
+// is cheap and the data is stable (4 affixes total, not changing).
+const AFFIX_LABELS = {
+  frost:  { label: 'FROST',  color: '#72c6ff' },
+  ember:  { label: 'EMBER',  color: '#ff7a2a' },
+  venom:  { label: 'VENOM',  color: '#6ae08a' },
+  warded: { label: 'WARDED', color: '#ffd855' },
+};
+// Reward palettes for the map sub-labels \u2014 kept parallel to doorPortals.js
+// REWARD_COLORS so the chip on the door + the chip on the map look the
+// same color to the player. (Could share via a tiny module but the maps
+// are tiny and divergence has been low historically.)
+const REWARD_LABELS = {
+  gold:      'GOLD',
+  'rare+':   'RARE+',
+  legendary: 'LEGENDARY',
+  fusion:    'FUSION',
+};
+const REWARD_COLORS = {
+  gold:      '#f4d9a0',
+  'rare+':   '#ffd680',
+  legendary: '#ffc8ff',
+  fusion:    '#ffb265',
+};
 
 // ============================================================================
 // CARD SHELL — parchment frame around the graph

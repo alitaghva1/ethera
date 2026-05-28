@@ -1,0 +1,53 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/dreadmage_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/dreadmage_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/dreadmage_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/dreadmage_death.png" id="5_death"]
+
+; Iter 66 — Bone Summoner. Support caster that periodically summons
+; bonecap minions during combat. Kites away from the hero (stays at
+; ~240 px) and summons 1-2 bonecaps within 80 px of itself on a 5s
+; cycle (0.8s windup + 1.0s recovery). Concurrent summon cap = 3 to
+; avoid wave-stuffing into oblivion.
+;
+; A bit tankier than the spectral_priest (6 HP vs 4) to compensate
+; for the lack of direct-damage threat from the summoner itself —
+; the player should be able to focus-kill but not in one combo.
+; Reuses the dreadmage sprite slot — robed dark caster aesthetic
+; fits a necromancer-style summoner thematically.
+;
+; Behavior tunables (SUMMON_INTERVAL, SUMMON_WINDUP, SUMMON_RADIUS,
+; SUMMON_KEEP_DIST, summon cap) live as consts in enemy.gd's summoner
+; block — same author-once-on-the-script convention used for healer.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Bone Summoner"
+behavior = "summoner"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 1.789
+sprite_y_offset = -30.4
+collision_radius = 20.0
+; Iter 70 — purple-red modulate distinguishes the bone_summoner from
+; the dreadmage (both reuse dreadmage_*.png). The dreadmage stays
+; default white = "void/dark caster"; the summoner shifts toward
+; necromancer-warm: R 1.2 / G 0.7 / B 1.0 = magenta-blood haze. Picks
+; up the "raising minions" theme without changing the silhouette.
+sprite_modulate = Color(1.2, 0.7, 1.0, 1.0)
+frames_idle = 8
+frames_walk = 8
+frames_attack = 8
+frames_death = 7
+fps_idle = 6.0
+fps_walk = 9.0
+fps_attack = 10.0
+fps_death = 8.0
+max_hp = 6
+move_speed = 50.0
+death_duration = 1.0

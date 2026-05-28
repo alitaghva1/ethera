@@ -1,0 +1,14 @@
+{
+  "name": "dash_impact",
+  "frames": 4,
+  "fps": 30,
+  "cell_size": 64,
+  "sheet_width": 256,
+  "sheet_height": 64,
+  "generated_at": "2026-05-12T17:58:37.977Z",
+  "prompt": {
+    "base_description": "top-down view of a bright cyan-white radial shockwave explosion with expanding dust ring and ground crack fragments scattering, painterly pixel art, dark fantasy combat effect, isolated on transparent background",
+    "action": "shockwave rapidly expanding outward from the center, peaking at mid-animation, then ring continues outward while core fades to nothing",
+    "negative": "character, person, warrior, weapon, sword, body, ground, floor, walls, scenery, background, color background"
+  }
+}

@@ -1,0 +1,42 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3firepool0001"]
+
+[ext_resource type="Script" path="res://scripts/fire_pool.gd" id="1_script"]
+
+; Iter 40 fire pool — FLAME ascendance kill effect. Thin wrapper around
+; fire_pool.gd which builds visuals + collision in code. Spawned by
+; hero._on_enemy_died_for_relics when GameState.theme_tier("flame") >= 2.
+;
+; Iter 252 / Wave 2 lighting — moved the PointLight2D from code-built
+; into the .tscn so each pool ALWAYS carries a light (matches
+; pedestal.tscn / projectile.tscn convention). fire_pool.gd queries the
+; existing $PointLight2D node, applies a sin-driven flicker each frame,
+; and still handles fade-out tween at end-of-life.
+
+; Soft radial light texture for the pool's warm orange glow. Same recipe
+; as the other Wave 2 lights so all lights share the soft-falloff look.
+[sub_resource type="Gradient" id="pool_light_grad"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="pool_light_tex"]
+gradient = SubResource("pool_light_grad")
+width = 128
+height = 128
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[node name="FirePool" type="Area2D"]
+script = ExtResource("1_script")
+
+; PointLight2D — warm orange that ILLUMINATES nearby pillars, floor
+; decals, and enemies. Energy 1.1 baseline (flicker oscillates between
+; ~0.95 and ~1.25 in _process). texture_scale 0.8 ≈ 102 px radius,
+; matching the pool's 22 px damage area visually.
+[node name="PointLight2D" type="PointLight2D" parent="."]
+color = Color(1, 0.62, 0.28, 1)
+energy = 1.1
+texture = SubResource("pool_light_tex")
+texture_scale = 0.8
+range_z_min = -1024
+range_z_max = 1024

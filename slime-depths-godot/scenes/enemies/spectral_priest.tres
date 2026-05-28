@@ -1,0 +1,51 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/priest_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/priest_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/priest_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/priest_death.png" id="5_death"]
+
+; Iter 65 — spectral priest. Support caster that heals nearby allies on
+; a 3.5s windup cycle. Squishy (4 HP) and slow (60 px/s) so the player
+; can focus-fire it down if they read the threat in time; the green
+; windup tint is the read. Reuses the existing priest sprite slot so
+; no new art is required.
+;
+; Behavior tunables (HEAL_RADIUS, HEAL_AMOUNT, HEAL_INTERVAL, windup
+; tint, pulse VFX) live as consts in enemy.gd's healer block — kept on
+; the script rather than EnemyType because every healer is expected to
+; share the same template; future tunable healers would join those
+; consts in their own block.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Spectral Priest"
+behavior = "healer"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.2
+sprite_y_offset = -17.5
+collision_radius = 16.0
+; Iter 70 — green-shifted baseline modulate so the spectral_priest reads
+; as DISTINCT from the regular priest in combat. Without this they share
+; the priest_*.png sheets verbatim and the only differentiator was the
+; transient green windup tint during a heal cast — outside that window
+; the two enemies were visually identical. R 1.0 / G 1.3 / B 1.0 lifts
+; the green channel ~30% to "healer aura" territory while keeping the
+; sprite recognizable as a priest figure.
+sprite_modulate = Color(1.0, 1.3, 1.0, 1.0)
+frames_idle = 6
+frames_walk = 8
+frames_attack = 6
+frames_death = 4
+fps_idle = 5.0
+fps_walk = 8.0
+fps_attack = 8.0
+fps_death = 7.0
+max_hp = 4
+move_speed = 60.0
+death_duration = 1.0

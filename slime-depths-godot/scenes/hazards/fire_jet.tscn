@@ -1,0 +1,161 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3firejet0001"]
+
+[ext_resource type="Script" path="res://scripts/fire_jet.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="firejet_area"]
+size = Vector2(22, 80)
+
+; iter-85 ember color gradient — bright yellow-white core fades through
+; orange to deep red transparent. Tracks the "bottom = hot, top = cool"
+; gradient of a real flame's separating embers.
+[sub_resource type="Gradient" id="ember_grad"]
+offsets = PackedFloat32Array(0, 0.3, 0.8, 1)
+colors = PackedColorArray(1.0, 0.95, 0.55, 0.95, 1.0, 0.62, 0.18, 0.85, 0.8, 0.25, 0.05, 0.40, 0.4, 0.10, 0.0, 0.0)
+
+; iter-85 smoke gradient — translucent grey that fades in fast then
+; drifts out. Reads as "wisp visible mid-rise" without abrupt appear/
+; disappear at endpoints.
+[sub_resource type="Gradient" id="smoke_grad"]
+offsets = PackedFloat32Array(0, 0.15, 0.65, 1)
+colors = PackedColorArray(0.50, 0.45, 0.40, 0.0, 0.50, 0.45, 0.40, 0.55, 0.35, 0.32, 0.30, 0.30, 0.22, 0.20, 0.20, 0.0)
+
+; Iter 31 fire-jet hazard. Cyclic vertical flame column. The Area2D
+; matches the ON-phase column footprint so hero only takes damage
+; when actively inside the erupting flame.
+;
+; Children (ordered back-to-front; later siblings draw on top):
+;   CollisionShape2D — narrow vertical rectangle (22×80) covering the
+;     full damage column.
+;   GroundFootprint (Polygon2D, z=1) — readability pass: dim charred
+;     ellipse on the floor showing WHERE the stream lands even in IDLE.
+;     Brightens with the telegraph + flashes during ON. Lets the player
+;     learn "this tile is unsafe" without needing to see the column.
+;   BaseEmber (Polygon2D) — always-visible smoldering pip on the floor,
+;     so the hazard is discoverable even when OFF.
+;   PreFireSpark (Polygon2D) — extra bright yellow pip that pops in the
+;     final ~0.25s before eruption (last half of telegraph). Sharper
+;     visual cue than the warmup column alone: "fire RIGHT NOW."
+;   WarmupColumn (Polygon2D) — orange-faded tall rect that telegraphs
+;     ignition in the final ~0.5s of OFF phase. Scaled vertically by
+;     the script (grows from base up).
+;   FlameHalo (Polygon2D) — wider orange outer halo, shown only during ON.
+;   FlameBody (Polygon2D) — bright yellow-white inner flame, shown only
+;     during ON. Script flickers its vertical scale slightly.
+;
+; All polygons have local-origin at the BASE of the column (the floor
+; ember) and extend UPWARD (negative Y) so vertical scaling grows the
+; flame from the ground up rather than from the center.
+
+; Iter 59 — z_index back to default 0 (was -1 in iter 58, which hid the
+; jet behind the background sprite). Hero-on-top now handled via tree
+; order in main.gd._ready.
+[node name="FireJet" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, -32)
+shape = SubResource("firejet_area")
+
+; Ground footprint — charred ellipse on the floor (20px wide × 6px tall)
+; persistently visible even during IDLE so player learns "this tile is
+; a fire vent." z_index=1 puts it above the background but below hero (z=5).
+; Script ramps color/alpha across IDLE → TELEGRAPH → ON.
+[node name="GroundFootprint" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(-10, 0, -7, -4, 0, -5, 7, -4, 10, 0, 7, 4, 0, 5, -7, 4)
+color = Color(0.45, 0.20, 0.10, 0.55)
+
+; Base ember — small flat oval on the floor, always visible. 18 px wide
+; × 5 px tall. Reads as "smoldering vent" between eruptions.
+[node name="BaseEmber" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-9, 0, -6, -3, 0, -4, 6, -3, 9, 0, 6, 2, 0, 3, -6, 2)
+color = Color(0.7, 0.35, 0.1, 0.75)
+
+; Pre-fire spark — small bright yellow-white pip that pops in the final
+; ~0.25s of telegraph (the back half of the warmup window). Sharper "fire
+; NOW" cue than the warmup column alone. Hidden in IDLE + early TELEGRAPH.
+[node name="PreFireSpark" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-3, -2, -2, -5, 0, -7, 2, -5, 3, -2, 2, 0, 0, 1, -2, 0)
+color = Color(1.0, 0.95, 0.55, 1.0)
+visible = false
+
+; Warmup column — narrow vertical bar (10 px wide × 60 px tall) that
+; ramps in during the last 0.5s before eruption. Scaled vertically by
+; the script (starts at scale.y=0, grows to scale.y=1).
+[node name="WarmupColumn" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-5, 0, 5, 0, 4, -60, -4, -60)
+color = Color(1.0, 0.7, 0.35, 1.0)
+visible = false
+
+; Flame halo — soft outer flame body. 22 px wide at base, 6 px wide at
+; the top tip 80 px above the floor. Orange-red.
+[node name="FlameHalo" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-11, 0, -9, -25, -5, -55, -3, -78, 0, -86, 3, -78, 5, -55, 9, -25, 11, 0)
+color = Color(0.95, 0.4, 0.12, 0.65)
+visible = false
+
+; Flame body — bright inner yellow-white core. Narrower than halo
+; (12 px → 2 px at top) and rises slightly higher (90 px).
+[node name="FlameBody" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-6, -2, -5, -28, -3, -55, -2, -76, 0, -88, 2, -76, 3, -55, 5, -28, 6, -2)
+color = Color(1.0, 0.9, 0.55, 0.95)
+visible = false
+
+; iter-85 — RisingEmbers. Orange-yellow ember sparks shooting upward
+; from the column base during ON. Hidden during OFF + telegraph.
+; Replaces the previous "scale-flickering rectangle reads as fire"
+; failure mode: real fire ALWAYS has bits of itself separating and
+; rising. ~12 particles at 0.7s lifetime gives a continuous spray
+; without dominating.
+[node name="RisingEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(0, -8)
+emitting = false
+amount = 12
+lifetime = 0.7
+preprocess = 0.2
+explosiveness = 0.0
+randomness = 0.5
+emission_shape = 1
+emission_sphere_radius = 6.0
+direction = Vector2(0, -1)
+spread = 18.0
+initial_velocity_min = 50.0
+initial_velocity_max = 95.0
+gravity = Vector2(0, -28)
+damping_min = 0.2
+damping_max = 0.8
+scale_amount_min = 0.8
+scale_amount_max = 1.8
+color_ramp = SubResource("ember_grad")
+z_index = 1
+
+; iter-85 — SmokeWisps. Grey smoke rising from the TOP of the flame
+; column during ON. Cools the visual from "pure heat" to "fire AND
+; smoke" — sells "this is burning fuel" not "this is a glowing
+; rectangle." Sparser than embers (6 particles) since smoke reads at
+; bigger scale; longer lifetime so each wisp drifts up well past the
+; column tip.
+[node name="SmokeWisps" type="CPUParticles2D" parent="."]
+position = Vector2(0, -82)
+emitting = false
+amount = 6
+lifetime = 1.4
+preprocess = 0.4
+explosiveness = 0.0
+randomness = 0.6
+emission_shape = 1
+emission_sphere_radius = 4.0
+direction = Vector2(0, -1)
+spread = 30.0
+initial_velocity_min = 18.0
+initial_velocity_max = 36.0
+gravity = Vector2(0, -10)
+damping_min = 0.5
+damping_max = 1.0
+scale_amount_min = 1.6
+scale_amount_max = 3.4
+color_ramp = SubResource("smoke_grad")
+z_index = 1

@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3corpse0000257"]
+
+[ext_resource type="Script" path="res://scripts/corpse_decal.gd" id="1_script"]
+
+; Iter 257 / Wave 6 — persistent enemy-death decals with per-kind
+; identity (slime / skeleton / ember / blood / bone / ash). Visuals
+; are constructed programmatically in corpse_decal.gd::_ready based
+; on the `kind` String field set BEFORE add_child by enemy.gd._die.
+;
+; Lifetime 7s with a 1.5s alpha fade-out at the end (script handles
+; the tween). z_index = -1 so corpses sit UNDER the live combat
+; (hero / enemies at z=0+) but ABOVE the floor wash.
+
+[node name="CorpseDecal" type="Node2D"]
+script = ExtResource("1_script")

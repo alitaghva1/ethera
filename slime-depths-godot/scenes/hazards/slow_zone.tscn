@@ -1,0 +1,398 @@
+[gd_scene load_steps=7 format=3 uid="uid://b3slowzone0001"]
+
+[ext_resource type="Script" path="res://scripts/slow_zone.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="slowzone_area"]
+radius = 36.0
+
+; Iter 190 batch 3 — toxic wisp color ramp. Pre-iter-190 the well had
+; static pool + ripple + bubbles but no vertical motion. User direction:
+; "make the central green hazard feel more embedded, stronger identity."
+; Slow upward-drifting wisps (CPUParticles2D below) give the well a
+; living, breathing presence — the cursed magic is ACTIVE in the room.
+; Toxic green fading to transparent at the top of lifetime.
+; Iter 244 — Director Phase 2. Pre-iter-244 the wisps were toxic-green
+; which paired with the warm-yellow rays / runes / bubbles to read as
+; "POSITIVE / pickup" because most games code yellow as treasure. The
+; user playtested Phase 1 and flagged the slow zone as confusing: the
+; central hazard looked like it might be a pickup. Retinting the entire
+; visual stack to dim violet ("sickly cursed magic") makes the hazard
+; channel unambiguous: violet = hazard, gold = reward.
+[sub_resource type="Gradient" id="wisp_grad"]
+offsets = PackedFloat32Array(0, 0.25, 0.75, 1)
+colors = PackedColorArray(0.55, 0.30, 0.80, 0, 0.62, 0.40, 0.85, 0.40, 0.52, 0.28, 0.72, 0.20, 0.36, 0.18, 0.50, 0)
+
+; Iter 189 batch 2 — toxic light texture. Soft radial gradient sized
+; 192×192 so the slow zone's PointLight2D emits a ~120 px green-tinted
+; pool. Hazard now INTERACTS with the room's lighting: pillars near
+; the well throw faintly green shadows; walls catch the toxic glow.
+[sub_resource type="Gradient" id="toxic_light_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.45, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="toxic_light_tex"]
+gradient = SubResource("toxic_light_grad")
+width = 192
+height = 192
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; Iter 31 slow-zone hazard. Passive Area2D that halves hero walk speed
+; while inside. Visual = murky green/teal pool with a slow ripple ring
+; + two bubble pips that pulse out of sync.
+;
+; Iter-readability pass: zone is ALWAYS active (no telegraph state) so
+; the goal is "persistently visible bounded ground threat with subtle
+; motion that says SLOWING MAGIC." Added Swirl marks rotating slowly
+; around the rim — instantly disambiguates "this is a magical drag
+; field" from any dark decor patch.
+;
+; Children (back-to-front):
+;   CollisionShape2D — circular detection at radius 36.
+;   FootprintHalo (Polygon2D, z=1) — extra-wide soft outer halo so the
+;     zone's bounds read at a glance even on a busy floor.
+;   Pool (Polygon2D) — main murky disc, mid-dark teal at 70% alpha.
+;   PoolRim (Line2D) — soft darker outline so the pool reads against
+;     the floor.
+;   Swirl (Node2D wrapper) — rotates a few wisp polygons around the
+;     center to communicate "magic field, slowing you."
+;   RippleRing (Polygon2D) — inner ring polygon; script modulates its
+;     alpha and scale for a slow breathing pulse.
+;   BubbleA / BubbleB — small bright dots offset from center, script
+;     modulates their alpha sin-waves at different phases so they
+;     read as gas pockets surfacing.
+
+; Iter 59 — z_index back to default 0. The iter-58 fix (setting z=-1)
+; accidentally pushed the pool BELOW the static procedural_dungeon
+; Background sprite at z=0, making the slow_zone completely invisible
+; on the floor. Hero-on-top is now solved via tree-order: main.gd
+; moves the hero to the END of the children list after spawns, so
+; the hero (later in tree) draws above hazards (earlier in tree)
+; at the same z=0.
+[node name="SlowZone" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("slowzone_area")
+
+; ── Iter 186 batch 2 — carved-stone basin frame ───────────────────────
+; Pre-iter-186 the slow zone was a 5-layer Polygon2D pool that read as
+; "procedural shape painted on the floor" — directive critique 4: "the
+; central hazard lacks identity, doesn't feel embedded in the world."
+; New: a stone rim ring + 4 cardinal rune marks suggest the hazard is
+; a CARVED RITUAL BASIN, not a paint stain. The toxic pool sits INSIDE
+; a real architectural feature.
+
+; StoneRim — thick dark Line2D ring at radius 42 (just outside the
+; Pool's 38). 6 px width reads as a chunky chiseled lip around the
+; basin. Closed = true joins ends seamlessly. Drawn at z = 0 so it
+; sits ABOVE the FootprintHalo (z=1) — wait, FootprintHalo z=1 means
+; halo above StoneRim. Tree order: StoneRim added BEFORE FootprintHalo
+; below, so even at same z=0 the rim draws first / below. The halo
+; alpha 0.22 lets the stone rim show through faintly even through it.
+[node name="StoneRim" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 36.5, 21, 21, 36.5, 0, 42, -21, 36.5, -36.5, 21, -42, 0, -36.5, -21, -21, -36.5, 0, -42, 21, -36.5, 36.5, -21)
+closed = true
+width = 6.0
+default_color = Color(0.09, 0.08, 0.11, 0.95)
+joint_mode = 2
+antialiased = true
+
+; StoneRimHighlight — thin 1 px brighter line ON TOP of the StoneRim
+; on the side facing implied overhead light (top half slightly
+; brighter). Suggests carved 3D edge catching ambient light.
+[node name="StoneRimHighlight" type="Line2D" parent="."]
+points = PackedVector2Array(42, 0, 36.5, 21, 21, 36.5, 0, 42, -21, 36.5, -36.5, 21, -42, 0, -36.5, -21, -21, -36.5, 0, -42, 21, -36.5, 36.5, -21)
+closed = true
+width = 1.0
+default_color = Color(0.30, 0.26, 0.22, 0.55)
+joint_mode = 2
+antialiased = true
+
+; 4 cardinal RuneMark chevrons outside the rim. Reads as CARVED SIGILS
+; — the basin is ritual / cursed, not just a hole in the floor.
+; Color (0.62, 0.78, 0.32) toxic yellow-green at low alpha so the
+; runes feel etched-and-faintly-glowing rather than painted.
+[node name="RuneN" type="Polygon2D" parent="."]
+position = Vector2(0, -50)
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.55, 0.30, 0.80, 0.50)
+z_index = 0
+
+[node name="RuneE" type="Polygon2D" parent="."]
+position = Vector2(50, 0)
+rotation = 1.571
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.55, 0.30, 0.80, 0.50)
+z_index = 0
+
+[node name="RuneS" type="Polygon2D" parent="."]
+position = Vector2(0, 50)
+rotation = 3.142
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.55, 0.30, 0.80, 0.50)
+z_index = 0
+
+[node name="RuneW" type="Polygon2D" parent="."]
+position = Vector2(-50, 0)
+rotation = 4.712
+polygon = PackedVector2Array(-4, 2, 0, -3, 4, 2, 0, 0)
+color = Color(0.55, 0.30, 0.80, 0.50)
+z_index = 0
+
+; ── Iter 188 batch 3 — cursed ritual well details ────────────────────
+; User direction: "Rework central hazard into a cursed ritual font/well
+; with stone rim, cracks, subtle green seepage." The iter-186 batch 2
+; rim + runes gave the basin architectural identity; this commit adds
+; the AGE + CORRUPTION reading:
+;
+;   1. RimCrackNE/SE/SW/NW — 4 short Line2D fractures radiating outward
+;      from the rim at 45° intervals (between the cardinal runes).
+;      Suggests stone aging — the carved basin has fractured under
+;      centuries of cursed magic.
+;   2. SeepA/B/C — 3 small dark green Polygon2D stains OUTSIDE the
+;      basin perimeter. Reads as toxic liquid leaching past the rim,
+;      contaminating the surrounding floor. Asymmetric placement so
+;      it feels organic, not symmetric.
+
+[node name="RimCrackNE" type="Line2D" parent="."]
+points = PackedVector2Array(30, -30, 56, -56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackSE" type="Line2D" parent="."]
+points = PackedVector2Array(30, 30, 56, 56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackSW" type="Line2D" parent="."]
+points = PackedVector2Array(-30, 30, -56, 56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+[node name="RimCrackNW" type="Line2D" parent="."]
+points = PackedVector2Array(-30, -30, -56, -56)
+width = 1.0
+default_color = Color(0.04, 0.03, 0.04, 0.72)
+antialiased = true
+z_index = 0
+
+; Asymmetric seep stains — 3 placements at irregular distances from
+; rim. Dark toxic yellow-green (matches pool but darker / less alpha)
+; so they read as residue from the cursed pool, not freshly painted.
+[node name="SeepA" type="Polygon2D" parent="."]
+position = Vector2(-48, 22)
+polygon = PackedVector2Array(8, 0, 6, 5, 0, 7, -7, 4, -8, 0, -7, -4, 0, -7, 6, -5)
+color = Color(0.20, 0.10, 0.28, 0.65)
+z_index = 0
+
+[node name="SeepB" type="Polygon2D" parent="."]
+position = Vector2(34, -42)
+polygon = PackedVector2Array(6, 0, 5, 4, 0, 5, -5, 3, -6, 0, -5, -3, 0, -5, 5, -4)
+color = Color(0.20, 0.10, 0.28, 0.62)
+z_index = 0
+
+[node name="SeepC" type="Polygon2D" parent="."]
+position = Vector2(52, 14)
+polygon = PackedVector2Array(7, 0, 6, 4, 0, 6, -6, 4, -7, 0, -6, -4, 0, -6, 6, -4)
+color = Color(0.20, 0.10, 0.28, 0.60)
+z_index = 0
+
+; ── Iter 209 — Noita-tier material seepage. Pre-iter-209 the font had
+; 3 small Seep blots (iter-188) but no SUGGESTION of liquid actively
+; flowing out. New: 4 long thin TRAILS radiating outward like the
+; cursed liquid is leaking from the basin and snaking across the
+; floor. Plus 2 broader ACID STAINS just outside the rim — darker
+; bilious patches where the floor has been corroded by repeated
+; spills.
+; Z = 0 (same as the rim) so trails sit ON the floor decals but
+; UNDER the pool itself (which is at z = default 0 but drawn later
+; in tree). Bilious dark yellow-green for "this is old / aged
+; corrosion."
+
+; SeepTrailE — long thin trail extending east-southeast from the
+; basin. 12-vertex elongated diamond shape that tapers toward
+; the tip. Reads as "the liquid is running this way."
+[node name="SeepTrailE" type="Polygon2D" parent="."]
+position = Vector2(48, 8)
+polygon = PackedVector2Array(0, -3, 12, -2, 28, -1, 48, 0, 64, 1, 48, 2, 28, 2, 12, 2, 0, 3, -8, 2, -12, 0, -8, -2)
+color = Color(0.22, 0.12, 0.30, 0.62)
+rotation = 0.4
+z_index = 0
+
+; SeepTrailNW — short trail to northwest, where the floor cracks lead.
+[node name="SeepTrailNW" type="Polygon2D" parent="."]
+position = Vector2(-42, -22)
+polygon = PackedVector2Array(0, -2, 10, -1, 22, 0, 38, 0, 30, 1, 18, 2, 8, 2, 0, 2, -6, 1, -10, 0, -6, -1)
+color = Color(0.20, 0.10, 0.28, 0.55)
+rotation = -2.6
+z_index = 0
+
+; SeepTrailSW — secondary trail to southwest, longer.
+[node name="SeepTrailSW" type="Polygon2D" parent="."]
+position = Vector2(-44, 32)
+polygon = PackedVector2Array(0, -3, 14, -2, 32, -1, 52, 0, 40, 1, 24, 2, 10, 2, 0, 3, -8, 2, -14, 0, -10, -1)
+color = Color(0.24, 0.12, 0.30, 0.58)
+rotation = 2.4
+z_index = 0
+
+; SeepTrailN — small upward trail toward the north rim crack.
+[node name="SeepTrailN" type="Polygon2D" parent="."]
+position = Vector2(8, -50)
+polygon = PackedVector2Array(0, -2, 6, -1, 14, 0, 22, 0, 14, 1, 6, 1, 0, 1, -4, 0, -6, 0)
+color = Color(0.20, 0.10, 0.28, 0.48)
+rotation = -1.6
+z_index = 0
+
+; AcidStainE — broader darker patch east of the rim where the SeepTrailE
+; pools into a residue zone. Reads as "the cursed liquid has been
+; here long enough to ETCH the stone — the floor is permanently stained."
+[node name="AcidStainE" type="Polygon2D" parent="."]
+position = Vector2(78, 12)
+polygon = PackedVector2Array(14, 0, 12, 7, 7, 12, 0, 14, -7, 12, -12, 7, -14, 0, -12, -7, -7, -12, 0, -14, 7, -12, 12, -7)
+color = Color(0.16, 0.08, 0.22, 0.55)
+z_index = -1
+
+; AcidStainSW — secondary acid pool southwest.
+[node name="AcidStainSW" type="Polygon2D" parent="."]
+position = Vector2(-72, 38)
+polygon = PackedVector2Array(11, 0, 9, 6, 5, 9, 0, 11, -5, 9, -9, 6, -11, 0, -9, -6, -5, -9, 0, -11, 5, -9, 9, -6)
+color = Color(0.16, 0.08, 0.22, 0.50)
+z_index = -1
+
+; Iter 189 batch 2 — toxic light emission. The cursed well becomes
+; an actual LIGHT SOURCE in the room: pillars near it cast greenish
+; shadows, walls catch the toxic glow, hero standing close visually
+; INTERACTS with the hazard's emission. Energy kept low (0.45) so it
+; doesn't compete with torches; range_z_max negative keeps it on the
+; floor plane.
+; Iter 190 batch 1 — shadow_enabled FALSE (was true in iter-189 batch 2).
+; Consistent top-down language: no radial cast shadows from any light
+; source. The toxic light still TINTS the floor / walls / props within
+; range; what changes is that the light no longer projects pillar-
+; shaped shadows that fight the top-down camera perspective.
+[node name="ToxicLight" type="PointLight2D" parent="."]
+color = Color(0.78, 0.55, 1.0, 1)
+energy = 0.45
+range_z_min = -1024
+range_z_max = 1024
+texture = SubResource("toxic_light_tex")
+texture_scale = 1.0
+shadow_enabled = false
+
+; Iter 190 batch 3 — toxic wisps. Slow upward drift, sparse (amount=6)
+; so they read as occasional gas emissions, not a constant fountain.
+; Reference: same pattern as torch.tscn's Smoke wisp. Lifetime 2.0s
+; with gradient fade in/out means each wisp appears, rises ~32 px,
+; fades. emission_sphere_radius = 16 covers the entire pool surface
+; so wisps emerge from random points within the basin.
+; preprocess = 1.0 so wisps are already mid-rise when the room loads —
+; player sees an ACTIVE well, not "fountain just started."
+; z_index = 5 puts wisps above the props but below hero/enemies.
+[node name="Wisps" type="CPUParticles2D" parent="."]
+amount = 6
+lifetime = 2.0
+preprocess = 1.0
+emission_shape = 1
+emission_sphere_radius = 16.0
+direction = Vector2(0, -1)
+spread = 20.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 8.0
+initial_velocity_max = 18.0
+damping_min = 0.4
+damping_max = 1.0
+scale_amount_min = 1.8
+scale_amount_max = 3.4
+color_ramp = SubResource("wisp_grad")
+z_index = 5
+
+; Footprint halo — soft greenish-teal disc at radius ~44, very translucent.
+; Sits at z=1 below the main pool so the player sees a wider danger
+; footprint on the floor (the pool itself is opaque + bounded; the halo
+; bleeds out further to communicate "you're inside the field").
+; Iter 183 item 3 — palette role separation (ChatGPT critique #5). Pushed
+; green-teal (0.40, 0.78, 0.52) toward yellow-green-toxic (0.58, 0.78,
+; 0.30) so the slow-zone reads as POISON/SWAMP hazard rather than
+; "fresh magical field" — clearer hazard channel against the cool dark
+; stone ambient. Also bumped alpha 0.18 → 0.22 for better edge read.
+[node name="FootprintHalo" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(44, 0, 38.2, 22, 22, 38.2, 0, 44, -22, 38.2, -38.2, 22, -44, 0, -38.2, -22, -22, -38.2, 0, -44, 22, -38.2, 38.2, -22)
+color = Color(0.55, 0.30, 0.80, 0.22)
+
+; Pool — 16-vert near-circle, radius 38, murky teal. Slightly larger
+; than the collision radius so the visual "leaks past" where it
+; actually catches the hero.
+; Iter 183 item 3 — murky teal (0.18, 0.32, 0.24) → toxic olive
+; (0.22, 0.30, 0.13). Reads as bilious / poisonous rather than
+; clean-magic. Alpha 0.78 → 0.82 — slightly more opaque to crisp up
+; the silhouette against the new dark stone floor.
+[node name="Pool" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(38, 0, 33, 19, 19, 33, 0, 38, -19, 33, -33, 19, -38, 0, -33, -19, -19, -33, 0, -38, 19, -33, 33, -19)
+color = Color(0.36, 0.20, 0.48, 0.82)
+
+; Iter 244 — rim darker violet to match the cursed-magic retint. Pre-iter-
+; 244 the rim was a darker olive that read warm; the new dark violet
+; lock the basin as PURELY cursed magic, no warm/positive read.
+[node name="PoolRim" type="Line2D" parent="."]
+points = PackedVector2Array(38, 0, 33, 19, 19, 33, 0, 38, -19, 33, -33, 19, -38, 0, -33, -19, -19, -33, 0, -38, 19, -33, 33, -19)
+closed = true
+width = 2.0
+default_color = Color(0.18, 0.08, 0.26, 0.88)
+joint_mode = 2
+antialiased = true
+
+; Swirl — wrapper Node2D the script rotates slowly. Three wisp pips
+; arranged 120° apart trace a circle just inside the pool rim — clear
+; "magic at work" cue distinguishing this from a static dark patch.
+[node name="Swirl" type="Node2D" parent="."]
+
+[node name="WispA" type="Polygon2D" parent="Swirl"]
+position = Vector2(26, 0)
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.85, 0.65, 1.0, 0.65)
+
+[node name="WispB" type="Polygon2D" parent="Swirl"]
+position = Vector2(-13, 22.5)
+rotation = 2.094
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.85, 0.65, 1.0, 0.65)
+
+[node name="WispC" type="Polygon2D" parent="Swirl"]
+position = Vector2(-13, -22.5)
+rotation = -2.094
+polygon = PackedVector2Array(-4, -2, -1, -3, 4, 0, -1, 3)
+color = Color(0.85, 0.65, 1.0, 0.65)
+
+; Ripple ring — smaller polygon, brighter teal-green. Script pulses
+; alpha and scale so the pool breathes.
+; Iter 183 item 3 — shifted from teal-green (0.45, 0.78, 0.55) to
+; yellower toxic green (0.62, 0.82, 0.30). Brighter alpha at peak so
+; the breathing pulse reads more strongly.
+[node name="RippleRing" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(24, 0, 21, 12, 12, 21, 0, 24, -12, 21, -21, 12, -24, 0, -21, -12, -12, -21, 0, -24, 12, -21, 21, -12)
+color = Color(0.62, 0.40, 0.85, 0.58)
+
+; Bubble A — small 4 px wide gas pip offset NW. Script sin-pulses alpha.
+; Iter 183 item 3 — shifted to yellower toxic green for consistency.
+[node name="BubbleA" type="Polygon2D" parent="."]
+position = Vector2(-14, -8)
+polygon = PackedVector2Array(-4, 0, -3, -3, 0, -4, 3, -3, 4, 0, 3, 3, 0, 4, -3, 3)
+color = Color(0.80, 0.55, 1.0, 0.72)
+
+; Bubble B — small gas pip offset SE, slightly larger.
+[node name="BubbleB" type="Polygon2D" parent="."]
+position = Vector2(12, 14)
+polygon = PackedVector2Array(-5, 0, -3.5, -3.5, 0, -5, 3.5, -3.5, 5, 0, 3.5, 3.5, 0, 5, -3.5, 3.5)
+color = Color(0.80, 0.55, 1.0, 0.72)

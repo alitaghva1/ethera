@@ -26,7 +26,7 @@ export const MENU_SCREEN_HTML = `
   <div style="position:absolute;inset:0;background:linear-gradient(90deg, transparent 0%, rgba(4,2,8,0.28) 28%, rgba(4,2,8,0.42) 50%, rgba(4,2,8,0.28) 72%, transparent 100%);pointer-events:none;"></div>
   <!-- Soft center vignette — pulls a breath of darkness in right under the
        title + CTA so they have air above the stonework. -->
-  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,80vw);height:min(620px,70vh);background:radial-gradient(ellipse at center, rgba(4,2,8,0.55) 0%, rgba(4,2,8,0.25) 45%, transparent 75%);pointer-events:none;"></div>
+  <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,100%);height:min(620px,100%);background:radial-gradient(ellipse at center, rgba(4,2,8,0.55) 0%, rgba(4,2,8,0.25) 45%, transparent 75%);pointer-events:none;"></div>
 
   <!-- AMBIENT SIGIL — kept as a faint overlay (0.025) so it reads as a
        mystical diagram etched into the air above the archway. Dimmer
@@ -146,18 +146,34 @@ export const MENU_SCREEN_HTML = `
     <!-- PRIMARY ACTION — the single anchor. Soft pulse halo behind it. -->
     <div style="position:relative;">
       <div id="menuCtaHalo" style="position:absolute;inset:-14px;background:radial-gradient(ellipse at center, rgba(201,168,106,0.18), transparent 70%);pointer-events:none;"></div>
-      <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">BEGIN DESCENT</button>
+      <button id="menuNewRunBtn" style="position:relative;background:linear-gradient(180deg,#3a2a20,#1a0f08);color:#f4d9a0;border:0;padding:19px 96px;font-size:18px;cursor:pointer;letter-spacing:7px;font-weight:bold;font-family:Georgia,serif;box-shadow:inset 0 0 0 1px #c9a86a, 0 0 28px rgba(201,168,106,0.25), inset 0 0 14px rgba(244,217,160,0.08);transition:all 0.22s ease;">AWAKEN</button>
     </div>
 
     <!-- MODE CHIPS — borderless. Smaller + tighter to the CTA now so they
          clearly read as options FOR the button above, not as a second
          navigation row. Selected chip is filled + glows; unselected is
          dim text. Differentiation by weight, not by outline. -->
-    <div id="menuModeRow" style="display:flex;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
+    <!-- The whole mode row is hidden as long as DAILY and TAROT chips
+         are display:none (Round-7 + meta-consolidation pass). With only
+         STANDARD visible, the chip is dead UI — it labels the single
+         option with button styling that pretends to be a choice. When
+         either DAILY or TAROT gets re-enabled (per the comments on
+         their chips below), flip this row back to display:flex so the
+         actual mode-switch beat returns. -->
+    <div id="menuModeRow" style="display:none;gap:3px;margin-top:12px;margin-bottom:0;align-items:center;">
       <button class="menuModeChip" data-mode="standard" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">STANDARD</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
-      <button class="menuModeChip" data-mode="daily" style="background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
-      <span style="opacity:0.3;color:#c9a86a;font-size:9px;">\u2666</span>
+      <!-- ROUND-7 SCOPE PASS: DAILY mode chip hidden (matches the prior
+           TAROT hiding below). Daily challenges added a third menu mode
+           that competed for new-player attention with STANDARD without
+           delivering on the promise \u2014 community/streak features that
+           require a backend the project doesn't have. The chip is
+           hidden (not deleted) so daily.js stays dormant and any old
+           save data continues to load via the LEGACY_KEYS migration in
+           profile.js. To re-enable: remove the display:none on this
+           button + restore the adjacent diamond separators. The
+           supporting code (run-state forking, completion tracking,
+           streak persistence) is intact in daily.js + main.js. -->
+      <button class="menuModeChip" data-mode="daily" style="display:none;background:transparent;border:0;padding:5px 12px;cursor:pointer;color:#6a5c48;font-family:Georgia,serif;font-size:9.5px;letter-spacing:3.5px;font-weight:bold;transition:all 0.22s ease;text-transform:uppercase;">DAILY</button>
       <!-- META CONSOLIDATION PASS (review #3): TAROT mode chip hidden.
            Tarot's 8 cards overlapped Memory's identity-modifier role; the
            main menu had one too many entry points for new players. The
@@ -187,13 +203,13 @@ export const MENU_SCREEN_HTML = `
          codex (achievements, bestiary, relicpedia, fusions). Everything else
          (how-to-play, credits) demoted to footer-level so this row stays
          focused on "where else can I actually go?" -->
+    <!-- "visit the hamlet" link removed — the AWAKEN button above now takes
+         the player directly to the hamlet, where the descent portal starts
+         a run. menuHamletLink is kept as a hidden compat shell so the
+         existing click handler binding in main.js doesn't throw. -->
     <div style="display:flex;align-items:center;gap:24px;margin-top:34px;font-family:Georgia,serif;">
       <div style="width:54px;height:1px;background:linear-gradient(90deg,transparent,rgba(201,168,106,0.6));"></div>
-      <button id="menuHamletLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
-        <span>visit the hamlet</span>
-        <span style="font-size:10px;opacity:0.7;">\u2192</span>
-      </button>
-      <span style="width:3px;height:3px;background:#c9a86a;transform:rotate(45deg);opacity:0.5;"></span>
+      <button id="menuHamletLink" style="display:none;"></button>
       <button id="menuChroniclesLink" style="background:transparent;border:0;padding:6px 4px;cursor:pointer;color:#c9a86a;font-family:Georgia,serif;font-size:12px;letter-spacing:3px;font-style:italic;transition:all 0.22s ease;opacity:0.8;display:flex;align-items:center;gap:8px;">
         <span>read the chronicles</span>
         <span style="font-size:10px;opacity:0.7;">\u2192</span>
@@ -225,7 +241,7 @@ export const MENU_SCREEN_HTML = `
   <!-- Footer row — onboarding + legal. Tiny and quiet; these aren't
        gameplay destinations so they don't earn a spot in the main links
        row. The controls cheatsheet that used to live here was redundant
-       with both the how-to-play page and the first-boot prologue. -->
+       with both the how-to-play page and the first-boot wake cinematic. -->
   <div style="position:absolute;bottom:32px;left:0;right:0;display:flex;align-items:center;justify-content:center;gap:18px;font-family:Georgia,serif;font-style:italic;color:#8a7a5a;pointer-events:auto;">
     <button id="menuControlsLink" style="background:transparent;border:0;padding:4px 6px;cursor:pointer;color:inherit;font-family:inherit;font-size:10px;letter-spacing:2.5px;font-style:italic;transition:opacity 0.22s ease;opacity:0.5;">how to play</button>
     <span style="width:3px;height:3px;background:#8a7a5a;transform:rotate(45deg);opacity:0.4;"></span>

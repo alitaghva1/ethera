@@ -14,25 +14,25 @@ export const ACHIEVEMENTS = {
   floor_one_down: {
     id: 'floor_one_down',
     name: 'Into the Dark',
-    desc: 'Clear Floor I',
+    desc: 'Clear the Undercroft',
     check: (s) => s.floorReached >= 2 || s.bossesKilled >= 1,
   },
   the_vault_breaker: {
     id: 'the_vault_breaker',
-    name: 'The Vault Breaker',
-    desc: 'Clear Floor II',
+    name: 'The Tower Falls',
+    desc: 'Clear the Ruined Tower',
     check: (s) => s.floorReached >= 3 || s.bossesKilled >= 2,
   },
   depths_reached: {
     id: 'depths_reached',
     name: 'Depths Reached',
-    desc: 'Survive to the Abyss',
+    desc: 'Survive to the Spire',
     check: (s) => s.floorReached >= 3,
   },
   eternal_descent: {
     id: 'eternal_descent',
     name: 'Eternal Descent',
-    desc: 'Reach The Inferno',
+    desc: 'Reach the Throne of Ruin',
     check: (s) => s.floorReached >= 4,
   },
   ethera_cleansed: {
@@ -62,7 +62,7 @@ export const ACHIEVEMENTS = {
   untouchable: {
     id: 'untouchable',
     name: 'Untouchable',
-    desc: 'Pull off 10 Perfect Dodges in one run',
+    desc: 'Pull off 10 Perfect Blocks in one run',
     check: (s) => s.perfectDodges >= 10,
   },
   scholar_of_relics: {
@@ -133,10 +133,14 @@ export const ACHIEVEMENTS = {
     check: (s) => s._maxFusions >= 3,
   },
   perfect_dodger: {
+    // ID kept (achievement persists in player save data); display copy
+    // updated for the shield-replaces-dodge architecture. Trigger
+    // condition `s.perfectDodges >= 25` still works because the stats
+    // counter retained its legacy field name.
     id: 'perfect_dodger',
-    name: 'Perfect Dodger',
-    desc: 'Pull off 25 Perfect Dodges in one run',
-    hint: 'the steps you never took',
+    name: 'Perfect Blocker',
+    desc: 'Pull off 25 Perfect Blocks in one run',
+    hint: 'the strikes that never reached you',
     hidden: true,
     check: (s) => s.perfectDodges >= 25,
   },
@@ -220,7 +224,18 @@ export function evaluateAchievements(stats, meta) {
     if (unlockedAchievements.has(id)) continue;
     try {
       if (ACHIEVEMENTS[id].check(stats, meta)) unlockAch(id);
-    } catch (e) {}
+    } catch (e) {
+      // Bug-hunt audit fix: was silently swallowing the throw. If a
+      // check() function references a renamed/removed stat field, the
+      // achievement would never unlock and the dev would never know.
+      // Warn so playtest catches it. Once-per-session-per-id (a noisy
+      // achievement check would otherwise spam warnings every frame).
+      const _key = '_warned_' + id;
+      if (!evaluateAchievements[_key]) {
+        evaluateAchievements[_key] = true;
+        try { console.warn('[achievements] check threw for', id, '—', e?.message || e); } catch (_e) {}
+      }
+    }
   }
 }
 

@@ -1,0 +1,108 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3lightrod0001"]
+
+[ext_resource type="Script" path="res://scripts/lightning_rod.gd" id="1_script"]
+
+; Iter 31 lightning-rod hazard. Stationary structure on the floor that
+; periodically discharges a vertical bolt downward in a small radius.
+; Player must move OUT of the ring during the 0.4s telegraph window.
+;
+; This is a Node2D (not Area2D) — strike damage is a one-shot distance
+; check inside _physics_process, not a continuous overlap, so we don't
+; need a collider.
+;
+; Children (back-to-front):
+;   GroundFootprint (Polygon2D, z=1) — readability pass: faint blue-white
+;     filled disc at radius ~44 (the damage zone), persistently visible
+;     even in IDLE so the player learns "this circle is where bolts land."
+;     Script ramps its alpha during telegraph + flashes during strike.
+;   GroundRing (Line2D) — yellow ring on floor at radius 44 (damage
+;     radius). Modulate.a is driven by the script: starts very dim in
+;     idle, fades in during telegraph, holds bright at strike.
+;   Base (Polygon2D) — small dark stone pad the rod stands on.
+;   Rod (Polygon2D) — vertical iron post sticking up from base.
+;   RodGlow (Polygon2D) — soft yellow halo around the rod tip; the
+;     script ramps its alpha during telegraph to "charge up".
+;   TipSparkA / TipSparkB (Polygon2D) — small bright pips at the rod tip
+;     that pop in the back half of telegraph for an unmistakable "ABOUT
+;     TO STRIKE" cue. Script alternates them and pulses scale + alpha.
+;   Bolt (Line2D) — jagged vertical bolt drawn during STRIKE. Visible
+;     only for STRIKE_TIME (0.15s) per cycle.
+;   StrikeFlash (Polygon2D) — bright circle on the ground at strike
+;     point, visible only during STRIKE. Sells the impact.
+
+; Iter 59 — z_index back to default 0 (was -1 in iter 58, which hid the
+; rod behind the background sprite). Hero-on-top now handled via tree
+; order in main.gd._ready.
+[node name="LightningRod" type="Node2D"]
+script = ExtResource("1_script")
+
+; Ground footprint — filled translucent blue-white disc at radius 44 sits
+; on the floor (z=1) showing the damage zone. Faintly visible in IDLE
+; ("ozone shimmer"), brightens during telegraph, white-hot during strike.
+; Sampled at 16 verts for a cheap near-circle.
+[node name="GroundFootprint" type="Polygon2D" parent="."]
+z_index = 1
+polygon = PackedVector2Array(44, 0, 40.6, 16.84, 31.11, 31.11, 16.84, 40.6, 0, 44, -16.84, 40.6, -31.11, 31.11, -40.6, 16.84, -44, 0, -40.6, -16.84, -31.11, -31.11, -16.84, -40.6, 0, -44, 16.84, -40.6, 31.11, -31.11, 40.6, -16.84)
+color = Color(0.55, 0.75, 1.0, 0.10)
+
+; Ground ring — Line2D drawing a 24-point circle outline at radius 44.
+; Script writes the modulate.a + width to animate the telegraph.
+[node name="GroundRing" type="Line2D" parent="."]
+points = PackedVector2Array(44, 0, 41.4, 14.95, 33.6, 28.36, 21.92, 38.13, 6.97, 43.45, -8.79, 43.12, -23.59, 37.16, -35.62, 25.69, -42.92, 9.55, -42.92, -9.55, -35.62, -25.69, -23.59, -37.16, -8.79, -43.12, 6.97, -43.45, 21.92, -38.13, 33.6, -28.36, 41.4, -14.95)
+closed = true
+width = 2.0
+default_color = Color(1.0, 0.92, 0.45, 1.0)
+joint_mode = 2
+antialiased = true
+
+; Base — stone pad, 16 px wide, dark grey.
+[node name="Base" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-8, -3, -7, -5, 7, -5, 8, -3, 8, 4, -8, 4)
+color = Color(0.32, 0.30, 0.28, 1.0)
+
+; Rod glow — soft yellow halo behind the rod tip. Script writes its
+; modulate.a to indicate charge level (idle 0.25, peak 1.0).
+[node name="RodGlow" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-10, -28, -8, -32, 0, -34, 8, -32, 10, -28, 8, -20, 0, -18, -8, -20)
+color = Color(1.0, 0.92, 0.55, 1.0)
+
+; Rod — iron pole, 4 px wide × 28 px tall, dark grey body.
+[node name="Rod" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-2, -5, -2, -30, 0, -32, 2, -30, 2, -5)
+color = Color(0.18, 0.18, 0.20, 1.0)
+
+; Tip-spark pips — tiny diamond polygons that pop in the back half of
+; telegraph (last ~0.2s before strike). Script alternates their pulse
+; phases so they read as crackling static, not a steady glow. Hidden
+; in IDLE + first half of TELEGRAPH; the rod glow handles the early
+; charge-up cue, these handle the "imminent" cue.
+[node name="TipSparkA" type="Polygon2D" parent="."]
+position = Vector2(-3, -32)
+polygon = PackedVector2Array(-2, 0, 0, -3, 2, 0, 0, 3)
+color = Color(1.0, 1.0, 0.85, 1.0)
+visible = false
+
+[node name="TipSparkB" type="Polygon2D" parent="."]
+position = Vector2(3, -29)
+polygon = PackedVector2Array(-2, 0, 0, -3, 2, 0, 0, 3)
+color = Color(1.0, 1.0, 0.85, 1.0)
+visible = false
+
+; Bolt — jagged Line2D zigzag drawn from rod tip (-32) down past the
+; floor (+8) for impact. Visible only during STRIKE.
+[node name="Bolt" type="Line2D" parent="."]
+points = PackedVector2Array(0, -32, -4, -22, 3, -12, -3, -2, 4, 8, -2, 18, 5, 28, 0, 38)
+width = 3.0
+default_color = Color(1.0, 0.98, 0.6, 1.0)
+joint_mode = 2
+antialiased = true
+visible = false
+
+; Strike flash — bright disc at ground impact point, ~28 px radius.
+; Visible only during STRIKE; alpha fades from 0.95 to ~0.55 across
+; the strike window.
+[node name="StrikeFlash" type="Polygon2D" parent="."]
+position = Vector2(0, 36)
+polygon = PackedVector2Array(28, 0, 24, 14, 14, 24, 0, 28, -14, 24, -24, 14, -28, 0, -24, -14, -14, -24, 0, -28, 14, -24, 24, -14)
+color = Color(1.0, 0.95, 0.65, 0.95)
+visible = false

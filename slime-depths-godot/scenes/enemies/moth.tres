@@ -1,0 +1,62 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_death.png" id="5_death"]
+
+; Iter 234 / Expansion Team R3 — Moth (flying enemy archetype).
+;
+; Behavior `flying_orbit`: circles the hero at ~180 px radius, occasionally
+; darting in for a contact attack. Brings the FIRST aerial tactical axis
+; to the roster — every prior enemy (chaser, kiter, caster, wraith,
+; bulwark) moves on the 2D plane. Flying enemies are HARD to flank by
+; simply walking around: the orbit reorients around the hero, so the
+; player has to read the dive commitment and dodge/parry it rather than
+; circle-strafe.
+;
+; HP 2, move_speed 80, contact 1: a positioning threat, not a damage
+; sponge. Squishy enough to delete with a sword cleave or one blast
+; once cornered — but cornering one is the puzzle.
+;
+; is_flying=true marks the moth as airborne. Today hazards only damage
+; the hero (group-gated), so this flag is design clarity + future-
+; proofing for any hazard system that affects enemies (acid clouds,
+; explosion shockwaves, etc.). A flying enemy should plausibly cross
+; spike pits / fire jets / slow zones without being slowed or burned.
+;
+; Visual: reuses the wizard sprite slot (wiz_*.png) with a violet/
+; lavender tint (1.2, 0.65, 1.40) + 0.92 alpha so it reads as a
+; PHANTOM-MOTH silhouette distinct from the wizard (cool blue caster)
+; AND the rogue_wraith (violet shadow). Tweaked toward magenta vs the
+; wraith's deeper purple to keep the two airborne-aesthetic enemies
+; visually separable at small sprite scales.
+[resource]
+script = ExtResource("1_script")
+display_name = "Moth"
+behavior = "flying_orbit"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 1.6
+sprite_y_offset = -22.0
+collision_radius = 14.0
+sprite_modulate = Color(1.2, 0.65, 1.4, 0.92)
+frames_idle = 6
+frames_walk = 8
+frames_attack = 6
+frames_death = 4
+fps_idle = 10.0
+fps_walk = 14.0
+fps_attack = 16.0
+fps_death = 8.0
+max_hp = 2
+move_speed = 80.0
+death_duration = 0.7
+contact_damage = 1
+contact_cooldown = 0.8
+contact_range = 36.0
+is_flying = true

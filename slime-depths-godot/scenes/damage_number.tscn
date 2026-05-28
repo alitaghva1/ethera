@@ -1,0 +1,25 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3damage12345"]
+
+[ext_resource type="Script" path="res://scripts/damage_number.gd" id="1_script"]
+
+; Label-based damage number. Auto-frees after LIFETIME seconds.
+; Anchored to its world position via global_position; the script
+; lerps Y upward over time and fades alpha to 0 on the second half.
+;
+; Iter 74 — widened bounds (-56..56 horizontal, -40..-4 vertical) so
+; the crit variant's 33px font + "!" suffix doesn't clip. Normal/heal/
+; hero_damage/resist all fit comfortably inside.
+; iter-137 — base font_size 22 -> 28. Hades/Isaac use 28-32 pt baseline
+; for damage numbers; 22 felt mousy against busy combat. Bounds widened
+; -56..56 -> -72..72 horizontal + -56..-4 vertical to accommodate the
+; larger baseline + larger crit (now 36 pt) without clipping the "!".
+[node name="DamageNumber" type="Label"]
+offset_left = -72.0
+offset_top = -56.0
+offset_right = 72.0
+offset_bottom = -4.0
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
+text = "1"
+horizontal_alignment = 1
+script = ExtResource("1_script")

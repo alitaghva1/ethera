@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://bboon259modal"]
+
+[ext_resource type="Script" path="res://scripts/boon_modal.gd" id="1_script"]
+
+; ── Boon Modal (iter-259 / Wave 8) ─────────────────────────────────────
+; VS-style level-up choice. Pause the game, dim the world, show 3 themed
+; boon cards, the player MUST pick one. Time resumes after the pick.
+;
+; Architecture mirrors pause_screen.tscn: a CanvasLayer root at layer
+; 175 (above pause_screen's 150 — boons take precedence if both ever
+; coexist in flight, though gameplay shouldn't allow it) with
+; process_mode = PROCESS_MODE_WHEN_PAUSED (enum value 2 in Godot 4)
+; so the modal stays interactive while get_tree().paused freezes
+; the world below. WHEN_PAUSED means "process ONLY when paused" —
+; the modal's lifecycle is exactly that, so it's the strict-right
+; choice. Tweens use set_pause_mode(TWEEN_PAUSE_PROCESS) to follow
+; the same gate, so banner-bounce / fly-in / hover animations all
+; keep ticking past the get_tree().paused = true flip in _ready.
+; (Note: pause_screen.tscn uses process_mode = 3 / ALWAYS — both
+; work for a pause overlay but WHEN_PAUSED is the tighter fit here.)
+;
+; All visual content (dimmer, banner, cards) is built CODE-SIDE in
+; boon_modal.gd::_ready so the scene is intentionally tiny — keeps the
+; .tscn diff trivial and lets the script own all theming + layout.
+
+[node name="BoonModal" type="CanvasLayer"]
+layer = 175
+process_mode = 2
+script = ExtResource("1_script")

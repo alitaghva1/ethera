@@ -1,0 +1,143 @@
+[gd_scene load_steps=7 format=3 uid="uid://b3pillar12345"]
+
+[ext_resource type="Script" path="res://scripts/pillar.gd" id="1_script"]
+; iter-84 immersion: soft ground shadow under each pillar base. Hero,
+; enemies, chests, and (iter-51) walls all have ground shadows already
+; — pillars were the only major obstacle missing one, making them feel
+; like floating blocks rather than 3D columns standing on the floor.
+; Same shadow_ellipse.png the hero and enemies use.
+[ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="2_shadow"]
+
+; Pillar collision footprint — small circle at the base so the hero
+; walks AROUND the column (not through it) while staying tight enough
+; not to make every doorway impassable.
+[sub_resource type="CircleShape2D" id="pillar_collision"]
+radius = 18.0
+
+; iter-109 light occluder polygon. Octagon approximating the 18-px
+; collision radius — gives the pillar a real shape for torch shadows
+; without paying for a perfect circle's vertex cost. The PointLight2D
+; nodes on every torch (with shadow_enabled = true in iter-109) cast
+; long pillar shadows across the floor when the torch sits behind
+; the column relative to the camera/hero — adds real depth perception
+; vs. the pre-iter-109 "flat-lit dim void" feel.
+[sub_resource type="OccluderPolygon2D" id="pillar_occluder"]
+closed = true
+polygon = PackedVector2Array(18, 0, 12.7, 12.7, 0, 18, -12.7, 12.7, -18, 0, -12.7, -12.7, 0, -18, 12.7, -12.7)
+
+; ── Pillar warm glow texture — same radial-gradient pattern the torch
+; uses, scaled down. Adds "this stone catches the firelight" warmth
+; without competing with the torches that actually light the room.
+[sub_resource type="Gradient" id="pillar_grad"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.45, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="pillar_glow_tex"]
+gradient = SubResource("pillar_grad")
+width = 160
+height = 160
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; ── Pillar node tree — StaticBody2D root with collision; visuals are
+; 3 stacked ColorRects forming a dark-stone column with subtle vertical
+; shading (top lighter where torchlight catches, base darker in shadow).
+; A small PointLight2D sits at the top of the column for the brazier
+; warmth glow.
+;
+; Layer 1 = world (same as walls), mask 0 = doesn't react to others.
+; Hero's mask 1 catches it the same way it catches walls.
+
+[node name="Pillar" type="StaticBody2D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("pillar_collision")
+
+; iter-84 — ground shadow. Sits FIRST in the child list (after the
+; collision shape which is invisible) so it renders UNDER the column
+; bands and the torch glow. Slightly wider than the pillar base
+; (collision radius 18, base ColorRect spans 36) — shadow scale
+; (0.36, 0.13) → ~92×33 px ellipse, ~2.5× the column width. Y offset
+; +8 puts it just below the base band so the eye reads "column
+; standing on the floor" instead of "column floating above it."
+[node name="Shadow" type="Sprite2D" parent="."]
+position = Vector2(0, 8)
+scale = Vector2(0.36, 0.13)
+modulate = Color(0, 0, 0, 0.55)
+texture = ExtResource("2_shadow")
+
+; Iter 244 — Director Phase 2. Pre-iter-244 the pillar bands were
+; warm-grey (slight magenta-purple tint Color(0.42, 0.40, 0.46…) plus
+; a gold-tan highlight Color(0.62, 0.52, 0.38)) which read as a soft
+; gradient brown vertical bar — easy to mistake for set-dressing or
+; furniture. User direction: "stone-gray chiseled" so the pillar
+; SILHOUETTE reads as solid architectural stone, distinct from
+; pickups (gold) and hazards (violet). Bottom-edge shadow added to
+; anchor the column to the floor with the iter-30 chiseled grammar.
+;
+; Body — top band (lighter neutral stone, catches torchlight)
+[node name="Top" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -64.0
+offset_right = 16.0
+offset_bottom = -44.0
+color = Color(0.42, 0.38, 0.36, 1)
+
+; Body — middle band (midtone neutral stone)
+[node name="Middle" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -44.0
+offset_right = 16.0
+offset_bottom = -18.0
+color = Color(0.32, 0.30, 0.28, 1)
+
+; Body — base band (darker neutral stone, sits in floor shadow)
+[node name="Base" type="ColorRect" parent="."]
+offset_left = -18.0
+offset_top = -18.0
+offset_right = 18.0
+offset_bottom = 4.0
+color = Color(0.22, 0.20, 0.18, 1)
+
+; Iter 244 — top-edge highlight retinted from warm-gold to cool stone
+; (carved limestone catching ambient light, no torch-warmth gold).
+; Strengthened from 3 px to 2 px stone band; reads as a chiseled rim,
+; the iter-30 chiseled-stone grammar applied to columns.
+[node name="Highlight" type="ColorRect" parent="."]
+offset_left = -16.0
+offset_top = -64.0
+offset_right = 16.0
+offset_bottom = -62.0
+color = Color(0.62, 0.58, 0.54, 1)
+
+; Iter 244 — bottom-edge shadow line. A dark line at the column's base
+; sells it as a heavy stone block resting ON the floor (anchored), not
+; floating. Matches the iter-30 chiseled-stone grammar used on wall
+; slabs (top highlight + bottom shadow + face midtone).
+[node name="BottomShadow" type="ColorRect" parent="."]
+offset_left = -18.0
+offset_top = 2.0
+offset_right = 18.0
+offset_bottom = 4.0
+color = Color(0.22, 0.20, 0.18, 1)
+
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -58)
+color = Color(1, 0.72, 0.42, 1)
+energy = 0.6
+range_z_min = -1024
+range_z_max = 1024
+texture = SubResource("pillar_glow_tex")
+texture_scale = 0.5
+shadow_enabled = false
+
+; iter-109: LightOccluder2D. Cast shadows from external torch
+; PointLight2Ds across the floor when the torch is behind this pillar
+; relative to the camera. The OccluderPolygon2D approximates the
+; pillar's 18-px collision radius as an octagon (cheap, smooth-looking).
+[node name="LightOccluder2D" type="LightOccluder2D" parent="."]
+occluder = SubResource("pillar_occluder")

@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_hurt.png" id="5_hurt"]
+[ext_resource type="Texture2D" path="res://assets/enemies/crypt_spider_death.png" id="4_death"]
+
+; iter-110: crypt_spider_hurt.png imported (was sitting unused in JS
+; reference). 384×64 sheet = 6 frames at 64-px cells. We use the
+; first 3 for a "spider arched on its back" recoil pose.
+[resource]
+script = ExtResource("1_script")
+display_name = "Crypt Spider"
+behavior = "chase_contact"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+hurt_sheet = ExtResource("5_hurt")
+death_sheet = ExtResource("4_death")
+cell_size = 64
+sprite_scale = 1.385
+sprite_y_offset = -13.8
+collision_radius = 12.0
+frames_idle = 8
+frames_walk = 8
+frames_attack = 0
+frames_hurt = 3
+frames_death = 8
+fps_idle = 8.0
+fps_walk = 12.0
+fps_attack = 12.0
+fps_death = 10.0
+max_hp = 1
+move_speed = 145.0
+death_duration = 0.85
+contact_damage = 1
+contact_cooldown = 0.55
+contact_range = 28.0

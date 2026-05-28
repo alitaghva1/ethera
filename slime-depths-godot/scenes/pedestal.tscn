@@ -1,0 +1,351 @@
+[gd_scene load_steps=10 format=3 uid="uid://b3pedestal12"]
+
+; Iter 178 — Polished Relic Choice Room rework.
+;
+; Pre-iter-178 the pedestal was a flat-rectangle Plinth Panel with a
+; 196×120 InfoPanel sitting above. Reads as prototype-grade UI overlay
+; on top of the world rather than a real shrine object.
+;
+; New structure — three-piece stone object + premium card + active glow:
+;
+;   Pedestal (Area2D)
+;   ├ CollisionShape2D                    proximity trigger
+;   ├ ContactShadow   (Polygon2D ellipse, z=-5)
+;   │                                     dark blob on the floor under
+;   │                                     the plinth — sells "real
+;   │                                     object resting on stone."
+;   ├ ActiveGlowRing  (Polygon2D circle, z=-4)
+;   │                                     tier-colored ring on the
+;   │                                     floor that pedestal.gd tweens
+;   │                                     alpha 0 → 0.45 when the hero
+;   │                                     is in range. Replaces the
+;   │                                     "harsh white border" prior
+;   │                                     iters used as the active tell.
+;   ├ PlinthSide      (Polygon2D, z=-3)   darker side face (depth)
+;   ├ PlinthTop       (Polygon2D, z=-2)   lighter top face (front-lit)
+;   ├ PlinthEdge      (Line2D outline)    1px dark edge — silhouette
+;   ├ TierCap         (Polygon2D thin)    tier-colored strip on top
+;   ├ VerticalAura    (Polygon2D gradient, z=-2)
+;   │                                     thin column of light from
+;   │                                     plinth top up to orb — sells
+;   │                                     "the relic is emanating onto
+;   │                                     the shrine surface."
+;   ├ HaloSprite      (Sprite2D)          tier-tinted soft glow
+;   ├ Orb             (Sprite2D)          relic icon (≤ 44 px max-dim)
+;   ├ OrbShadow       (Polygon2D ellipse) small dark below the orb,
+;   │                                     pedestal.gd scales it with
+;   │                                     the bob so high-bob = smaller
+;   │                                     shadow (depth cue).
+;   ├ PointLight2D                        casts onto floor + nearby walls
+;   ├ InfoPanel       (Panel, 168×76)     smaller, tighter card. Soft
+;   │                                     tier border (1 px). Active-
+;   │                                     state brightens the modulate
+;   │                                     instead of slamming on a
+;   │                                     harsh white outline.
+;   │  ├ NameLabel    16 pt, 1-line, ellipsis
+;   │  └ DescLabel    11 pt, 3 wrapped lines max
+;   ├ SynergyLabel    (iter-163, kept)    theme synergy chip below card
+;   └ Prompt          "[E] CLAIM"         appears only when in range
+;
+; Sizing: pedestals spawn at 200 px horizontal stride. InfoPanel is
+; 168 wide so adjacent cards have a 32 px gap — premium breathing
+; room. Total pedestal height (plinth foot to card top) ≈ 200 px,
+; centered at hero-spawn y so the row reads as a designed offering.
+
+[ext_resource type="Script" path="res://scripts/pedestal.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="pedestal_area"]
+radius = 64.0
+
+; Fallback orb gradient if a relic has no icon_path. pedestal.gd loads
+; the real icon over this; gradient only shows on missing-icon.
+[sub_resource type="Gradient" id="orb_grad"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(1, 1, 0.85, 1, 1, 0.78, 0.35, 1, 0.78, 0.4, 0.1, 0)
+
+[sub_resource type="GradientTexture2D" id="orb_tex"]
+gradient = SubResource("orb_grad")
+width = 48
+height = 48
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; Halo: tier-tinted soft glow under the icon — fills the visible
+; "halo around the relic" read without depending solely on PointLight2D.
+[sub_resource type="Gradient" id="halo_grad"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="halo_tex"]
+gradient = SubResource("halo_grad")
+width = 256
+height = 256
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; InfoPanel backdrop. Pre-iter-178: 196×120 with 2-px border. Now
+; smaller 168×76 with 1-px border (soft) and slightly more opaque
+; backdrop so the text contrast holds. content_margin tightened
+; left+right 8 → 10 for cleaner inset breathing. Tier color is
+; applied by pedestal.gd._apply_tier_visuals.
+[sub_resource type="StyleBoxFlat" id="info_panel_style"]
+bg_color = Color(0.05, 0.04, 0.07, 0.92)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.62, 0.50, 0.30, 0.90)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+content_margin_left = 10.0
+content_margin_top = 6.0
+content_margin_right = 10.0
+content_margin_bottom = 6.0
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
+
+; Vertical aura gradient (thin column from plinth top → orb level).
+; Bright tier-tinted bottom fading to transparent at top so it reads
+; as "light rising from the stone toward the relic." pedestal.gd
+; tints this to match tier_color.
+[sub_resource type="Gradient" id="aura_grad"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.18, 1, 1, 1, 0.42)
+
+[sub_resource type="GradientTexture2D" id="aura_tex"]
+gradient = SubResource("aura_grad")
+width = 16
+height = 64
+fill = 0
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[node name="Pedestal" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("pedestal_area")
+
+; ── Ground contact + active-state ring ──────────────────────────────
+; ContactShadow: 14-vertex elliptical disc directly under the plinth
+; base. 1.0×0.40 aspect = top-down perspective squash. Dark + 50%
+; alpha so it reads as "resting on stone" without being a blob.
+; z_index = -5 puts it BELOW every other pedestal element (PlinthSide
+; at z=-3, OrbShadow at z=-2, HaloSprite at z=-1, Orb at default 0).
+; Floor decor in main.gd draws at z=-1/-2 too but uses different
+; tree branches — pedestal.tscn is a self-contained sub-scene, the
+; floor decor nodes are siblings under the main scene root, and
+; the floor's polygon background is drawn at the canvas baseline
+; (no positive z). So z=-5 lands on top of the floor backdrop and
+; below the pedestal itself.
+[node name="ContactShadow" type="Polygon2D" parent="."]
+z_index = -5
+position = Vector2(0, 22)
+polygon = PackedVector2Array(36, 0, 33.3, 7.6, 25.5, 13.6, 13.8, 17.3, 0, 18, -13.8, 17.3, -25.5, 13.6, -33.3, 7.6, -36, 0, -33.3, -7.6, -25.5, -13.6, -13.8, -17.3, 0, -18, 13.8, -17.3, 25.5, -13.6, 33.3, -7.6)
+color = Color(0, 0, 0, 0.50)
+
+; ActiveGlowRing: 18-vertex filled disc on the floor, larger than the
+; contact shadow. Alpha 0 baseline; tweened to 0.45 by pedestal.gd
+; when the hero enters proximity. Tier-tinted so the "active" cue
+; matches the relic's rarity color (replaces the harsh white border
+; prior iters used). z=-4 sits one slot above ContactShadow.
+[node name="ActiveGlowRing" type="Polygon2D" parent="."]
+z_index = -4
+position = Vector2(0, 22)
+polygon = PackedVector2Array(72, 0, 65.4, 28.3, 50.9, 50.9, 28.3, 65.4, 0, 72, -28.3, 65.4, -50.9, 50.9, -65.4, 28.3, -72, 0, -65.4, -28.3, -50.9, -50.9, -28.3, -65.4, 0, -72, 28.3, -65.4, 50.9, -50.9, 65.4, -28.3)
+color = Color(1, 0.85, 0.45, 0.0)
+
+; ── 3-piece stone plinth ─────────────────────────────────────────────
+; Plinth wrapper Node2D groups the four sub-nodes so pedestal.gd's
+; _claim / _dismiss outros can tween `plinth.modulate:a` as a unit
+; (fade the whole stone together vs touching each piece separately).
+; Replaces the iter-28 Plinth Panel node — same node name, different
+; type — preserves the @onready var path.
+[node name="Plinth" type="Node2D" parent="."]
+
+; PlinthSide: trapezoidal dark stone side face. Wider at bottom (depth
+; perspective). Drawn first (z=-3) so the lighter top face sits ON it.
+[node name="PlinthSide" type="Polygon2D" parent="Plinth"]
+z_index = -3
+polygon = PackedVector2Array(-26, -42, 26, -42, 30, 18, -30, 18)
+color = Color(0.16, 0.14, 0.18, 1.0)
+
+; PlinthTop: lighter stone slab front. Slightly narrower than the side
+; bottom (trapezoid widens downward — the "you're looking down at it"
+; cue for top-down perspective).
+[node name="PlinthTop" type="Polygon2D" parent="Plinth"]
+z_index = -2
+polygon = PackedVector2Array(-26, -44, 26, -44, 26, -38, -26, -38)
+color = Color(0.42, 0.38, 0.45, 1.0)
+
+; PlinthEdge: 1-px dark outline tracing the silhouette (matches the
+; iter-117 hero outline grammar). Keeps the plinth readable against
+; any floor color.
+[node name="PlinthEdge" type="Line2D" parent="Plinth"]
+z_index = -2
+points = PackedVector2Array(-26, -44, 26, -44, 30, 18, -30, 18, -26, -44)
+width = 1.0
+default_color = Color(0.04, 0.04, 0.08, 0.85)
+joint_mode = 2
+antialiased = true
+
+; TierCap: tier-colored thin strip on the TOP of the plinth (the lit
+; front-facing slab). pedestal.gd tints this in _apply_tier_visuals.
+; Slightly inset so the dark outline frames it cleanly.
+[node name="TierCap" type="Polygon2D" parent="Plinth"]
+z_index = -2
+polygon = PackedVector2Array(-22, -44, 22, -44, 22, -41, -22, -41)
+color = Color(0.78, 0.65, 0.41, 1)
+
+; ── Vertical light column from plinth top up to orb ─────────────────
+; Sits between plinth top (y=-44) and orb level (y=-80). 36 px tall
+; thin gradient — bottom is brightest (where it meets the stone),
+; fades to transparent at the orb. Tinted to tier color by pedestal.gd.
+[node name="VerticalAura" type="Sprite2D" parent="."]
+position = Vector2(0, -62)
+scale = Vector2(0.7, 0.45)
+modulate = Color(1, 0.85, 0.45, 0.55)
+texture = SubResource("aura_tex")
+z_index = -2
+
+; ── Relic icon + halo ───────────────────────────────────────────────
+; HaloSprite: soft tier-colored glow under the icon.
+[node name="HaloSprite" type="Sprite2D" parent="."]
+position = Vector2(0, -80)
+scale = Vector2(0.32, 0.32)
+modulate = Color(1, 0.85, 0.45, 0.55)
+texture = SubResource("halo_tex")
+z_index = -1
+
+; Orb: relic icon. pedestal.gd._ready scales this so max-dim → 44 px
+; (iter-178 from 56) for consistent across-pedestal sizing.
+[node name="Orb" type="Sprite2D" parent="."]
+position = Vector2(0, -80)
+texture = SubResource("orb_tex")
+
+; OrbShadow: small elliptical drop-shadow at plinth-top level. Stays
+; STATIC at the plinth top while the Orb above bobs — sells the
+; vertical separation. pedestal.gd scales this inversely to bob
+; (bob HIGH → shadow SMALL).
+[node name="OrbShadow" type="Polygon2D" parent="."]
+position = Vector2(0, -42)
+z_index = -2
+polygon = PackedVector2Array(12, 0, 10.4, 4.6, 6, 8, 0, 9, -6, 8, -10.4, 4.6, -12, 0, -10.4, -4.6, -6, -8, 0, -9, 6, -8, 10.4, -4.6)
+color = Color(0, 0, 0, 0.55)
+
+; PointLight2D casts onto floor + adjacent walls. Energy increases
+; when the hero is in range (set in pedestal.gd).
+[node name="PointLight2D" type="PointLight2D" parent="."]
+position = Vector2(0, -80)
+color = Color(1, 0.85, 0.45, 1)
+energy = 1.0
+texture = SubResource("halo_tex")
+texture_scale = 1.0
+
+; ── InfoPanel (the card) ────────────────────────────────────────────
+; Iter 178 — 168×76 (was 196×120 — 33% smaller). Tighter typography,
+; soft border, more opaque backdrop for contrast.
+; Iter 192 batch 2 — pulled card DOWN 68 px so it anchors to its own
+; pedestal rather than floating disconnected at the top of the screen.
+; Pre-iter-192 the panel was at y_offset -196..-120 = ~158 px above
+; the pedestal center; user feedback: "feels like floating debug
+; cards." Now -128..-52 = ~90 px above pedestal center, just above
+; the orb at y_offset -42. The card + orb + pedestal now read as a
+; single vertical "offering" cluster (ritual / altar reading) instead
+; of "card at top, pedestal at bottom, gap between."
+[node name="InfoPanel" type="Panel" parent="."]
+offset_left = -84.0
+offset_top = -128.0
+offset_right = 84.0
+offset_bottom = -52.0
+theme_override_styles/panel = SubResource("info_panel_style")
+mouse_filter = 2
+
+; NameLabel: 16 pt (was 20), single-line with ellipsis on overflow.
+; Tier-colored by pedestal.gd._apply_tier_visuals for at-a-glance
+; rarity read.
+[node name="NameLabel" type="Label" parent="InfoPanel"]
+anchor_right = 1.0
+offset_left = 4.0
+offset_top = 0.0
+offset_right = -4.0
+offset_bottom = 22.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(1, 0.94, 0.66, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "IRON FANG"
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = true
+text_overrun_behavior = 3
+mouse_filter = 2
+
+; DescLabel: 11 pt (was 14), auto-wrap WORD_SMART, max 3 lines visible
+; in the 50-px content area. Most relic descriptions fit in 2 lines
+; at 11 pt; long ones truncate cleanly (clip_text false to let wraps
+; show, but the panel height is fixed — extra lines clip rather than
+; pushing the panel taller).
+[node name="DescLabel" type="Label" parent="InfoPanel"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 22.0
+offset_right = -4.0
+offset_bottom = -2.0
+custom_minimum_size = Vector2(160, 0)
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.88, 0.84, 0.74, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+theme_override_constants/line_separation = 1
+text = "+1 sword damage"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+clip_text = true
+mouse_filter = 2
+
+; ── Iter 163 — theme synergy chip (kept; just repositioned). ────────
+; Iter 192 batch 2 — moved above the tightened InfoPanel (was -110..-90,
+; which is now occupied by the panel after its iter-192 shift down).
+; Theme tag sits as a small header line above the card. Same horizontal
+; centering, same 20-px height.
+[node name="SynergyLabel" type="Label" parent="."]
+offset_left = -100.0
+offset_top = -148.0
+offset_right = 100.0
+offset_bottom = -130.0
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.85, 0.85, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+clip_text = false
+mouse_filter = 2
+
+; ── "[E] CLAIM" prompt — visible only when hero in range ────────────
+; Pre-iter-178: y +28 to +52 (below plinth). Now sits CLOSE to the
+; orb level so the player's eye doesn't have to dart from card to
+; floor to find the prompt.
+[node name="Prompt" type="Label" parent="."]
+offset_left = -80.0
+offset_top = 32.0
+offset_right = 80.0
+offset_bottom = 52.0
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(1, 0.94, 0.66, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "[E] CLAIM"
+horizontal_alignment = 1

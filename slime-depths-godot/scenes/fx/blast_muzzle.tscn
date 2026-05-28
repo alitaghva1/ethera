@@ -1,0 +1,57 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3blastmuzzle01"]
+
+[ext_resource type="Script" path="res://scripts/blast_muzzle.gd" id="1_script"]
+
+; Spark ramp — bright magenta core fading to transparent at the tail.
+; Same palette as the blast projectile so the muzzle reads as the
+; projectile's birth puff, not a separate effect.
+[sub_resource type="Gradient" id="spark_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.7, 1, 1, 1, 0.5, 0.95, 0.75, 1, 0.4, 0.85, 0)
+
+; Width curve for the inner core circle — taper edges so the polygon
+; reads as a soft blob, not a hard ring.
+[sub_resource type="Curve" id="core_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.6), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="BlastMuzzle" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Halo — wide, soft magenta bloom that snaps outward and fades ─────
+; 12-vert circle approximation, scale tweened from 0.6 → 1.6 over the
+; muzzle lifetime. The halo is the "felt" part of the flash — the
+; brightness on the player's periphery.
+[node name="Halo" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(20, 0, 17.32, 10, 10, 17.32, 0, 20, -10, 17.32, -17.32, 10, -20, 0, -17.32, -10, -10, -17.32, 0, -20, 10, -17.32, 17.32, -10)
+color = Color(1, 0.55, 1, 0.55)
+
+; ── Core — small bright near-white pulse riding on top of the halo ────
+; Reads as the "muzzle point" — the sharp dot where the projectile
+; just left. Stays nearly full opacity for most of the lifetime, then
+; snaps to 0 (vs the halo's gradual fade).
+[node name="Core" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(9, 0, 7.79, 4.5, 4.5, 7.79, 0, 9, -4.5, 7.79, -7.79, 4.5, -9, 0, -7.79, -4.5, -4.5, -7.79, 0, -9, 4.5, -7.79, 7.79, -4.5)
+color = Color(1, 0.92, 1, 1)
+
+; ── Radial sparks — 6 small particles spraying outward at speed ───────
+; one_shot + explosiveness 1.0 = single instantaneous fan that decays
+; with damping. Lifetime matches the muzzle's overall lifetime.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 6
+lifetime = 0.18
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 80.0
+initial_velocity_max = 140.0
+damping_min = 6.0
+damping_max = 10.0
+scale_amount_min = 1.5
+scale_amount_max = 3.0
+color_ramp = SubResource("spark_grad")

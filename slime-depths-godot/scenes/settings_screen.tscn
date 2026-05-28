@@ -1,0 +1,496 @@
+[gd_scene load_steps=11 format=3 uid="uid://og52lwafuqdk"]
+
+[ext_resource type="Script" path="res://scripts/settings_screen.gd" id="1_script"]
+
+; Settings screen — volume slider + read-only controls table.
+; Same layered background as the title screen for visual continuity.
+; Title gets the same back-glow Label trick (one size smaller). Sections
+; have "AUDIO" / "CONTROLS" headers and the controls are tabulated
+; (key column | action column) instead of bare lines.
+
+; ── Background gradients (radial purple bloom + lower vignette) ────────
+[sub_resource type="Gradient" id="bg_radial_gradient"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.10196, 0.039215, 0.094117, 1, 0.054901, 0.027450, 0.058823, 1, 0.019607, 0.011764, 0.031372, 1)
+
+[sub_resource type="GradientTexture2D" id="bg_radial_tex"]
+gradient = SubResource("bg_radial_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.45)
+fill_to = Vector2(1, 1)
+width = 256
+height = 256
+
+[sub_resource type="Gradient" id="bg_vignette_gradient"]
+offsets = PackedFloat32Array(0, 0.7, 1)
+colors = PackedColorArray(0, 0, 0, 0, 0, 0, 0, 0.22, 0, 0, 0, 0.55)
+
+[sub_resource type="GradientTexture2D" id="bg_vignette_tex"]
+gradient = SubResource("bg_vignette_gradient")
+fill = 0
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+width = 32
+height = 256
+
+; ── Button styles ───────────────────────────────────────────────────────
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+bg_color = Color(0.04, 0.03, 0.06, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.65, 0.41, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 12.0
+content_margin_right = 24.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+bg_color = Color(0.08, 0.06, 0.10, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 24.0
+content_margin_top = 12.0
+content_margin_right = 24.0
+content_margin_bottom = 12.0
+
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+bg_color = Color(0.10, 0.07, 0.13, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.92, 0.72, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 23.0
+content_margin_top = 11.0
+content_margin_right = 23.0
+content_margin_bottom = 11.0
+shadow_color = Color(0.96, 0.85, 0.63, 0.35)
+shadow_size = 6
+shadow_offset = Vector2(0, 0)
+
+; ── HSlider styles (track / fill / grabber) ─────────────────────────────
+; Track — dim plate with gold inner border.
+[sub_resource type="StyleBoxFlat" id="slider_track"]
+bg_color = Color(0.05, 0.04, 0.08, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.46, 0.30, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 4.0
+content_margin_top = 6.0
+content_margin_right = 4.0
+content_margin_bottom = 6.0
+
+; Filled portion — solid gold to match the palette.
+[sub_resource type="StyleBoxFlat" id="slider_fill"]
+bg_color = Color(0.78, 0.65, 0.41, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+; Note: HSlider's grabber is a Texture2D theme icon, not a StyleBox. We
+; modulate the default grabber to gold via the slider node's modulate
+; property — keeps the visual on-palette without shipping a custom PNG.
+
+[node name="SettingsScreen" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="BackgroundBase" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.0117, 0.0078, 0.0235, 1)
+
+[node name="BackgroundRadial" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("bg_radial_tex")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="BackgroundVignette" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("bg_vignette_tex")
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.85)
+
+; ── Title block — same glow-Label trick as main menu, smaller scale.
+[node name="TitleBlock" type="Control" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -300.0
+offset_right = 300.0
+offset_bottom = -200.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TitleGlow" type="Label" parent="TitleBlock"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -50.0
+offset_right = 300.0
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 56
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 0.30)
+theme_override_colors/font_outline_color = Color(0.78, 0.55, 0.32, 0.40)
+theme_override_constants/outline_size = 10
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="TitleBlock"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -50.0
+offset_right = 300.0
+offset_bottom = 50.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 48
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+; ── Centered content column.
+[node name="Content" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -320.0
+offset_top = -150.0
+offset_right = 320.0
+offset_bottom = 290.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 10
+
+; ── AUDIO section header ───────────────────────────────────────────────
+[node name="AudioHeader" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 30)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "A U D I O"
+horizontal_alignment = 1
+
+[node name="VolumeRow" type="HBoxContainer" parent="Content"]
+custom_minimum_size = Vector2(0, 42)
+theme_override_constants/separation = 18
+
+[node name="VolumeLabel" type="Label" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "MASTER VOLUME"
+vertical_alignment = 1
+
+; Styled slider — custom track + filled-portion via theme StyleBox slots
+; so the default Godot blue is gone. The grabber is a Texture2D icon (not
+; stylebox) — left as default; the gold fill and dark track frame it
+; enough to read on-palette.
+[node name="VolumeSlider" type="HSlider" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(340, 40)
+focus_mode = 2
+min_value = 0.0
+max_value = 100.0
+step = 1.0
+value = 80.0
+theme_override_styles/slider = SubResource("slider_track")
+theme_override_styles/grabber_area = SubResource("slider_fill")
+theme_override_styles/grabber_area_highlight = SubResource("slider_fill")
+
+[node name="VolumeValue" type="Label" parent="Content/VolumeRow"]
+custom_minimum_size = Vector2(50, 0)
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+text = "80"
+vertical_alignment = 1
+horizontal_alignment = 2
+
+[node name="Spacer1" type="Control" parent="Content"]
+custom_minimum_size = Vector2(0, 18)
+
+; ── CONTROLS section header ────────────────────────────────────────────
+[node name="ControlsHeader" type="Label" parent="Content"]
+custom_minimum_size = Vector2(0, 30)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "C O N T R O L S"
+horizontal_alignment = 1
+
+; Tabular layout: every row is HBox(KEY label gold | ACTION label cream).
+; All key labels share a fixed width so the columns align like a table.
+[node name="ControlsList" type="VBoxContainer" parent="Content"]
+theme_override_constants/separation = 5
+
+[node name="R1" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R1"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "WASD"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R1"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "move"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R2" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R2"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "LEFT MOUSE"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R2"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "attack"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R3" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R3"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "RIGHT MOUSE"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R3"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "blast"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+; iter-100: R4 (SPACE → dodge) row removed. The dodge ability was
+; deleted in iter-95 and Space is no longer bound. R5 (Q → shield),
+; R6 (SHIFT → dash strike), etc. retain their original names — the
+; node-name numbering is purely positional, not referenced by code.
+
+[node name="R5" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R5"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "Q"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R5"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "shield"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R6" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R6"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "SHIFT"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R6"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "dash strike"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R7" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R7"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "E"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R7"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "interact"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R8" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R8"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "R"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R8"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+text = "restart"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="R9" type="HBoxContainer" parent="Content/ControlsList"]
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="Key" type="Label" parent="Content/ControlsList/R9"]
+custom_minimum_size = Vector2(140, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "ESC"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Content/ControlsList/R9"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.92, 0.88, 0.82, 1)
+; iter-101: was "return to main menu" — but mid-run ESC actually opens
+; the pause overlay (main.gd:2746). Only after death/run-complete does
+; ESC route back to main menu. Pause menu has its own "return to main"
+; button. "pause / menu" covers both contexts truthfully.
+text = "pause / menu"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="Spacer3" type="Control" parent="Content"]
+custom_minimum_size = Vector2(0, 22)
+
+[node name="BackButton" type="Button" parent="Content"]
+custom_minimum_size = Vector2(240, 48)
+focus_mode = 2
+size_flags_horizontal = 4
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "BACK"

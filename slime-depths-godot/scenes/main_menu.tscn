@@ -1,0 +1,803 @@
+[gd_scene load_steps=17 format=3 uid="uid://b3menu1234567"]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/menu/menu_backdrop.jpg" id="2_backdrop"]
+
+; ── Main menu — dark-fantasy title screen, iter-92 rewrite ─────────────
+; Pre-iter-92 was hand-drawing atmosphere with a single faint Polygon2D
+; arch silhouette + gradients. The JS reference (slime-depths/src/menuScreen.js)
+; uses a PAINTED backdrop (assets/menu/menu_backdrop.jpg) — an archway
+; with two torch flames, stairs going down into mist, vines and moss
+; framing the stone. Iter-92 ports that backdrop into Godot and stages
+; every UI element against the painting's natural composition:
+;
+;   • TITLE — sits on the dark cavern roof, ABOVE the arch peak.
+;     Cream-gold typography reads cleanly against the near-black band
+;     between viewport top and the arch stones.
+;   • BUTTON STACK — nested inside the dark archway interior. Visually
+;     the doorway-into-the-dungeon. Ghost styling so the painted texture
+;     reads through the button fills.
+;   • RECORDS / VERSION — bottom corners on the foreground stone path,
+;     low-key cream-on-dark so persistent stats don't compete.
+;   • EMBERS — three CPUParticles2D emitters. One along the bottom mist
+;     line, two at each torch flame position so the painted torches read
+;     as alive. Per-particle warm-amber color ramp, additive blend.
+;   • CORNERS — four gold L-hairlines, manuscript page-frame motif.
+;
+; Layer order (back→front):
+;   1. BackgroundBase      — deep black, peeks through any uncovered edge
+;   2. BackdropImage       — the painted archway (full-screen, covered)
+;   3. EdgeVignette        — thin rim darkening so backdrop blends to black
+;   4. TitleHalo           — warm radial glow behind title for breathing-light feel
+;   5. EmberParticles      — bottom-line embers drifting up across viewport
+;   6. LeftTorchEmbers     — small ember cluster at the left torch flame
+;   7. RightTorchEmbers    — small ember cluster at the right torch flame
+;   8. Corner flourishes   — four gold L-hairlines (page-frame motif)
+;   9. Title block         — title + tagline + flanking hairlines
+;  10. Button stack        — AWAKEN / SETTINGS / QUIT
+;  11. Stats + version     — bottom corners
+
+; ── iter-126: typography ─────────────────────────────────────────────
+; Pre-iter-126 every label rendered in Godot's default Noto Sans — a
+; clean modern sans-serif that fought the dark-fantasy mood (playtester
+; read: "the text choice for ETHERA and the sub is bad").
+;
+; Two SystemFont sub-resources. SystemFont tries each name in order
+; and falls back to whichever the OS has installed; if none of these
+; ship with the OS the user can drop Cinzel.ttf into assets/fonts/
+; (future iter wires it up via load() at runtime). The fallback chain
+; here is built so the WORST case is Georgia or Times New Roman, which
+; every desktop OS ships with — and is already far more "dark fantasy"
+; than the bundled Noto Sans.
+;
+; title_font: bold serif, used by TitleGlow + Title. Bold weight gives
+; "ETHERA" the carved-stone presence the prior 700-weight Noto Sans
+; couldn't.
+[sub_resource type="SystemFont" id="title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+; body_font: regular serif, used by Subtitle + every records / version
+; label. Same family but normal weight so the tagline + stats read as
+; companion text to the title, not three different fonts competing.
+[sub_resource type="SystemFont" id="body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
+
+; iter-128 — body_font_italic sub-resource dropped along with the
+; subtitle it served. See the design note in the Subtitle deletion
+; below: genre peers (Elden Ring, Dark Souls, Bloodborne, Hades,
+; Hollow Knight, Slay the Spire, Enter the Gungeon) all show just
+; the title alone — a separate subtitle Label is the wrong move.
+
+; ── Edge vignette (subtle rim darkening over backdrop) ─────────────────
+; The painted backdrop already vignettes to near-black at its corners,
+; but its native aspect (1376×768 ≈ 1.79) is slightly wider than 16:9
+; (1.78) so keep_aspect_covered crops ~1% top+bottom. This vignette
+; ensures the viewport edge ALWAYS reads pure black regardless of how
+; the painting cropped.
+[sub_resource type="Gradient" id="edge_vignette_gradient"]
+offsets = PackedFloat32Array(0, 0.6, 1)
+colors = PackedColorArray(0, 0, 0, 0, 0, 0, 0, 0.18, 0, 0, 0, 0.65)
+
+[sub_resource type="GradientTexture2D" id="edge_vignette_tex"]
+gradient = SubResource("edge_vignette_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.95)
+width = 256
+height = 256
+
+; ── Title halo (warm radial glow behind the title block) ───────────────
+; The JS reference layers a halo div behind the CTA with rgba(201,168,106,0.18).
+; This achieves the same effect — a soft amber pool that makes the gold
+; typography feel like it's emitting heat. Sits in the top-center area
+; ABOVE the arch peak (where the title lives).
+[sub_resource type="Gradient" id="title_halo_gradient"]
+offsets = PackedFloat32Array(0, 0.55, 1)
+colors = PackedColorArray(0.95, 0.72, 0.36, 0.22, 0.85, 0.50, 0.20, 0.08, 0.85, 0.50, 0.20, 0)
+
+[sub_resource type="GradientTexture2D" id="title_halo_tex"]
+gradient = SubResource("title_halo_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.5)
+width = 256
+height = 128
+
+; ── Ember particle texture (white→transparent core) ────────────────────
+; CPUParticles2D colors each particle via the warm-amber color_ramp
+; below, so the texture itself is monochrome.
+[sub_resource type="Gradient" id="ember_tex_gradient"]
+offsets = PackedFloat32Array(0, 0.35, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.55, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="ember_texture"]
+gradient = SubResource("ember_tex_gradient")
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1.0, 0.5)
+width = 32
+height = 32
+
+; Per-particle color ramp: warm cream-gold core → amber → orange-red dim.
+; Mirrors the hsla(28..46, 75..95%, ...) range the JS menuEmbers.js uses.
+[sub_resource type="Gradient" id="ember_color_gradient"]
+offsets = PackedFloat32Array(0, 0.35, 0.75, 1)
+colors = PackedColorArray(1.0, 0.92, 0.68, 1, 1.0, 0.72, 0.34, 0.92, 1.0, 0.45, 0.16, 0.6, 0.85, 0.30, 0.10, 0)
+
+; Per-particle scale curve: small start, peak, shrink to dust.
+[sub_resource type="Curve" id="ember_scale_curve"]
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.35, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.2), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; iter-111: Mist color ramp — cool gray-blue, mostly transparent. Mist
+; doesn't compete with the warm ember palette; instead it cools the stair
+; line and reads as "cave breath" rising up the steps. Peak alpha 0.32
+; mid-life so individual puffs never read as opaque clouds.
+[sub_resource type="Gradient" id="mist_color_gradient"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(0.72, 0.78, 0.86, 0, 0.72, 0.78, 0.86, 0.32, 0.72, 0.78, 0.86, 0)
+
+; Mist scale envelope — slow expand from a wisp into a soft puff, then
+; slow fade. Wider than the ember curve so the mist appears to BREATHE
+; in and out across its 10s lifetime rather than spark and die.
+[sub_resource type="Curve" id="mist_scale_curve"]
+_data = [Vector2(0, 0.35), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+; ── iter-127 button styles — stone-plaque restyle ────────────────────
+; Pre-iter-127 the buttons were thin 1-px-bordered transparent rectangles
+; — read as "modern web UI dropped on a dungeon backdrop." Iter-127
+; rebuilds them as ruin-tablet plaques: dark stone fill, gold trim on
+; the TOP and BOTTOM edges only (no side borders) so the plaque reads
+; horizontally inscribed, squared corners (no rounding — stone doesn't
+; round), and warm-amber glow on hover/focus instead of just brighter
+; border lines. Center text rendered in body_font (serif).
+;
+; Plate corners stay squared (corner_radius = 0). content_margin
+; widened so the text breathes inside the plaque.
+; Iter 193 batch 1 — buttons restyled away from "menu box energy"
+; toward ceremonial-marker typography. User: "buttons feel too heavy /
+; generic / not fully integrated with the background." Old style was
+; opaque dark bg + 2 px bronze border + drop shadow → reads as
+; "stamped UI rectangle floating over the painting." New approach:
+;   • bg_color alpha 0.66 → 0.28 — painted backdrop bleeds through,
+;     button feels integrated not pasted on
+;   • borders 2 → 1 — thin horizontal rules read as elegant
+;     typography underline/overline, not a button frame
+;   • Resting shadow REMOVED — no halo/drop, button is just text +
+;     horizontal rules
+;   • Hover/focus keep their gentle gold glow but at smaller shadow
+;     size so the warmth pools without "neon sign" energy
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+bg_color = Color(0.07, 0.05, 0.08, 0.28)
+border_width_left = 0
+border_width_top = 1
+border_width_right = 0
+border_width_bottom = 1
+border_color = Color(0.55, 0.44, 0.28, 0.68)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 36.0
+content_margin_top = 14.0
+content_margin_right = 36.0
+content_margin_bottom = 14.0
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+bg_color = Color(0.10, 0.07, 0.10, 0.48)
+border_width_left = 0
+border_width_top = 1
+border_width_right = 0
+border_width_bottom = 1
+border_color = Color(0.92, 0.74, 0.40, 0.92)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 36.0
+content_margin_top = 14.0
+content_margin_right = 36.0
+content_margin_bottom = 14.0
+shadow_color = Color(0.96, 0.70, 0.32, 0.32)
+shadow_size = 10
+shadow_offset = Vector2(0, 0)
+
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+bg_color = Color(0.12, 0.08, 0.10, 0.58)
+border_width_left = 0
+border_width_top = 2
+border_width_right = 0
+border_width_bottom = 2
+border_color = Color(1, 0.90, 0.62, 0.96)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+content_margin_left = 36.0
+content_margin_top = 13.0
+content_margin_right = 36.0
+content_margin_bottom = 13.0
+shadow_color = Color(1, 0.82, 0.45, 0.42)
+shadow_size = 12
+shadow_offset = Vector2(0, 0)
+
+[sub_resource type="StyleBoxFlat" id="hairline_style"]
+bg_color = Color(0.78, 0.65, 0.41, 0.6)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+
+; ── Scene tree ─────────────────────────────────────────────────────────
+[node name="MainMenu" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+; Deepest layer — pure-black fallback in case the backdrop fails to load.
+[node name="BackgroundBase" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 1)
+
+; iter-92: painted archway backdrop. stretch_mode = 6 (keep_aspect_covered)
+; fills the viewport entirely; the painting's 1376×768 aspect ≈ matches
+; the 1280×720 (~1.78) viewport so the crop is minimal (~1% at top/bottom).
+[node name="BackdropImage" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_backdrop")
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+; Edge vignette — thin radial fade ensuring viewport corners are pure black
+; regardless of how the backdrop cropped. Subtle (0.18 → 0.65 alpha) so
+; the painting's own internal vignette isn't doubled into mud.
+[node name="EdgeVignette" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = SubResource("edge_vignette_tex")
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+; iter-111: Mist particles at the stair-mist line. Slow horizontal drift,
+; large soft puffs, cool blue-gray, 0→0.32→0 alpha envelope. Sits behind
+; the title halo and the warm embers so it reads as "the dungeon depths
+; breathe cold air up the stairs at you." main_menu.gd repositions it on
+; viewport resize and parallaxes it WITH the backdrop (drifts opposite
+; to cursor) so it stays attached to the painted stair landing.
+;
+; Tuning rationale:
+;   • amount = 32: low so individual puffs are distinguishable
+;   • lifetime = 10s: long enough for the slow drift to feel ambient
+;   • initial_velocity 6-14: nearly motionless, just slight rise + drift
+;   • direction (0.3, -0.4): mostly upward with a faint rightward drift
+;     so the air feels like it's escaping the cave UP toward the title
+;   • tangential_accel ±2: gentle swirl, not turbulence
+;   • damping 0.05-0.2: low so velocity stays through most of the life
+;   • scale_amount 2.5-4.0: BIG soft puffs (texture is 32×32, this
+;     renders 80-128px) — only viable because the color ramp peaks at
+;     0.32 alpha. Bigger + softer reads as fog; small + opaque reads
+;     as sparks (which is the embers' job).
+[node name="MistParticles" type="CPUParticles2D" parent="."]
+position = Vector2(640, 562)
+amount = 32
+lifetime = 10.0
+preprocess = 6.0
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(720, 6)
+gravity = Vector2(0, 0)
+initial_velocity_min = 6.0
+initial_velocity_max = 14.0
+direction = Vector2(0.3, -0.4)
+spread = 28.0
+tangential_accel_min = -2.0
+tangential_accel_max = 2.0
+damping_min = 0.05
+damping_max = 0.20
+scale_amount_min = 2.5
+scale_amount_max = 4.0
+scale_amount_curve = SubResource("mist_scale_curve")
+color_ramp = SubResource("mist_color_gradient")
+mouse_filter = 2
+
+; Title halo — warm amber radial behind the title block. Positioned to
+; pool over the dark cavern roof where the title lives. Pulses with the
+; title scale (main_menu.gd ties its modulate alpha to the title tween).
+[node name="TitleHalo" type="TextureRect" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -380.0
+offset_top = 20.0
+offset_right = 380.0
+offset_bottom = 280.0
+grow_horizontal = 2
+texture = SubResource("title_halo_tex")
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+; iter-129 — EmberParticles bottom spray REMOVED. Pre-iter-129 the
+; emitter painted 70 particles at scale 0.05-0.12 rising from a 4-px
+; strip at y=760. Playtester read: "tiny random spray that adds
+; almost nothing — leftover effect rather than deliberate atmosphere."
+; Diagnosis: the emitter wasn't tied to any scene anchor. The two
+; torch-ember emitters (Left/RightTorchEmbers) sit at the painted
+; torch flames in the backdrop — they read as embers FROM the
+; torches. The MistParticles emitter sits at the stair-mist line —
+; reads as mist FROM the stairs. EmberParticles had no anchor — it
+; just drifted up from a generic baseline.
+;
+; Following the user's design rule ("If a good ambient particle
+; implementation cannot be done cleanly, it is better to have no
+; particle effect at all than a weak one"), the emitter is retired
+; rather than reworked. The torch + mist emitters carry all the
+; ambient motion the screen needs.
+
+; iter-92: Left torch ember emitter. Backdrop's left torch flame sits
+; at roughly (495, 365) in the 1280×720 viewport (when the painting is
+; covered-cropped). Small emitter sells the painted flame as alive.
+;
+; iter-130 retune — Dark Souls-pacing pass. Pre-iter-130 values
+; (22 amount, 22-46 px/s velocity, 1.6s lifetime, 0.6-1.4 damping)
+; read as "cinder spitter" rather than "lazy ember." Genre peers use
+; sparse, slow embers that drift up several seconds before fading.
+; Iter-130 values:
+;   amount 22 → 14 (sparser = more deliberate)
+;   initial_velocity 22-46 → 10-24 (half-speed; lazy drift, not zip)
+;   lifetime 1.6 → 3.2s (doubled; embers linger long enough to read)
+;   damping 0.6-1.4 → 0.3-0.7 (less friction = velocity holds, less
+;     "abrupt stop and fade" feel)
+;   scale 0.06-0.10 → 0.08-0.14 (slightly larger so the sparser
+;     emitter still reads at a glance)
+;   tangential_accel ±10 → ±5 (gentler swirl, less jitter)
+[node name="LeftTorchEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(495, 365)
+amount = 14
+lifetime = 3.2
+preprocess = 1.5
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(8, 4)
+gravity = Vector2(0, 0)
+initial_velocity_min = 10.0
+initial_velocity_max = 24.0
+direction = Vector2(0, -1)
+spread = 18.0
+tangential_accel_min = -5.0
+tangential_accel_max = 5.0
+damping_min = 0.3
+damping_max = 0.7
+scale_amount_min = 0.08
+scale_amount_max = 0.14
+scale_amount_curve = SubResource("ember_scale_curve")
+color_ramp = SubResource("ember_color_gradient")
+mouse_filter = 2
+
+; iter-92: Right torch ember emitter. Mirrored — same iter-130 tuning.
+[node name="RightTorchEmbers" type="CPUParticles2D" parent="."]
+position = Vector2(785, 365)
+amount = 14
+lifetime = 3.2
+preprocess = 1.5
+texture = SubResource("ember_texture")
+emission_shape = 1
+emission_rect_extents = Vector2(8, 4)
+gravity = Vector2(0, 0)
+initial_velocity_min = 10.0
+initial_velocity_max = 24.0
+direction = Vector2(0, -1)
+spread = 18.0
+tangential_accel_min = -5.0
+tangential_accel_max = 5.0
+damping_min = 0.3
+damping_max = 0.7
+scale_amount_min = 0.08
+scale_amount_max = 0.14
+scale_amount_curve = SubResource("ember_scale_curve")
+color_ramp = SubResource("ember_color_gradient")
+mouse_filter = 2
+
+; ── Corner flourishes — manuscript page-frame motif ───────────────────
+[node name="CornerTL" type="Control" parent="."]
+anchors_preset = 0
+offset_left = 36.0
+offset_top = 36.0
+offset_right = 100.0
+offset_bottom = 100.0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerTL"]
+offset_right = 64.0
+offset_bottom = 1.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerTL"]
+offset_right = 1.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerTR" type="Control" parent="."]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 36.0
+offset_right = -36.0
+offset_bottom = 100.0
+grow_horizontal = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerTR"]
+offset_right = 64.0
+offset_bottom = 1.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerTR"]
+offset_left = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerBL" type="Control" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 36.0
+offset_top = -100.0
+offset_right = 100.0
+offset_bottom = -36.0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerBL"]
+offset_top = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerBL"]
+offset_right = 1.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="CornerBR" type="Control" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_top = -100.0
+offset_right = -36.0
+offset_bottom = -36.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+
+[node name="HorzLine" type="Panel" parent="CornerBR"]
+offset_top = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+[node name="VertLine" type="Panel" parent="CornerBR"]
+offset_left = 63.0
+offset_right = 64.0
+offset_bottom = 64.0
+theme_override_styles/panel = SubResource("hairline_style")
+mouse_filter = 2
+
+; ── Title block (top of screen, above arch peak) ──────────────────────
+; iter-92: moved from "above viewport center" to "top-center anchored
+; at y=80" so the title sits on the dark cavern roof, with the painted
+; arch stones framing it from below.
+;
+; iter-93: removed TitleHairline{Top,Bottom} — they crowded the title
+; against the subtitle for no visual payoff (the painted backdrop's own
+; archway frame supplies the "manuscript page" structure). More vertical
+; breathing room between title and tagline.
+[node name="TitleBlock" type="Control" parent="."]
+anchors_preset = 1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -360.0
+offset_top = 80.0
+offset_right = 360.0
+offset_bottom = 260.0
+grow_horizontal = 2
+mouse_filter = 2
+
+; Glow Label — outline "fat-copy" workaround for blur. Sits behind the
+; foreground title so the warm aura reads as bloom.
+;
+; iter-93 BUG FIX: text MUST match the foreground Title verbatim. Prior
+; iter-92 had the glow saying "ETHERA" while the foreground said
+; "E T H E R A". Because the foreground letters are SPACED, the dimmer
+; orange glow letters were peeking through the gaps — visible in
+; playtest as a ghost duplicate of the title. Matching the text makes
+; the glow stack exactly under the foreground so it reads as bloom
+; rather than a typographic artifact.
+; iter-129 — TitleShadow Label removed. Playtester read on iter-127's
+; carved-stone offset: "feels like a 3D movie headline, not an elegant
+; dark-fantasy logo." The offset (+3, +4) shadow + 6 px black outline
+; + bright cream-gold fill produced a bevel-and-emboss look the
+; opposite of what was intended. Real carved-stone inscription is
+; DARKER INSIDE the cut (inner shadow) — which Godot Label can't do
+; without a shader. So the concept was wrong from the start.
+; Without TitleShadow the title now reads as text drawn ON the dark
+; cavern roof, not floating above it. main_menu.gd dropped its
+; title_shadow @onready ref and the matching pulse-scale line.
+
+; iter-126: TitleGlow size matched to Title (88 pt) — was 110 pt
+; pre-iter-126, which under the new serif font_face would re-introduce
+; the same "ghost-letters peeking above/below the foreground" bug that
+; iter-121 fixed on the death screen. Bloom now comes purely from the
+; outline_size differential (18 px on glow vs 6 px on Title) — both
+; labels render IDENTICAL letterforms; the glow's outline halo extends
+; ~12 px past the Title's outline so the warm aura reads cleanly.
+; iter-129 — TitleGlow halo dimmed. Pre-iter-129 outline_size 18 @
+; alpha 0.45 painted a fat warm-amber bloom around every letter,
+; reading as "shiny gold movie title." Pulled to outline_size 12 @
+; alpha 0.25 — the bloom is now a quiet warmth, not a stage spotlight.
+[node name="TitleGlow" type="Label" parent="TitleBlock"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -360.0
+offset_top = 0.0
+offset_right = 360.0
+offset_bottom = 120.0
+grow_horizontal = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 76
+theme_override_colors/font_color = Color(0.92, 0.72, 0.36, 0)
+theme_override_colors/font_outline_color = Color(0.85, 0.55, 0.25, 0.25)
+theme_override_constants/outline_size = 12
+text = "E T H E R A"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+; Foreground title.
+; iter-129 — pulled back on every loud knob after the iter-127 result
+; read as "3D Hollywood headline":
+;   • font_size 88 → 76 (smaller, less domineering)
+;   • color (0.96, 0.88, 0.66) → (0.84, 0.76, 0.60) — weathered bone,
+;     less saturated, less "shiny gold"
+;   • outline_size 6 → 3 (thinner)
+;   • outline_color pure black → warm dark-brown (0.10, 0.06, 0.04) so
+;     the outline reads as "stone shadow," not "letter cutout"
+; The title now sits on the dark cavern roof as written-stone text
+; rather than floating like a printed banner.
+[node name="Title" type="Label" parent="TitleBlock"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -360.0
+offset_top = 0.0
+offset_right = 360.0
+offset_bottom = 120.0
+grow_horizontal = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 76
+theme_override_colors/font_color = Color(0.84, 0.76, 0.60, 1)
+theme_override_colors/font_outline_color = Color(0.10, 0.06, 0.04, 1)
+theme_override_constants/outline_size = 3
+text = "E T H E R A"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+; Tagline — diamond flourishes (◇) flank lowercase-spaced "beneath the ruin"
+; per the JS reference (slime-depths/src/menuScreen.js line ~135).
+; main_menu.gd animates its alpha in a slow 3s pulse (0.65 → 1.0 → 0.65).
+;
+; iter-93: bumped vertical offset 148 → 150 so the tagline sits a clean
+; 30 px below the title baseline (was crammed against the now-removed
+; bottom hairline).
+; iter-128 — Subtitle "beneath the ruin" REMOVED entirely. Design
+; review: zero of the premier dark-fantasy / roguelite menus (Elden
+; Ring, Dark Souls 3, Bloodborne, Hollow Knight, Hades, Sekiro,
+; Diablo IV, Slay the Spire, Enter the Gungeon) carry a separate
+; subtitle Label on the title screen. The title brand stands alone.
+; Every attempt to style "beneath the ruin" — full letterspaced
+; (iter-92), dimmed italic (iter-127) — read as either placeholder
+; flavor text or whisper-text mistaken for a render bug.
+;
+; The decorative SubtitleRule manuscript hairline went with it; it
+; was finishing punctuation FOR the subtitle. Without the subtitle
+; the hairline sits in empty space without anchoring anything, and
+; adds visual noise the screen doesn't need. The gap between title
+; and button stack now reads as confident breathing room rather
+; than "we forgot to put something there."
+
+; ── Button stack ──────────────────────────────────────────────────────
+; iter-92: stack nests INSIDE the painted archway interior so the buttons
+; visually open into the dungeon. Anchored to viewport center, shifted
+; down ~60 px so the top button sits at the arch's interior y ≈ 350.
+[node name="CenterStack" type="VBoxContainer" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -60.0
+offset_right = 180.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+; Iter 164 — clear primary/secondary hierarchy. Pre-iter-164 the three
+; buttons were 58/54/54 with 22pt/18pt/18pt fonts — visually almost
+; identical, so no button read as THE primary action. Now BEGIN is
+; dramatically larger (84 px tall, 32 pt font, warmer gold) and the
+; secondary buttons are uniform 50 px / 17 pt in cool cream so the
+; player's eye goes to BEGIN first.
+;
+; Text also reverted AWAKEN → BEGIN. "Awaken" was a dark-fantasy
+; flavor pick (iter-92) but reads as obscure for a first-time
+; player. "BEGIN" is universal-verb-of-roguelite menus (Hades,
+; Dead Cells, Hollow Knight all use BEGIN/START/PLAY).
+[node name="BeginButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(360, 72)
+focus_mode = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(1.0, 0.86, 0.50, 1)
+theme_override_colors/font_hover_color = Color(1, 0.96, 0.74, 1)
+theme_override_colors/font_focus_color = Color(1, 0.97, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
+theme_override_constants/outline_size = 4
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "BEGIN"
+
+[node name="SettingsButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(360, 50)
+focus_mode = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.80, 0.72, 0.55, 1)
+theme_override_colors/font_hover_color = Color(1, 0.94, 0.72, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.76, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="CenterStack"]
+custom_minimum_size = Vector2(360, 50)
+focus_mode = 2
+theme_override_fonts/font = SubResource("title_font")
+theme_override_font_sizes/font_size = 17
+theme_override_colors/font_color = Color(0.80, 0.72, 0.55, 1)
+theme_override_colors/font_hover_color = Color(1, 0.94, 0.72, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.76, 1)
+theme_override_colors/font_outline_color = Color(0.05, 0.03, 0.02, 1)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "QUIT"
+
+; ── Records panel (bottom-left, low-key) ──────────────────────────────
+; Iter 164 — trimmed from 5 records lines to 3. Pre-iter-164 the
+; block carried RUNS / BEST KILLS / BEST TIME / LIFETIME KILLS /
+; LAST RUN — too dense at 11/10 pt to read at a glance, and
+; LIFETIME KILLS + LAST RUN duplicated information either visible
+; elsewhere (death screen shows last-run kills already) or not
+; meaningful at the menu (lifetime is a vanity stat). Now only the
+; three records the player actually CHASES: RUNS, BEST TIME, BEST
+; KILLS. Block is also narrower (100..360 vs 116..412 — 260 px text
+; width vs 296 — tighter on the page).
+[node name="StatsBlock" type="VBoxContainer" parent="."]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 100.0
+offset_top = -116.0
+offset_right = 360.0
+offset_bottom = -42.0
+theme_override_constants/separation = 2
+
+; Iter 193 batch 2 — readable but secondary. Pre-iter-193 the stats
+; block was font 10 + alpha 0.55, which over the painted backdrop's
+; moss + vine detail was nearly illegible. User: "readable at a
+; glance, but secondary to the main focal area."
+; Changes:
+;   StatsTitle "RECORDS" — alpha 0.55 → 0.78, font 11 → 12, slightly
+;     warmer color (more aged-gold than neutral cream), letter-spaced
+;     in the text since Label has no letter_spacing theme prop.
+;   Stat lines — alpha 0.55 → 0.82, font 10 → 11. Color shifted from
+;     cool cream to muted aged-bone for more "manuscript" reading.
+;   Dot leader pattern kept (looks like manuscript page).
+[node name="StatsTitle" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.88, 0.70, 0.42, 0.78)
+text = "R E C O R D S"
+
+[node name="StatsRuns" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
+text = "runs ··············· 0"
+
+[node name="StatsBestTime" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
+text = "best time ··········· --"
+
+[node name="StatsBestRun" type="Label" parent="StatsBlock"]
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.90, 0.82, 0.66, 0.82)
+text = "best kills ·········· 0"
+
+; iter-126: version label moved away from CornerBR. Pre-iter-126
+; offset_right was -36 (right edge of viewport−36, exactly where CornerBR
+; sits at viewport−100..viewport−36) — the version text drew OVER the
+; corner's L-hairline. Shifted offset_left -260 → -340 + offset_right
+; -36 → -116 to put the text's right edge at viewport−116, a clean
+; 16 px before the corner starts at viewport−100.
+; body_font applied so the version reads as the same family as records.
+; iter-127 version label — further dimmed (alpha 0.75 → 0.45) and
+; font size 11 → 9. Outline removed. At this weight the version
+; reads as a near-invisible footnote — present for build-info clarity
+; without competing with the menu at all.
+[node name="VersionLabel" type="Label" parent="."]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -42.0
+offset_right = -116.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_fonts/font = SubResource("body_font")
+theme_override_font_sizes/font_size = 9
+theme_override_colors/font_color = Color(0.62, 0.52, 0.38, 0.45)
+text = "ETHERA  ·  v0.6"
+horizontal_alignment = 2

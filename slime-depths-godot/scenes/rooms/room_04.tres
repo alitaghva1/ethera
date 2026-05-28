@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(200, 160), Vector2(200, 600), Vector2(1080, 160), Vector2(1080, 600), Vector2(640, 130), Vector2(640, 640)])
+spawn_points = Array[Vector2]([Vector2(1088, 160), Vector2(1088, 608), Vector2(1088, 384), Vector2(640, 160), Vector2(640, 608), Vector2(300, 160), Vector2(300, 608), Vector2(900, 200)])
+waves = [[["armored_skeleton", 2], ["archer", 1]], [["lancer", 2], ["dreadmage", 1], ["ember_bomber", 1], ["glyph_warden", 1]], [["werewolf", 2], ["priest", 1], ["bonecap", 1], ["ember_bomber", 2]]]
+pillar_positions = Array[Vector2]([Vector2(280, 240), Vector2(280, 528), Vector2(1000, 240), Vector2(1000, 528)])
+chest_positions = Array[Vector2]([Vector2(1060, 260)])
+is_last_room = false
+display_name = "CRYPT GATE"
+ambient_tint = Color(0.18, 0.22, 0.28, 1)
+decor_density = 14
+wall_rects = [Rect2(500, 280, 280, 200)]
+hazard_positions = Array[Vector2]([Vector2(640, 200)])
+hazard_kind = "spike_pit"
+hazards = [{"kind": "slow_zone", "position": Vector2(380, 320)}, {"kind": "slow_zone", "position": Vector2(900, 448)}]
+branches = [{"kind": "treasure", "label": "VAULT", "subtitle": "a legendary offering", "room_path": "res://scenes/rooms/room_treasure.tres"}, {"kind": "shrine", "label": "ALTAR", "subtitle": "skip fight · pray for stat", "room_path": "res://scenes/rooms/room_shrine.tres"}, {"kind": "risk", "label": "BRAVE", "subtitle": "tougher waves · rare+ relic"}]
+biome = "sanctuary"
+lore_stones = [{"position": Vector2(220, 200), "text": "altar fragment: \"vows kept · debts paid\"", "stat_key": "max_hp_bonus", "stat_value": 1}]

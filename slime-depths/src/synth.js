@@ -207,8 +207,12 @@ function _stopAmbientNodes(fadeSec = 1.0) {
 
 /**
  * Start (or switch to) the ambient pad. Variants:
- *   'menu'   — sparse, windier, slightly darker
- *   'hamlet' — warmer drone, occasional soft fire crackles
+ *   'menu'    — sparse, windier, slightly darker
+ *   'hamlet'  — warmer drone, occasional soft fire crackles
+ *   'cleared' — Round-7 polish: brief D-minor warmth filling the
+ *               post-combat silence in cleared dungeon rooms.
+ *               Tighter fade-in + lower volume than menu/hamlet so
+ *               it lands quickly even if the player rushes the door.
  * Calling with the same variant is a no-op; calling with a different
  * variant crossfades to the new one.
  */
@@ -221,18 +225,27 @@ export function startAmbientPad(variant = 'menu') {
   // Small delay so the old fade completes before new starts; start now is fine too
   const now = ctx.currentTime;
 
-  // Master fade gain — the pad crossfades in over 2.5s.
+  // Master fade gain — pad crossfades in. 'cleared' uses a tighter
+  // 0.9s fade so it actually registers in the brief window between
+  // combat ending and the player walking through the next door.
+  const fadeIn = variant === 'cleared' ? 0.9 : 2.5;
   const fade = ctx.createGain();
   fade.gain.setValueAtTime(0, now);
-  fade.gain.linearRampToValueAtTime(1, now + 2.5);
+  fade.gain.linearRampToValueAtTime(1, now + fadeIn);
 
-  // Volume per variant (multiplied by settings.musicVolume at final stage)
-  const padVol = variant === 'hamlet' ? 0.11 : 0.09;
-  const noiseVol = variant === 'hamlet' ? 0.04 : 0.05;
+  // Volume per variant (multiplied by settings.musicVolume at final
+  // stage). 'cleared' is intentionally barely-there atmosphere; the
+  // room just ended in combat, the pad shouldn't compete with the
+  // relic-pickup banner or kill-streak HUD that's still resolving.
+  const padVol = variant === 'hamlet' ? 0.11 : variant === 'cleared' ? 0.07 : 0.09;
+  const noiseVol = variant === 'hamlet' ? 0.04 : variant === 'cleared' ? 0.025 : 0.05;
 
-  // Root note (Hz) — hamlet uses a warmer A minor (110Hz); menu uses G minor
-  // for a subtly colder feel before the descent.
-  const root = variant === 'hamlet' ? 110 : 98;
+  // Root note (Hz) — hamlet uses A minor (110Hz, warm), menu uses
+  // G minor (98Hz, slightly colder), cleared uses D minor (146.83Hz,
+  // brighter mid-register) so the three variants are tonally distinct:
+  // the player's ear distinguishes "between runs" from "between
+  // rooms" from "menu" without conscious attention.
+  const root = variant === 'hamlet' ? 110 : variant === 'cleared' ? 146.83 : 98;
   // Chord: root, minor third (6/5), perfect fifth (3/2), octave — slightly
   // detuned copies for a thicker shimmering pad.
   const ratios = [1, 1.2, 1.5, 2.0];
@@ -279,7 +292,12 @@ export function startAmbientPad(variant = 'menu') {
   noiseSrc.loop = true;
   const noiseFilter = ctx.createBiquadFilter();
   noiseFilter.type = 'lowpass';
-  noiseFilter.frequency.value = variant === 'hamlet' ? 280 : 360;
+  // Filter cutoff per variant — hamlet warmest, cleared mid-warm,
+  // menu brightest. Cleared uses 320 Hz so the wind reads less
+  // distant than hamlet's hearth but still warmer than the menu.
+  noiseFilter.frequency.value = variant === 'hamlet' ? 280
+                              : variant === 'cleared' ? 320
+                              : 360;
   noiseFilter.Q.value = 0.7;
   const noiseGain = ctx.createGain();
   noiseGain.gain.value = noiseVol * (settings?.musicVolume ?? 0.35);
@@ -356,4 +374,41 @@ export function synthFanfare(volume = 1.0) {
     osc.start(now + i * 0.08);
     osc.stop(now + i * 0.08 + 0.22);
   }
+}
+
+// Cinematic heartbeat — deep chest thump used by the first-run intro
+// (intro.js). Composed of a primary LUB beat (sine 70Hz body + triangle
+// 110Hz/200Hz mid-knock + sub 40Hz rumble for headphones) plus a softer
+// DUB beat 320ms later. Ported from ethera/src/sfx.js — the LUB-DUB
+// harmonic stack was tuned by ear in the original game and feels
+// substantially more cardiac than a single thud.
+export function synthHeartbeat(volume = 0.5) {
+  const ctx = getCtx();
+  if (!ctx) return;
+  const v = volume;
+  const playOne = (type, freqStart, freqEnd, dur, vol, attack, decay) => {
+    const osc = ctx.createOscillator();
+    osc.type = type;
+    const now = ctx.currentTime;
+    osc.frequency.setValueAtTime(freqStart, now);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, now + dur);
+    const gain = ctx.createGain();
+    const peak = vol * masterVol();
+    envelope(gain, ctx, attack, decay, peak);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + dur + 0.02);
+  };
+  // LUB — primary beat (heard at the moment the heartbeat fires)
+  playOne('sine',     70,  35,  0.45, v * 1.0,  0.01,  0.4);   // deep bass body
+  playOne('triangle', 110, 55,  0.20, v * 0.45, 0.01,  0.15);  // low-mid knock
+  playOne('triangle', 200, 120, 0.12, v * 0.35, 0.005, 0.08);  // mid thump (laptop speakers)
+  playOne('sine',     40,  25,  0.50, v * 0.25, 0.01,  0.45);  // sub rumble (headphones)
+  // DUB — secondary beat 320ms later, softer (the natural "ka" after "tha")
+  setTimeout(() => {
+    if (!getCtx()) return;
+    playOne('sine',     75,  40,  0.35, v * 0.7,  0.005, 0.3);
+    playOne('triangle', 115, 60,  0.15, v * 0.35, 0.005, 0.12);
+    playOne('triangle', 190, 110, 0.10, v * 0.25, 0.005, 0.06);
+  }, 320);
 }

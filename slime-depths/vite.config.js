@@ -1,4 +1,6 @@
 import { defineConfig } from 'vite';
+import { rm, stat } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 // Vite config for slime-depths.
 //
@@ -19,6 +21,35 @@ import { defineConfig } from 'vite';
 //
 // Entry point is read from `slime-depths/index.html`'s <script type="module">
 // tag — Vite walks the import graph from src/main.js automatically.
+
+// Phase 2 unification — strip bake-time-only directories from the production
+// bundle. `public/assets/packs/` (~105MB of TMX source + tilesets + props) is
+// INPUT to scripts/bake-crypt-sample-room.js. The runtime consumes the BAKED
+// outputs at `public/assets/rooms/*.{png,json}`, never the source. Without
+// this plugin, `npm run build` would copy the 4993-file pack tree verbatim
+// into dist/, ballooning the production payload by 100+ MB. The bake outputs
+// (rooms/) are kept; packs/ is removed post-copy.
+const stripBakeSources = () => ({
+  name: 'slime-depths-strip-bake-sources',
+  apply: 'build',
+  async closeBundle() {
+    const targets = [
+      'dist/assets/packs',          // ~105 MB TMX source
+    ];
+    for (const t of targets) {
+      const p = resolve(process.cwd(), t);
+      try {
+        await stat(p);
+        await rm(p, { recursive: true, force: true });
+        // eslint-disable-next-line no-console
+        console.log(`[strip-bake-sources] removed ${t}`);
+      } catch (_e) {
+        // Path didn't exist — nothing to remove. Quiet success.
+      }
+    }
+  },
+});
+
 export default defineConfig({
   base: './',
   server: {
@@ -32,4 +63,5 @@ export default defineConfig({
     assetsInlineLimit: 4096,
   },
   publicDir: 'public',
+  plugins: [stripBakeSources()],
 });

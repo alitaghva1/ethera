@@ -1,0 +1,63 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3dashtrail0001"]
+
+[ext_resource type="Script" path="res://scripts/dash_trail.gd" id="1_script"]
+
+; iter-98 recolor: WARM GOLD → TAN DUST → fade-earth. Was magenta →
+; cyan ramp from iter 73/75 which read as "arcane energy bleeding off
+; the mage" — playtest feedback said the whole dash visual stack
+; looked like a "bizarre lighting effect" that didn't match the
+; painted dark-fantasy palette. New ramp puts the trail in the same
+; color family as the hero's gold sprite afterimages and the dungeon
+; floor stone, so the dash reads as a knight charging through dust
+; instead of a wizard teleporting.
+;
+; Color stops (matched to the iter-75 timing 0.0 / 0.25 / 0.65 / 1.0):
+;   0.00  (1.00, 0.92, 0.65, 1)   cream-gold hot stop at the head
+;   0.25  (0.95, 0.78, 0.45, 1)   warm gold body
+;   0.65  (0.65, 0.50, 0.32, 0.85) tan dust mid-tail
+;   1.00  (0.45, 0.35, 0.22, 0)   fade to earth-brown nothing
+[sub_resource type="Gradient" id="trail_grad"]
+offsets = PackedFloat32Array(0, 0.25, 0.65, 1)
+colors = PackedColorArray(1.0, 0.92, 0.65, 1.0, 0.95, 0.78, 0.45, 1.0, 0.65, 0.50, 0.32, 0.85, 0.45, 0.35, 0.22, 0.0)
+
+[node name="DashTrail" type="Node2D"]
+script = ExtResource("1_script")
+
+; Trail emitter — particles spawn going LEFT (-X) from the node origin,
+; which means after dash_trail.gd rotates the node to face dash dir,
+; particles emit BACKWARDS along the dash path (perfect trail).
+;
+; explosiveness < 1 so the burst spreads over ~0.1s — gives the trail
+; visible length rather than a clump at the emission point.
+;
+; damping pulls the particles to a stop quickly so they don't fly out
+; past the dash distance and reveal that they're particles, not a
+; coherent streak.
+;
+; Iter 75 — beefed up for visible-collision feel:
+;   amount:    24 → 40       (denser streak so the path reads as a
+;                             contiguous trail, not dotted)
+;   lifetime:  0.55 → 0.65   (slightly longer tail so the trail bridges
+;                             the dash duration + a beat after)
+;   spread:    22° → 28°     (wider so the streak has visible
+;                             "thickness" rather than a single line)
+;   velocity:  70-160 → 90-200 (faster particles → longer streak length
+;                             before damping pulls them to rest)
+;   scale:     2.5-5.0 → 3.0-6.0 (chunkier particles for visibility)
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 40
+lifetime = 0.65
+one_shot = true
+emitting = true
+explosiveness = 0.5
+local_coords = false
+spread = 28.0
+gravity = Vector2(0, 0)
+direction = Vector2(-1, 0)
+initial_velocity_min = 90.0
+initial_velocity_max = 200.0
+damping_min = 5.0
+damping_max = 8.0
+scale_amount_min = 3.0
+scale_amount_max = 6.0
+color_ramp = SubResource("trail_grad")

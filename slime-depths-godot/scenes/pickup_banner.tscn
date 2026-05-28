@@ -1,0 +1,134 @@
+[gd_scene format=3 uid="uid://bpickbanner72"]
+
+[ext_resource type="Script" path="res://scripts/pickup_banner.gd" id="1_script"]
+
+; Iter 72 — pickup banner. The 480-px Panel is the actual visible
+; frame; the surrounding Control is full-rect so we can anchor the
+; Panel top-center in screen space. CanvasLayer host so the banner
+; sits independent of the world camera and above the HUD (100) but
+; below the ScreenFlash wash (180). MythicWash is a sibling full-rect
+; ColorRect, hidden by default; pickup_banner.gd shows + tweens it
+; only when the claimed relic has tier="mythic".
+
+; Panel border + background. Border color is overridden in code to the
+; relic's primary-theme color (STORM cyan / FLAME orange / etc.) or
+; cream-gold for un-themed relics. Slightly rounded corners + dark bg
+; keeps the text legible over the busy combat backdrop.
+[sub_resource type="StyleBoxFlat" id="banner_style"]
+bg_color = Color(0.06, 0.05, 0.09, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.92, 0.84, 0.62, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+content_margin_left = 16.0
+content_margin_top = 12.0
+content_margin_right = 16.0
+content_margin_bottom = 14.0
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
+
+[sub_resource type="StyleBoxEmpty" id="vbox_separator"]
+
+[node name="PickupBanner" type="CanvasLayer"]
+layer = 170
+script = ExtResource("1_script")
+
+; Full-screen mythic wash. Hidden by default; pickup_banner.gd toggles
+; visibility + alpha via tween only for tier="mythic" relics. Yellow-
+; cream gives the same hue as the gold-pickup palette so it reads as
+; "extreme version of the regular pickup beat."
+[node name="MythicWash" type="ColorRect" parent="."]
+visible = false
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+color = Color(1.0, 0.92, 0.55, 0.0)
+mouse_filter = 2
+
+; Root Control for the banner Panel. FULL_RECT so it covers viewport;
+; the Panel inside is anchor-positioned top-center.
+[node name="Root" type="Control" parent="."]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+
+[node name="Panel" type="Panel" parent="Root"]
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -240.0
+offset_top = 80.0
+offset_right = 240.0
+offset_bottom = 220.0
+theme_override_styles/panel = SubResource("banner_style")
+mouse_filter = 2
+
+[node name="Content" type="VBoxContainer" parent="Root/Panel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+theme_override_constants/separation = 4
+mouse_filter = 2
+
+[node name="HeaderLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.72, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "R E L I C   A C Q U I R E D"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="NameLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "RELIC NAME"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="FlavorLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.72, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "S T O R M   •   R A R E"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="DescLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.88, 0.82, 0.66, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+custom_minimum_size = Vector2(448, 0)
+text = "Description text goes here. May wrap to multiple lines."
+horizontal_alignment = 1
+vertical_alignment = 0
+autowrap_mode = 3
+clip_text = false
+mouse_filter = 2

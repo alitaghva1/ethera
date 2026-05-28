@@ -1,0 +1,33 @@
+[gd_scene load_steps=4 format=3 uid="uid://b3hitspk00001"]
+
+[ext_resource type="Script" path="res://scripts/hit_spark.gd" id="1_script"]
+
+; Gold spark color ramp — bright cream center fading through gold to
+; transparent. Matches the +1 damage-number gold (#f4d9a0) so the
+; visual language is consistent: gold = "you dealt damage".
+[sub_resource type="Gradient" id="hit_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.92, 0.7, 1, 0.96, 0.78, 0.4, 1, 0.96, 0.78, 0.4, 0)
+
+[node name="HitSpark" type="Node2D"]
+script = ExtResource("1_script")
+
+; CPUParticles2D, not GPUParticles2D — see scripts/fx.gd header. The
+; emit_*=true flags + radial spread = full-circle scatter; damping
+; pulls the particles to a quick halt so it reads as a "spark" not a
+; "lingering wisp."
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 8
+lifetime = 0.35
+one_shot = true
+emitting = true
+explosiveness = 1.0
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 80.0
+initial_velocity_max = 200.0
+damping_min = 8.0
+damping_max = 8.0
+scale_amount_min = 2.0
+scale_amount_max = 2.5
+color_ramp = SubResource("hit_grad")

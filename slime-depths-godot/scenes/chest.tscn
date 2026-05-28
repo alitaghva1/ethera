@@ -1,0 +1,155 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3chest12345"]
+
+[ext_resource type="Script" path="res://scripts/chest.gd" id="1_script"]
+
+; Chest collision footprint — small rectangle the size of the wooden
+; box so the hero bumps the edge instead of overlapping the visual.
+; Disabled via collision_shape on open so the player can walk over
+; the looted chest.
+[sub_resource type="RectangleShape2D" id="chest_collision"]
+size = Vector2(30, 20)
+
+; ── Chest node tree — CharacterBody2D (so it doesn't move but joins
+; the "enemies" group and accepts take_hit calls the same way enemies
+; do). Two visual states pre-built as sibling Node2Ds; one is hidden
+; at any time.
+;
+; Layer 1 = world (same as walls/pillars), mask 0 = doesn't react.
+; The hero collides with it via mask 1; sword hits land via the
+; group-iteration path, not via physics overlap.
+
+[node name="Chest" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 0
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("chest_collision")
+
+; ── CLOSED state ──────────────────────────────────────────────────
+; Brown wooden box with darker rim + gold-tinted lock band across
+; the lid line. Read at a glance as "container, possibly valuable".
+
+[node name="Closed" type="Node2D" parent="."]
+
+; Drop shadow under the box — small + dim, anchors the chest visually
+; so it doesn't feel like it's floating.
+[node name="ClosedShadow" type="ColorRect" parent="Closed"]
+offset_left = -14.0
+offset_top = 8.0
+offset_right = 14.0
+offset_bottom = 12.0
+color = Color(0, 0, 0, 0.35)
+
+; Dark rim (slightly larger than the body — peeks out as an outline).
+[node name="ClosedRim" type="ColorRect" parent="Closed"]
+offset_left = -17.0
+offset_top = -14.0
+offset_right = 17.0
+offset_bottom = 10.0
+color = Color(0.22, 0.14, 0.08, 1)
+
+; Main wooden body.
+[node name="ClosedBody" type="ColorRect" parent="Closed"]
+offset_left = -15.0
+offset_top = -12.0
+offset_right = 15.0
+offset_bottom = 8.0
+color = Color(0.52, 0.32, 0.18, 1)
+
+; Lid (upper third — slightly lighter wood tone).
+[node name="ClosedLid" type="ColorRect" parent="Closed"]
+offset_left = -15.0
+offset_top = -12.0
+offset_right = 15.0
+offset_bottom = -4.0
+color = Color(0.62, 0.40, 0.22, 1)
+
+; Gold lock band — the visual "I am loot" cue. Sits across the lid
+; seam at the body / lid transition line.
+[node name="ClosedLockBand" type="ColorRect" parent="Closed"]
+offset_left = -15.0
+offset_top = -5.0
+offset_right = 15.0
+offset_bottom = -2.0
+color = Color(0.84, 0.66, 0.28, 1)
+
+; Tiny lock square in the center of the band.
+[node name="ClosedLock" type="ColorRect" parent="Closed"]
+offset_left = -3.0
+offset_top = -7.0
+offset_right = 3.0
+offset_bottom = 0.0
+color = Color(0.32, 0.22, 0.10, 1)
+
+; ── OPEN state ────────────────────────────────────────────────────
+; Lid is tipped back (rendered as a smaller, darker trapezoid above
+; the box) and the inside shows gold (the lock band's color, now
+; covering most of the interior — "the loot was here, you got it").
+
+[node name="Open" type="Node2D" parent="."]
+
+[node name="OpenShadow" type="ColorRect" parent="Open"]
+offset_left = -14.0
+offset_top = 8.0
+offset_right = 14.0
+offset_bottom = 12.0
+color = Color(0, 0, 0, 0.35)
+
+[node name="OpenRim" type="ColorRect" parent="Open"]
+offset_left = -17.0
+offset_top = -6.0
+offset_right = 17.0
+offset_bottom = 10.0
+color = Color(0.18, 0.10, 0.05, 1)
+
+; Empty interior — darker than the closed body since the lid no
+; longer casts a highlight on it.
+[node name="OpenInside" type="ColorRect" parent="Open"]
+offset_left = -15.0
+offset_top = -4.0
+offset_right = 15.0
+offset_bottom = 8.0
+color = Color(0.18, 0.12, 0.08, 1)
+
+; Gold pile — bright band that fills most of the interior.
+[node name="OpenGold" type="ColorRect" parent="Open"]
+offset_left = -13.0
+offset_top = -2.0
+offset_right = 13.0
+offset_bottom = 4.0
+color = Color(0.96, 0.78, 0.32, 1)
+
+; A pair of gold highlights — short bright pinstripes to suggest
+; coins / glints. Static rather than animated; the open chest is a
+; one-shot reward, not an ongoing object.
+[node name="OpenGoldHi1" type="ColorRect" parent="Open"]
+offset_left = -10.0
+offset_top = -1.0
+offset_right = -6.0
+offset_bottom = 1.0
+color = Color(1, 0.94, 0.62, 1)
+
+[node name="OpenGoldHi2" type="ColorRect" parent="Open"]
+offset_left = 4.0
+offset_top = 0.0
+offset_right = 8.0
+offset_bottom = 2.0
+color = Color(1, 0.94, 0.62, 1)
+
+; Tipped-back lid — drawn as a smaller, angled-looking trapezoid
+; above the box. Without skew nodes we approximate by stacking two
+; narrow bands offset to suggest perspective.
+[node name="OpenLidUpper" type="ColorRect" parent="Open"]
+offset_left = -13.0
+offset_top = -20.0
+offset_right = 13.0
+offset_bottom = -16.0
+color = Color(0.42, 0.26, 0.14, 1)
+
+[node name="OpenLidLower" type="ColorRect" parent="Open"]
+offset_left = -15.0
+offset_top = -16.0
+offset_right = 15.0
+offset_bottom = -10.0
+color = Color(0.52, 0.32, 0.18, 1)

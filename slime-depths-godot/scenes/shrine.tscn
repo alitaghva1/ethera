@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3shrinedoom01"]
+
+[ext_resource type="Script" path="res://scripts/shrine.gd" id="1_script"]
+
+; Iter 33 shrine — Area2D interactable that grants a permanent (within-
+; run) stat boost on first pray. The .tscn is intentionally minimal:
+; all visuals (plinth, rune, glow, labels) are code-built in shrine.gd
+; so adding a new stat_kind (e.g. "luck", "crit") stays a single-file
+; edit. The CollisionShape2D is also added in code (in _ready) so the
+; radius is governed by the script's INTERACT_RADIUS constant.
+
+[node name="Shrine" type="Area2D"]
+collision_layer = 0
+collision_mask = 2
+monitorable = false
+script = ExtResource("1_script")

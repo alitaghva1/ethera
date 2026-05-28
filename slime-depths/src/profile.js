@@ -52,7 +52,12 @@ const LEGACY_KEYS = [
   'ethera:settings:v1',
   'ethera:tarot_seen:v1',
   'ethera:seen_tips:v1',
-  'ethera:seen_prologue:v1',
+  // (Old 'ethera:seen_prologue:v1' key retired alongside the abstract
+  // Ethera prologue — replaced by the Keeper wake cinematic which
+  // gates on firstSeen('hamlet','wake') in 'ethera:first_seen:v1'.
+  // The legacy key is still implicitly allowed for any profile that
+  // happens to have it from a pre-wake save, since unknown keys are
+  // dropped on profile rename anyway.)
   'ethera:seen_epilogue:v1',
   'ethera:run_snapshot:v1',
   // slimeDepths: family (only meta.js uses this prefix)

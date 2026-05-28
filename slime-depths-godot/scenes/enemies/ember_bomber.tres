@@ -1,0 +1,53 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/ember_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/ember_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/ember_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/ember_death.png" id="5_death"]
+
+; Iter 47 — ember bomber. Kamikaze variant of the regular ember.
+; Charges hero, primes for 0.45s when in contact range (red pulse +
+; scale), then detonates for 2 damage in a 48-px radius. Always dies
+; on detonate. Hero can dodge the prime window by moving outside
+; contact_range × 1.6 — gives a real "step back from the bomb" beat.
+;
+; Reuses ember sprites (no new art) at a slightly larger scale so the
+; bomber reads as "more dangerous variant." HP is low (2) so a single
+; well-timed swing kills it before detonation — but a player who
+; misses or panics eats real damage.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Ember Bomber"
+behavior = "bomber"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.0
+sprite_y_offset = -12.5
+collision_radius = 18.0
+; Iter 70 — RED-HOT baseline so the bomber reads "more volatile" than
+; the regular ember (both reuse ember_*.png). The bomber's prime state
+; OVERWRITES this with a red pulse during the 0.45s priming window —
+; the baseline tint just ensures players READ the threat at a glance
+; the moment a bomber walks into the room, before it primes. R 1.4 /
+; G 0.7 / B 0.6 = a clearly fiery hue distinct from the ember's neutral
+; orange sprite color.
+sprite_modulate = Color(1.4, 0.7, 0.6, 1.0)
+frames_idle = 6
+frames_walk = 8
+frames_attack = 7
+frames_death = 4
+fps_idle = 10.0
+fps_walk = 14.0
+fps_attack = 14.0
+fps_death = 9.0
+max_hp = 2
+move_speed = 145.0
+death_duration = 0.7
+contact_damage = 2
+contact_cooldown = 0.5
+contact_range = 36.0

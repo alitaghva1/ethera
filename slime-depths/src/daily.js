@@ -60,10 +60,15 @@ export function getTodayChallenge() {
   const key = todayKey();
   const seed = seedFromDate(key);
   const curseId = ALL_CURSE_IDS[seed % ALL_CURSE_IDS.length];
-  // Pick a strong common/rare relic (skip legendaries — save those for natural drops)
+  // Pick a strong common/rare relic (skip legendaries — save those for
+  // natural drops). Also skip weaponOnly relics: daily challenges are
+  // shared across all players + all weapon classes, so the relic must
+  // be universal. A wand-only relic on a sword day would be a dead
+  // pick for ¾ of the player base.
   const pool = ALL_RELIC_IDS.filter(id => {
-    const t = RELIC_DEFS[id].tier || 'common';
-    return t !== 'legendary';
+    const def = RELIC_DEFS[id];
+    const t = def.tier || 'common';
+    return t !== 'legendary' && !def.weaponOnly;
   });
   const relicId = pool[(seed >>> 8) % pool.length];
   return {

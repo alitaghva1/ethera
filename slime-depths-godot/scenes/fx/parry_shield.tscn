@@ -1,0 +1,19 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3parryshield01"]
+
+[ext_resource type="Script" path="res://scripts/parry_shield.gd" id="1_script"]
+
+; Iter 94 — single procedural-draw Node2D. The previous scene (iters
+; 29 → 73) had a 5-child composition (BeamFan1/2/3 + Halo + Core + Boss
+; + Rim) all hand-tuned to render a kite shield with forward-projecting
+; energy beams. User feedback: "the parry/shield are a bit much, lets
+; just keep a shield or parry. Shield should be like a coloured bubble
+; effect around the main character." So the kite + beams are gone, the
+; activation/catch parry_burst sprite-sheet flourish is gone, and one
+; bubble does the whole job.
+;
+; The bubble is rotationally symmetric, alpha-pulsed, three concentric
+; layers (halo → core → rim) all drawn from parry_shield.gd via _draw().
+; Encoding the visual in code rather than as 5 stacked Polygon2D/Line2D
+; children keeps the intent in one place and the scene file tiny.
+[node name="ParryShield" type="Node2D"]
+script = ExtResource("1_script")

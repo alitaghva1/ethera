@@ -1,0 +1,161 @@
+[gd_scene load_steps=6 format=3 uid="uid://b3physicstoyroom"]
+
+; PhysicsToyRoom — single-screen viewport (1280×720) but tightened
+; play area: 680×440 interior, walls inset to (300, 140)..(980, 580).
+; The space outside the walls is the engine's default clear color
+; (near-black) — reads as a vignette around the tight arena.
+;
+; Hero centers at (640, 360). Gravestone at (740, 360) — 100 px to
+; the right, well within the new 100-px tether rest length so it
+; reads "leashed to player" from the first frame. TetherLine draws a
+; thin warm-grey cord between them, updated each frame by the
+; controller's _process.
+;
+; Camera2D at (640, 360); FX.shake() tweens its offset.
+
+[ext_resource type="Script" path="res://scripts/prototype/physics_toy_room.gd" id="1_script"]
+[ext_resource type="PackedScene" path="res://scenes/prototype/toy_hero.tscn" id="2_hero"]
+[ext_resource type="PackedScene" path="res://scenes/prototype/cursed_gravestone.tscn" id="3_grav"]
+
+; Top + bottom walls span 760 px wide (260..1020) so they meet the
+; inset L/R walls cleanly at the corners.
+[sub_resource type="RectangleShape2D" id="wall_h_shape"]
+size = Vector2(760, 40)
+
+[sub_resource type="RectangleShape2D" id="wall_v_shape"]
+size = Vector2(40, 520)
+
+[node name="PhysicsToyRoom" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Outer void backdrop. Slightly darker than default clear color so
+; the eye reads "off-room" outside the walls. The play-area floor sits
+; on top and is brighter. ──────────────────────────────────────────
+[node name="Void" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(0, 0, 1280, 0, 1280, 720, 0, 720)
+color = Color(0.025, 0.02, 0.04, 1.0)
+
+; ── Floor — only the playable interior (300..980 × 140..580). ───────
+[node name="Floor" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(300, 140, 980, 140, 980, 580, 300, 580)
+color = Color(0.12, 0.10, 0.14, 1.0)
+
+; ── Walls (4 static bodies + 4 visual polygons). All on layer 1
+; (world), mask 0 (static — they don't notice, everyone notices them). ─
+[node name="WallTop" type="StaticBody2D" parent="."]
+position = Vector2(640, 120)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape2D" parent="WallTop"]
+shape = SubResource("wall_h_shape")
+
+[node name="Visual" type="Polygon2D" parent="WallTop"]
+polygon = PackedVector2Array(-380, -20, 380, -20, 380, 20, -380, 20)
+color = Color(0.22, 0.18, 0.26, 1.0)
+
+[node name="WallBottom" type="StaticBody2D" parent="."]
+position = Vector2(640, 600)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape2D" parent="WallBottom"]
+shape = SubResource("wall_h_shape")
+
+[node name="Visual" type="Polygon2D" parent="WallBottom"]
+polygon = PackedVector2Array(-380, -20, 380, -20, 380, 20, -380, 20)
+color = Color(0.22, 0.18, 0.26, 1.0)
+
+[node name="WallLeft" type="StaticBody2D" parent="."]
+position = Vector2(280, 360)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape2D" parent="WallLeft"]
+shape = SubResource("wall_v_shape")
+
+[node name="Visual" type="Polygon2D" parent="WallLeft"]
+polygon = PackedVector2Array(-20, -260, 20, -260, 20, 260, -20, 260)
+color = Color(0.22, 0.18, 0.26, 1.0)
+
+[node name="WallRight" type="StaticBody2D" parent="."]
+position = Vector2(1000, 360)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Shape" type="CollisionShape2D" parent="WallRight"]
+shape = SubResource("wall_v_shape")
+
+[node name="Visual" type="Polygon2D" parent="WallRight"]
+polygon = PackedVector2Array(-20, -260, 20, -260, 20, 260, -20, 260)
+color = Color(0.22, 0.18, 0.26, 1.0)
+
+; ── Camera at room center. Fixed; FX.shake tweens its offset. ────────
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(640, 360)
+
+; ── Tether line. Drawn BEHIND hero + gravestone (z_index = -1) so it
+; doesn't occlude either silhouette. Points are updated each frame
+; by PhysicsToyRoom._process. Warm-grey color reads as "leather cord"
+; without committing to a chain-link look; 3px width is fat enough to
+; see at peripheral focus but thin enough not to dominate. ─────────
+[node name="TetherLine" type="Line2D" parent="."]
+z_index = -1
+points = PackedVector2Array(640, 360, 740, 360)
+width = 3.0
+default_color = Color(0.55, 0.50, 0.45, 0.85)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; ── Entities ─────────────────────────────────────────────────────────
+[node name="ToyHero" parent="." instance=ExtResource("2_hero")]
+position = Vector2(640, 360)
+
+[node name="CursedGravestone" parent="." instance=ExtResource("3_grav")]
+position = Vector2(740, 360)
+
+; Programmatic obstacles (pillars, chokepoint slabs) get added here
+; when the room type switches. Cleared and re-populated by
+; PhysicsToyRoom._build_room.
+[node name="ObstacleLayer" type="Node2D" parent="."]
+
+[node name="EnemyLayer" type="Node2D" parent="."]
+
+; ── UI: ONE compact debug panel (toggled by F1) + a small hint at top
+; center. The previous EnemiesLeft Label is gone — enemy count folded
+; into the debug panel. ─────────────────────────────────────────────
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 10
+
+; Subdued hint, top-center. font 11 + alpha-baked color so the
+; mechanic dominates the screen.
+[node name="HintLabel" type="Label" parent="UI"]
+anchor_left = 0.0
+anchor_right = 1.0
+offset_top = 8.0
+offset_bottom = 28.0
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.65, 0.62, 0.72, 0.55)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.55)
+theme_override_constants/outline_size = 2
+text = "WASD  ·  RMB / Space pull  ·  1 / 2 / 3 swap room  ·  R reset  ·  F1 toggle debug"
+
+; Debug panel — top-right corner. Default visible; F1 toggles. Smaller
+; + more transparent than the previous version so it reads as a
+; passive HUD overlay rather than a primary screen element.
+[node name="DebugPanel" type="Label" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -180.0
+offset_top = 14.0
+offset_right = -16.0
+offset_bottom = 110.0
+horizontal_alignment = 2
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.78, 0.85, 0.95, 0.65)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.65)
+theme_override_constants/outline_size = 2
+text = "VEL    --\nSLAM   --\nROOM   --\nENEMIES --"

@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://k2q8umkqr03s"]
+
+[ext_resource type="Script" path="res://scripts/floor_clear_burst.gd" id="1_script"]
+
+; Iter 71 — ROOM-CLEAR / FLOOR-CLEAR celebration. Thin scene wrapper around
+; floor_clear_burst.gd, which builds a CanvasLayer + Label + CPUParticles2D
+; in code so the same scene can serve BOTH flavors (small "ROOM CLEAR" and
+; big "FLOOR/BOSS CLEAR") via the static spawn(host, big) entry point.
+;
+; Why scripted-construction rather than baked nodes in the .tscn:
+; - The two flavors need different particle counts, lifetimes, label sizes,
+;   and optional radial wash. Baking both layouts would mean two scenes or
+;   a fragile @export-driven branch in _ready. Code-construction keeps the
+;   variants in one place (floor_clear_burst.gd).
+; - Matches the chain_arc / shock_pulse pattern: scene is a Node2D-rooted
+;   stub, .gd does all the visual scaffolding. Same minimal-scene precedent.
+;
+; Spawn contract (see floor_clear_burst.gd):
+;   FloorClearBurst.spawn(host: Node, big: bool = false)
+;     - host: any Node; the burst is added as its child. main.gd passes
+;       itself; tests can pass a SceneTree root for headless verification.
+;     - big = false: variant A (ROOM CLEAR) — subtle sparkle burst,
+;       ~30 particles, 0.6s lifetime, 1.5s total. Doesn't gate progression.
+;     - big = true: variant B (FLOOR/BOSS CLEAR) — ~100 gold sparkle cascade
+;       falling from screen top, 2.5s particle lifetime, pulsing banner
+;       "FLOOR CLEAR" at 56px, optional radial wash. ~3s total.
+;
+; The burst self-frees on tween-finish via tween_callback so it doesn't
+; need an external manager.
+
+[node name="FloorClearBurst" type="Node"]
+script = ExtResource("1_script")

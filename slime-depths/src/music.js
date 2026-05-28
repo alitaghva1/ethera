@@ -76,6 +76,20 @@ export function playTrack(name) {
   current = name;
 }
 
+// Hard-stop all music. Pauses every track, zeros volumes, AND clears
+// `current` so a subsequent playTrack(sameName) call doesn't get no-op'd
+// by the `current === name` guard. Used by the first-run intro to leave
+// the heartbeat alone in the soundscape; the cinematic ends with a
+// playTrack(biome) that needs to actually fire even though `current`
+// was 'crypt' before stopMusic was called.
+export function stopMusic() {
+  for (const n in tracks) {
+    if (tracks[n]) { tracks[n].volume = 0; tracks[n].pause(); }
+  }
+  current = null;
+  target = null;
+}
+
 // Combat intensity — caller sets 0..1 via setIntensity() based on enemy presence.
 // Gets smoothed and multiplied into a +30% volume swell during combat.
 let _intensity = 0;        // current target

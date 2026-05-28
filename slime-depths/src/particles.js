@@ -1,5 +1,13 @@
-// Pooled particles — hit sparks, death bursts, dust
-const MAX = 300;
+// Pooled particles — hit sparks, death bursts, dust.
+// Noise-floor audit raised cap 300 → 420: high-proc combos (chain
+// lightning + pyromancer + soul_burst all firing in the same frame
+// during a 5-enemy room) plus the boss-clear cascade (~25 coin
+// sparkles + kill ring + death bursts) regularly pushed past 300,
+// causing the oldest particles (often the player's own crit sparks)
+// to drop mid-animation. 420 covers the worst observed concurrency
+// without measurable perf cost on modern browsers — each particle is
+// a 9-field object, ~80 bytes total = ~33KB pool ceiling.
+const MAX = 420;
 const pool = [];
 const live = [];
 
@@ -161,17 +169,26 @@ export function sparkle(x, y, color = '#f4d9a0') {
 // Ambient dust motes — long-lived drifting particles for atmosphere.
 // Updated per tick and auto-respawned near camera when they expire.
 // Biome-aware: color + motion changes with the active biome.
-const DUST_COUNT = 36;
+//
+// Counts + alphas were tuned down (DUST_COUNT 36 → 22; alpha values
+// reduced ~30%) after the playable-rect mask landed: with dust now
+// hidden inside the room, the entire population renders in the void
+// edges around the walls. At the previous density that made the void
+// itself feel busy, and dust at low alpha against the dark void was
+// reading as faint greenish optical-illusion dots through screenshot
+// JPEG compression. Quieter atmospheric depth in the void; cleaner
+// visual frame around the playable area.
+const DUST_COUNT = 22;
 const dust = [];
 let dustInit = false;
 let dustBiome = 'vault';
 
 // Per-biome dust style — tuned for atmosphere
 const DUST_STYLES = {
-  crypt:   { color: [170, 220, 255], vyMin: -4,  vyRng: 6,  drift: 3,  sizeBase: 0.7, sizeRng: 1.0, alpha: 0.28, glow: false },
-  vault:   { color: [255, 220, 180], vyMin: -8,  vyRng: 10, drift: 4,  sizeBase: 0.8, sizeRng: 1.2, alpha: 0.32, glow: false },
-  abyss:   { color: [255, 120, 80],  vyMin: -14, vyRng: 14, drift: 6,  sizeBase: 1.0, sizeRng: 1.4, alpha: 0.38, glow: true },
-  inferno: { color: [255, 90, 40],   vyMin: -22, vyRng: 22, drift: 10, sizeBase: 1.2, sizeRng: 1.6, alpha: 0.55, glow: true },
+  crypt:   { color: [170, 220, 255], vyMin: -4,  vyRng: 6,  drift: 3,  sizeBase: 0.7, sizeRng: 1.0, alpha: 0.18, glow: false },
+  vault:   { color: [255, 220, 180], vyMin: -8,  vyRng: 10, drift: 4,  sizeBase: 0.8, sizeRng: 1.2, alpha: 0.22, glow: false },
+  abyss:   { color: [255, 120, 80],  vyMin: -14, vyRng: 14, drift: 6,  sizeBase: 1.0, sizeRng: 1.4, alpha: 0.26, glow: true },
+  inferno: { color: [255, 90, 40],   vyMin: -22, vyRng: 22, drift: 10, sizeBase: 1.2, sizeRng: 1.6, alpha: 0.38, glow: true },
 };
 
 export function setDustBiome(id) {
@@ -217,17 +234,32 @@ export function updateDust(dt, cameraX, cameraY) {
   }
 }
 
-export function drawDust(ctx) {
+// Draw dust. Optional `maskRect` defines a rectangle inside which
+// particles render at `maskAlphaInside` instead of full alpha — used to
+// fade ambient motes out of the playable dungeon space during combat.
+// No mask = render everywhere (default). maskAlphaInside: 1 = full
+// (visible), 0 = invisible. Smooth fade transitions are driven by the
+// caller lerping maskAlphaInside between 0 and 1 frame-by-frame.
+export function drawDust(ctx, maskRect = null, maskAlphaInside = 1) {
   const st = DUST_STYLES[dustBiome] || DUST_STYLES.vault;
   const [r, g, b] = st.color;
+  const hasMask = !!(maskRect
+    && Number.isFinite(maskRect.left) && Number.isFinite(maskRect.right)
+    && Number.isFinite(maskRect.top)  && Number.isFinite(maskRect.bottom));
+  const inMask = hasMask
+    ? (x, y) => x >= maskRect.left && x <= maskRect.right && y >= maskRect.top && y <= maskRect.bottom
+    : () => false;
+  const insideMul = Math.max(0, Math.min(1, maskAlphaInside));
   // Glow pass (inferno/abyss) — additive-style bloom via white composite
   if (st.glow) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const d of dust) {
+      const mul = inMask(d.x, d.y) ? insideMul : 1;
+      if (mul <= 0.005) continue;
       const t = d.life / d.maxLife;
       const fade = Math.min(t, 1 - t) * 2;
-      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.6;
+      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.6 * mul;
       if (a <= 0.005) continue;
       ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
       ctx.beginPath();
@@ -237,9 +269,12 @@ export function drawDust(ctx) {
     ctx.restore();
   }
   for (const d of dust) {
+    const mul = inMask(d.x, d.y) ? insideMul : 1;
+    if (mul <= 0.005) continue;
     const t = d.life / d.maxLife;
     const fade = Math.min(t, 1 - t) * 2;
-    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha));
+    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * mul;
+    if (a <= 0.005) continue;
     ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
     ctx.fillRect(d.x, d.y, d.size, d.size);
   }
@@ -259,12 +294,23 @@ const weather = [];
 let weatherInit = false;
 let weatherBiome = 'vault';
 
+// Lateral drift values are LATERAL SWAY VELOCITY peaks (px/s). Originally
+// tuned at 14-22, but those values produced visibly meandering particles
+// that wandered side-to-side as much as they fell — reading as "drunk
+// mosquito" rather than "atmospheric drift." Especially bad in vault
+// (slow 8-18 px/s fall + 22 px/s sway = particle nearly horizontal).
+// Combined with the 4.8 s sine period, that produced visible direction
+// reversals every ~2.4 s — the "janky at times" symptom in playtest.
+// Halved to ~30-50% of fall speed: particles read as "wind catches them"
+// rather than "actively swinging." Oscillation frequency also slowed
+// from 1.3 to 0.7 in updateWeather (period 4.8 s → 9 s), so reversals
+// are gentler S-curves rather than sharp zigzags.
 const WEATHER_STYLES = {
   crypt: {
     color: [200, 230, 255],       // pale ice blue
     fallDir: 1,                    // +1 = down, -1 = up
     speed: 16, speedRng: 12,
-    drift: 18,                     // lateral sway amplitude
+    drift: 9,
     sizeBase: 1.5, sizeRng: 1.8,
     alpha: 0.55,
     glow: true,
@@ -274,7 +320,7 @@ const WEATHER_STYLES = {
     color: [245, 215, 160],       // warm gold dust
     fallDir: 1,
     speed: 8, speedRng: 10,
-    drift: 22,
+    drift: 6,
     sizeBase: 1.2, sizeRng: 1.2,
     alpha: 0.4,
     glow: false,
@@ -284,7 +330,7 @@ const WEATHER_STYLES = {
     color: [220, 120, 200],       // purple-magenta embers
     fallDir: -1,                   // rise
     speed: 14, speedRng: 14,
-    drift: 20,
+    drift: 8,
     sizeBase: 1.6, sizeRng: 1.8,
     alpha: 0.62,
     glow: true,
@@ -294,7 +340,7 @@ const WEATHER_STYLES = {
     color: [255, 160, 80],        // orange ash
     fallDir: 1,                    // falling — like ash from above
     speed: 20, speedRng: 18,
-    drift: 14,
+    drift: 7,
     sizeBase: 1.8, sizeRng: 2.0,
     alpha: 0.62,
     glow: true,
@@ -341,28 +387,55 @@ export function updateWeather(dt, cameraX, cameraY) {
     weatherInit = true;
   }
   for (const w of weather) {
-    // Lateral drift via sine wave
-    w.x += w.vx * dt + Math.sin(w.phase + w.life * 1.3) * w.driftAmp * dt;
+    // Lateral drift via sine wave. Frequency multiplier 0.7 (was 1.3) —
+    // period extended from 4.8 s to ~9 s so most particles complete only
+    // ONE direction reversal over their 6-13 s lifetime instead of 2-3.
+    // Reads as "particle gets caught by a slow gust" rather than "particle
+    // visibly zigzagging."
+    w.x += w.vx * dt + Math.sin(w.phase + w.life * 0.7) * w.driftAmp * dt;
     w.y += w.vy * dt;
     w.life -= dt;
-    // Offscreen cull
-    const offX = Math.abs(w.x - cameraX) > 720;
-    const offY = Math.abs(w.y - cameraY) > 420;
+    // Offscreen cull. Buffer (1100×640) is intentionally larger than the
+    // 1280×720 design viewport so particles don't pop in/out at the
+    // visible edge on widescreen monitors where the canvas can be wider
+    // than the design width. Previous values (720×420) culled particles
+    // that were still visible inside ultrawide viewports, which combined
+    // with the fade-in alpha produced visible blink-out moments at the
+    // screen edge.
+    const offX = Math.abs(w.x - cameraX) > 1100;
+    const offY = Math.abs(w.y - cameraY) > 640;
     if (w.life <= 0 || offX || offY) respawnWeather(w, cameraX, cameraY);
   }
 }
 
-export function drawWeather(ctx) {
+// Draw weather. Mirrors drawDust's signature: optional `maskRect`
+// defines a rectangle inside which particles render at maskAlphaInside
+// instead of full alpha. Default maskAlphaInside = 0 preserves the
+// "weather only outside the playable rect" behavior. Caller can lerp
+// maskAlphaInside between 0 and 1 to crossfade weather in/out of the
+// playable area as combat begins/ends.
+//
+// Format: maskRect = { left, top, right, bottom } in world-space pixels.
+export function drawWeather(ctx, maskRect = null, maskAlphaInside = 0) {
   const st = WEATHER_STYLES[weatherBiome] || WEATHER_STYLES.vault;
   const [r, g, b] = st.color;
+  const hasMask = !!(maskRect
+    && Number.isFinite(maskRect.left) && Number.isFinite(maskRect.right)
+    && Number.isFinite(maskRect.top)  && Number.isFinite(maskRect.bottom));
+  const inMask = hasMask
+    ? (x, y) => x >= maskRect.left && x <= maskRect.right && y >= maskRect.top && y <= maskRect.bottom
+    : () => false;
+  const insideMul = Math.max(0, Math.min(1, maskAlphaInside));
   // Additive glow pass for hot biomes
   if (st.glow) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const w of weather) {
+      const mul = inMask(w.x, w.y) ? insideMul : 1;
+      if (mul <= 0.005) continue;
       const t = w.life / w.maxLife;
       const fade = Math.min(t, 1 - t) * 2;
-      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.55;
+      const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * 0.55 * mul;
       if (a <= 0.005) continue;
       ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
       ctx.beginPath();
@@ -373,9 +446,12 @@ export function drawWeather(ctx) {
   }
   // Solid core pass
   for (const w of weather) {
+    const mul = inMask(w.x, w.y) ? insideMul : 1;
+    if (mul <= 0.005) continue;
     const t = w.life / w.maxLife;
     const fade = Math.min(t, 1 - t) * 2;
-    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha));
+    const a = Math.max(0, Math.min(st.alpha, fade * st.alpha)) * mul;
+    if (a <= 0.005) continue;
     ctx.fillStyle = `rgba(${r},${g},${b},${a.toFixed(3)})`;
     ctx.fillRect(w.x, w.y, w.size, w.size);
   }

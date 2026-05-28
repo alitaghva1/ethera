@@ -1,0 +1,60 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
+[application]
+
+config/name="Ethera"
+config/description="Top-down action roguelite. Folder name is slime-depths-godot for historical reasons; the actual game title is ETHERA (tagline: 'beneath the ruin'). Original JS codebase lives at ../slime-depths/."
+run/main_scene="res://scenes/main_menu.tscn"
+config/features=PackedStringArray("4.6", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+InputSetup="*res://scripts/input_setup.gd"
+GameState="*res://scripts/game_state.gd"
+RunState="*res://scripts/floor_state.gd"
+SaveSystem="*res://scripts/save_system.gd"
+Events="*res://scripts/events.gd"
+FX="*res://scripts/fx.gd"
+ScreenFlash="*res://scripts/screen_flash.gd"
+Audio="*res://scripts/audio.gd"
+HazardInteractions="*res://scripts/hazard_interactions.gd"
+
+[debug]
+
+gdscript/warnings/treat_warnings_as_errors=false
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="viewport"
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="hero"
+2d_physics/layer_3="enemies"
+2d_physics/layer_4="hero_attack"
+2d_physics/layer_5="enemy_attack"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.04, 0.03, 0.06, 1)

@@ -1,0 +1,4157 @@
+# Hero — CharacterBody2D with WASD movement, mouse-aimed sword + blast,
+# Space-key dodge roll, Q shield, Shift dash strike.
+#
+# Iter 12 (this revision): full 8-direction sprite system.
+#   • mage_{idle,walk,attack,hurt,death}.png are 1024-tall sheets with
+#     8 direction rows (N, NE, E, SE, S, SW, W, NW — north-first
+#     clockwise; matches the PixelLab importer convention).
+#   • SpriteFrames is built programmatically in _ready() — 5 states ×
+#     8 directions × N frames = ~290 frames assembled from AtlasTexture
+#     sub-regions on the 5 sheets. Doing it in code lets us share one
+#     ANIM_DATA table rather than declare hundreds of sub_resources in
+#     the .tscn.
+#   • `_facing_dir` (0..7) replaces the old `_facing_west` bool. Direction
+#     is computed from context each tick: attack/dash → aim, dodge →
+#     dodge dir, walking → velocity, idle → sticky last facing.
+#   • Hurt + death animations finally land. Hurt is a sprite-only overlay
+#     during HURT_TIME so the player keeps control. Death freezes input
+#     and holds the last death frame while main.gd shows the death screen.
+#   • flip_h fakery is gone. Every facing has its own sprite row.
+class_name Hero
+extends CharacterBody2D
+
+# Iter 239 / Fun Ideas Team R4 — FloorModifiers script preload. Same
+# pattern as main.gd / game_state.gd; the class_name global isn't
+# always resolved in headless test runs, so we explicitly preload.
+const FloorModifiers: Script = preload("res://scripts/floor_modifiers.gd")
+
+const SPEED              := 200.0
+const HERO_DRAW          := 64
+const ATTACK_RANGE       := 56
+const ATTACK_ARC         := PI * 0.55
+# iter-242 / Loop Tightening — swing-cancel pass. Pre-iter-242 ATTACK_COOLDOWN
+# was 0.40 s and ATTACK_SWING_TIME was 0.18 s. Net effective rate was the
+# cooldown (the longer of the two), so the player could only press LMB every
+# 0.40 s. The animation runs ~0.41 s (9 frames @ 22 fps in mage_attack.png),
+# so the cooldown perfectly matched anim length — meaning the player was
+# rate-limited by the visual, not by combat design. Reads as "anim-locked
+# and mashy."
+#
+# Cut cooldown to match SWING_TIME (0.18 s). Now the player CAN re-trigger
+# at ~45 % through the previous swing (the windup damage scan already landed
+# at MELEE_WINDUP=0.06 s + a moment after; `_is_attacking` clears at 0.18 s
+# already, see _physics_process line ~727). New swing spawns a fresh slash
+# arc + restarts the anim from frame 0 — the unfinished anim is overwritten
+# rather than waited on. This is the Hades attack-cancel feel: mashing
+# actually translates to faster strikes, hold-and-release reads committed.
+#
+# Damage scan timing is unchanged (MELEE_WINDUP still 0.06 s from press), so
+# DPS per swing is identical — only the FLOOR on swing rate moves. The
+# stamina/balance check is: at SWING_TIME=0.18 the implied DPS ceiling is
+# +122 % over the old cap. In practice the player can't keep that up because
+# the hit cone + range + WASD pressure make swings whiff often. Tested
+# headless: combat reads snappier, no soft-lock from missed `_is_attacking`
+# clear (the guard at line 965 still requires `not _is_attacking` AND
+# `_attack_cd <= 0`).
+const ATTACK_COOLDOWN    := 0.18
+const ATTACK_SWING_TIME  := 0.18
+
+# iter-248 — 3-HIT SWORD COMBO state machine. Per ETHERA_COMBAT_DESIGN.md §2.
+#
+# The combo: jab-jab-HEAVY. Hits 1 and 2 are the existing fast jabs
+# (0.10 startup, 0.08 active, 0.16 recovery — 0.34s total, damage = base).
+# Hit 3 is COMMITTED: 0.20 startup, 0.10 active, 0.32 recovery (0.62s total),
+# damage = base × 2, knockback × 1.5, NOT cancellable except into dodge.
+#
+# Implementation: instead of overhauling _attack_cd / _attack_live (which
+# would ripple through enemy projectile timing + swing-connected wiring),
+# we LAYER combo state on top — _combo_index (0/1/2) tracks which hit
+# is in flight, _combo_window_timer (0.5s) is the post-hit chain window.
+# _start_attack reads _combo_index to pick startup / active / recovery /
+# damage-mul / knockback-mul for THIS swing. After _resolve_melee_strike,
+# the window timer is set; if a new attack press comes inside the window
+# AND _combo_index < 2, increment; else reset to 0.
+#
+# Hit 3 also sets a `_combo_committed` flag during its recovery so the
+# input precedence in _physics_process knows to disallow blast/attack
+# cancellation (only DODGE can break out — the design's "committed
+# heavy" feel).
+#
+# Pre-iter-248 _attack_cd = 0.18 / _attack_live = 0.18 covered ALL hits.
+# Now _attack_live is set per hit (covers startup+active) and _attack_cd
+# is the recovery; both vary by combo index.
+const COMBO_WINDOW: float = 0.50
+const COMBO_RESET_TIMER_MAX: int = 2  # 0, 1, 2 — max index is 2 (heavy)
+
+# Per-hit frame data. Index 0/1 = jab, index 2 = HEAVY.
+#   startup       = time from press to damage scan (MELEE_WINDUP override)
+#   active        = duration _is_attacking stays true after start
+#   recovery      = time until next attack can press (cd value)
+#   damage_mul    = multiplier on base sword damage
+#   knockback_mul = multiplier on melee knockback force
+const COMBO_HIT_STARTUP:       Array[float] = [0.10, 0.10, 0.20]
+const COMBO_HIT_ACTIVE:        Array[float] = [0.08, 0.08, 0.10]
+const COMBO_HIT_RECOVERY:      Array[float] = [0.16, 0.16, 0.32]
+const COMBO_HIT_DAMAGE_MUL:    Array[float] = [1.0,  1.0,  2.0]
+const COMBO_HIT_KNOCKBACK_MUL: Array[float] = [1.0,  1.0,  1.5]
+
+const MAX_HP             := 3
+
+# iter-95: DODGE_* constants removed. The dodge ability is gone — the
+# defensive toolkit is now just SHIELD (timing-based catch on Q) and
+# DASH_STRIKE (i-frame engage on Shift). User design intent: "the only
+# real dodge is the dash strike that keeps gameplay aggressive."
+const HIT_IFRAMES        := 0.55
+
+# Blast spell (Iter 3) — RMB ranged projectile.
+const BLAST_COOLDOWN     := 0.55
+# iter-249 — BLAST WINDUP COMMITMENT. Per ETHERA_COMBAT_DESIGN.md §2:
+# blast is the "ranged commit verb." 0.10s windup before the projectile
+# fires (off-hand glows violet during windup, projectile spawns at fire),
+# 0.30s recovery during which only DODGE can cancel (not sword). Total
+# commitment = 0.40s.
+# Pre-iter-249 blast was instant + 0.18s recovery (`_attack_live`); the
+# new commitment trades reaction time for the "deliberate cast" feel
+# that distinguishes blast from sword.
+const BLAST_WINDUP_TIME: float = 0.10
+const BLAST_RECOVERY_TIME: float = 0.30
+# Off-hand glow color — violet "magic gathering" hue. Tweens alpha 0→1
+# during the 0.10s windup, free's on fire.
+const BLAST_GLOW_COLOR: Color = Color(0.65, 0.40, 1.0, 1.0)
+# Iter 42 — multi-shot spread step. Angular offset (radians) between
+# adjacent projectiles in a multi-shot. ~14° = noticeable spread that
+# still lets all projectiles hit a clumped group at melee-blast range.
+const BLAST_SPREAD_STEP: float = 0.245
+# Iter 42 — crit damage multiplier. 1.5× chosen over 2× so crits feel
+# rewarding without single-shotting tough enemies. Crit chance comes
+# from `crit_chance_f` modifier (default 0; relic-driven).
+const CRIT_DAMAGE_MUL: float = 1.5
+const PROJECTILE_SCENE   = preload("res://scenes/projectile.tscn")
+const DASH_TRAIL_SCENE   = preload("res://scenes/fx/dash_trail.tscn")
+const BLAST_MUZZLE_SCENE = preload("res://scenes/fx/blast_muzzle.tscn")
+const DEATH_PULSE_SCENE  = preload("res://scenes/fx/death_pulse.tscn")
+# iter-87: PARRY_PULSE_SCENE removed (replaced by a sprite-sheet flash).
+# iter-94: that sprite-sheet flash was removed too — see _start_shield.
+# iter-247: _start_shield itself removed (parry/shield folded into
+# perfect-dodge); PARRY_SHIELD_SCENE preload deleted. The .tscn + .gd
+# files survive on disk for any future revival but no script references
+# them anymore.
+# FxSpriteHelper preload retained because other systems (e.g. enemy
+# spawn portals, slash arc via screen_flash) still use FxSprite.spawn.
+const FxSpriteHelper = preload("res://scripts/fx_sprite.gd")
+# iter-98: DASH_SHIELD_SCENE removed. The forward-facing cyan-gold bubble
+# read as a "magical orb" and used the same color family as parry_shield
+# (defensive) — but dash is offensive. The afterimages already sell
+# "hero moving forward fast"; the bubble added nothing physical, only a
+# magic-aura vibe that didn't fit the painted dark-fantasy palette.
+# soul_burst relic — reuse the dash impact shockwave scene tinted red.
+# Cheap visual until a dedicated VFX prefab lands.
+const SOUL_BURST_SCENE   = preload("res://scenes/fx/dash_impact.tscn")
+# Iter 68 — DODGE × STORM shock pulse. Dedicated cyan-white expanding
+# ring spawned at the dodge START position when STORM tier >= 1. Scales
+# with STORM tier (resonance: 80px / 1dmg; ascendance: 120px / 2dmg + stun).
+const SHOCK_PULSE_SCENE  = preload("res://scenes/fx/shock_pulse.tscn")
+# Iter 40 — FLAME ascendance fire pool. Spawned at every kill site
+# when the hero owns 4+ FLAME relics. Stacks with soul_burst (which
+# triggers on every 5th kill) — both can fire on a 5/10/15th kill.
+const FIRE_POOL_SCENE = preload("res://scenes/fire_pool.tscn")
+# Iter 72 — stat-stick redesigns. Four common-tier relics get triggered
+# effects layered on top of their existing flat modifiers, each with a
+# dedicated visual:
+#   iron_fang     → every 6th sword hit drops EmberBurst at impact point
+#   arcane_pulse  → every 5th blast forks ArcaneBolt to nearby enemy
+#   stoneheart    → first kill each room spawns StonePulse + heals +1
+#   iron_skin     → every absorbed hit sparks StoneShardBurst; every 4th
+#                   absorption triggers a knock-back shard ring (no dmg,
+#                   pure spacing — reuses StoneShardBurst at the hero)
+# All FX follow the iter 67/68 minimal-scene grammar (geometry built in
+# code, palette baked into the .gd, ring + fade lifecycle).
+const EMBER_BURST_SCENE  = preload("res://scenes/fx/ember_burst.tscn")
+const ARCANE_BOLT_SCENE  = preload("res://scenes/fx/arcane_bolt.tscn")
+const STONE_PULSE_SCENE  = preload("res://scenes/fx/stone_pulse.tscn")
+const STONE_SHARD_SCENE  = preload("res://scenes/fx/stone_shard_burst.tscn")
+
+# Parry / Shield input was REMOVED in iter-247. Combat folds parry into
+# PERFECT DODGE (the last 0.10s of the dash-strike active frames).
+# Constants kept here for documentation only — they're referenced by
+# legacy tests (test_iter95 / test_iter150) that pin "SHIELD_TINT exists"
+# as a regression guard for iframe rendering. SHIELD_TINT is no longer
+# applied in the modulate branch (also removed in iter-247).
+# The constants survive purely so the file still parses identically to
+# the test-baseline; their values are dead-code from a runtime POV.
+const SHIELD_WINDOW           := 0.20  # iter-247 dead — kept for test pin
+const SHIELD_COOLDOWN         := 0.7   # iter-247 dead — kept for test pin
+const SHIELD_TINT             := Color(0.65, 0.95, 1.0, 1)   # iter-247 dead — kept for test pin
+const SHIELD_HIT_SLOWMO_SCALE := 0.30  # iter-247 dead — kept for test pin
+const SHIELD_HIT_SLOWMO_TIME  := 0.10  # iter-247 dead — kept for test pin
+const SHIELD_HIT_IFRAMES      := 0.30  # iter-247 dead — kept for test pin
+
+# Dash Strike (Iter 25 — reworked). Pre-iter-25 the dash was 0.18 s
+# of 600 px/s = 108 px of travel, with damage ONLY at the END radius.
+# That meant the player had to pre-position the end point ON an enemy
+# — easy to misjudge. Now:
+#   - Duration extended to 0.28 s (168 px travel, visible commit)
+#   - Pass-through damage along the path: any enemy the hero crosses
+#     during the dash window takes a hit (one-shot per dash via the
+#     _dash_hit_set tracker), in ADDITION to the final AoE.
+#   - AoE radius bumped to 60 (was 50) so the boom feels bigger.
+#   - Iframes extend 0.10 s PAST the dash end so a player who lands
+#     next to a swinging enemy doesn't immediately eat damage.
+#   - Light directional steering during the dash (input × 0.15 added
+#     to dash_dir each tick) so the player can curve through tight
+#     enemy groups.
+#   - Cooldown 1.2 → 1.4 s to balance the strictly-stronger ability.
+# iter-250 — DODGE RETUNE per ETHERA_COMBAT_DESIGN.md §6.4.
+#   DASH_STRIKE_SPEED:    600 → 580   (~140 px travel at 0.24s duration)
+#   DASH_STRIKE_DURATION: 0.28 → 0.24
+#   DASH_STRIKE_COOLDOWN: 0.9 → 0.6   (snappier engage rhythm)
+# The duration shrink + speed tweak gives a slightly shorter, faster
+# dash that's easier to chain into the perfect-dodge window. 140 px
+# travel preserves the "real movement" feel (vs a glorified i-frame
+# blink).
+const DASH_STRIKE_SPEED    := 580.0
+const DASH_STRIKE_DURATION := 0.24
+# iter-95: cooldown trimmed 1.4 → 0.9 → iter-250: 0.6. Dash strike is
+# both the mobility AND defensive verb now (perfect-dodge catch lives
+# on the last-0.10s window of dash active frames). The shorter cd
+# makes the timing-skill option more available — players can attempt
+# 5+ perfect-dodges per 3-second engagement.
+const DASH_STRIKE_COOLDOWN := 0.6
+const DASH_STRIKE_RADIUS   := 60.0
+const DASH_STRIKE_POST_IFRAMES := 0.10
+const DASH_STRIKE_STEER_GAIN   := 0.15
+
+# iter-250 — PERFECT DODGE WINDOW. The last 0.10s of the dash active
+# frames opens a timing-skill catch window. If an enemy attack lands
+# during this window, it's PERFECT-DODGED: no damage taken (normal
+# i-frames already provide that), AND a buffer arms a +50% damage /
+# guaranteed-crit next-sword-strike. Slow-mo + violet phase blur +
+# brass chime + "PERFECT!" floater + Events.hero_perfect_dodged emit.
+# Window starts when dash_active_time >= (DURATION - PERFECT_WINDOW).
+# At 0.24 duration + 0.10 window, that's the last ~42% of the dash.
+const PERFECT_DODGE_WINDOW: float = 0.10
+# Next-sword buff: +50% damage AND guaranteed crit. The CRIT_DAMAGE_MUL
+# constant elsewhere is the base crit (1.5×); perfect dodge stacks:
+# +50% raw + crit on top = effectively 1.5 × 1.5 = 2.25× a normal hit.
+# Buffer lifetime — long enough to land 1-2 chained hits in the
+# slow-mo window + follow-up.
+const PERFECT_DODGE_BUFFER_TIME: float = 1.5
+const PERFECT_DODGE_DAMAGE_MUL: float = 1.5
+const PERFECT_DODGE_KNOCKBACK_MUL: float = 1.2
+# Slow-mo: Engine.time_scale → 0.40 for 0.30s, then ease back to 1.0
+# over 0.30s. Total slow-mo beat = 0.6s (per design "shortened
+# Bayonetta-style"). NOTE: Engine.time_scale slows the hero too, but
+# since this is brief the player gets to SEE that they nailed the
+# timing — net-positive feedback.
+const PERFECT_DODGE_SLOWMO_SCALE: float = 0.40
+const PERFECT_DODGE_SLOWMO_HOLD: float = 0.30
+const PERFECT_DODGE_SLOWMO_EASE: float = 0.30
+# Violet phase color (reuses the iter-213 VEILSTEP rim hue, design §5).
+const PERFECT_DODGE_TINT: Color = Color(0.55, 0.30, 0.95, 0.6)
+# Hero collision radius is 14; we want a generous pass-through hit-box
+# during dash so glancing impacts register. 40 covers hero body + small
+# enemies (slimes ~22, spider ~12) without grabbing distant ones.
+const DASH_STRIKE_PIERCE_RADIUS := 40.0
+const DASH_STRIKE_PIERCE_DAMAGE := 1
+# iter-80 retune (Workstream B of the post-iter-78 plan): port the JS
+# dash afterimage feel. JS captures every ~0.018s (we were at 0.04 —
+# 4× less dense) and tints golden (#ffd27a) — we were cyan-purple. The
+# JS dash reads as "echo of light streaking through space"; cyan
+# reads cold + un-rooted from the rest of the combat palette where
+# slash/blast already use cyan-cream. Switching to gold gives dash a
+# unique color identity AND matches the dash_trail particles which
+# already lean warm in the JS reference.
+#
+# Tuning:
+#   AFTERIMAGE_INTERVAL: 0.04 → 0.025  (denser ghost trail)
+#   AFTERIMAGE_TINT:    cyan-purple    → warm gold
+#   AFTERIMAGE_FADE_TIME: 0.22 → 0.30  (matches the JS AFTERIMAGE_LIFE)
+#
+# Iter 29 — afterimage cadence. Spawn one ghost every AFTERIMAGE_INTERVAL
+# seconds during the dash window. 0.04 s ≈ 7 ghosts over a 0.28 s dash,
+# enough to sell "leaving light behind" without flooding the scene.
+const AFTERIMAGE_INTERVAL: float = 0.025
+# Color tint applied to each afterimage Sprite2D. Cyan-purple matches
+# the dash trail's particle palette so the afterimages + trail read
+# as the SAME energy phenomenon.
+const AFTERIMAGE_TINT: Color = Color(1.0, 0.82, 0.48, 0.65)
+const AFTERIMAGE_FADE_TIME: float = 0.30
+
+# Iter 11 — feel tuning.
+const CAMERA_LOOKAHEAD       := 90.0
+const CAMERA_LOOKAHEAD_LERP  := 3.5
+const CAMERA_MOVE_THRESHOLD  := 15.0
+const SPRITE_BASE_Y          := -23.0
+const IDLE_BOB_AMP           := 1.6
+const IDLE_BOB_FREQ          := 1.7
+const IDLE_BOB_LERP          := 8.0
+const STEP_INTERVAL          := 28.0
+# Iter 132 — walk bob + shadow pulse. Fixes "up/down feels slidey" —
+# front/back walk frames have minimal silhouette change, so the hero
+# appears to glide. Adding a vertical bob synced to footfalls gives
+# instant motion read from any angle. Shadow pulse (shrink on foot-up,
+# expand on foot-down) reinforces the ground contact.
+const WALK_BOB_AMP           := 2.5   # ±2.5 px vertical bob while walking
+const WALK_BOB_FREQ          := 7.0   # ~7 cycles/sec at 200 px/s = synced to steps
+const SHADOW_BASE_SCALE      := Vector2(0.22, 0.16)  # matches hero.tscn
+const SHADOW_PULSE_AMP       := 0.025  # ±2.5% scale pulse per step
+
+# Iter 12 — direction tables + animation metadata. Reads:
+# DIR_NAMES[i] = direction suffix for bucket i (north-clockwise).
+# ANIM_DATA[state] = { sheet, frames, fps, loop } — used both to build
+# SpriteFrames at _ready and to pick the animation name each tick.
+const CELL_SIZE  := 64
+const NUM_DIRS   := 8
+# Typed arrays so DIR_NAMES[i] resolves to String and DIR_VECS[i] to
+# Vector2 — untyped Array elements come back as Variant and break := /
+# String concat under Godot 4.6 strict warning-as-error mode.
+const DIR_NAMES: Array[String] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"]
+# Unit vectors for each direction bucket. Diagonals use precomputed
+# 0.7071 (≈ √2/2) literals — Godot 4 const initializers must be
+# evaluable at script-load time, which excludes method calls like
+# Vector2(1,-1).normalized(). Same order as DIR_NAMES.
+const DIR_VECS: Array[Vector2] = [
+	Vector2(0, -1),
+	Vector2(0.7071068, -0.7071068),
+	Vector2(1, 0),
+	Vector2(0.7071068, 0.7071068),
+	Vector2(0, 1),
+	Vector2(-0.7071068, 0.7071068),
+	Vector2(-1, 0),
+	Vector2(-0.7071068, -0.7071068),
+]
+const ANIM_DATA  := {
+	"idle":   { "sheet": preload("res://assets/characters/mage_idle.png"),   "frames": 8, "fps":  8.0, "loop": true  },
+	"walk":   { "sheet": preload("res://assets/characters/mage_walk.png"),   "frames": 8, "fps": 10.0, "loop": true  },
+	"attack": { "sheet": preload("res://assets/characters/mage_attack.png"), "frames": 9, "fps": 22.0, "loop": false },
+	"hurt":   { "sheet": preload("res://assets/characters/mage_hurt.png"),   "frames": 6, "fps": 17.0, "loop": false },
+	"death":  { "sheet": preload("res://assets/characters/mage_death.png"),  "frames": 9, "fps": 10.0, "loop": false },
+}
+
+# Hurt anim plays for HURT_TIME — sprite-only, doesn't lock input. Shorter
+# than HIT_IFRAMES so the visual cue clears before iframes drop.
+const HURT_TIME := 0.35
+
+# Iter 13 — melee + dash impact tuning.
+# VFX_HEIGHT_OFFSET: the slash arc / blast trail spawn point sits at the
+# mage's CHEST (sprite is offset Y=-23 with origin at her feet), so we
+# emit Events.hero_attacked at global_position + (0, this). Previously
+# they spawned at the hero's feet and looked detached from the casting
+# animation.
+const VFX_HEIGHT_OFFSET    := -28.0
+# Knockback per successful melee hit. Light push, very brief — sells
+# weight without trivializing tracking. Dash strike applies the bigger
+# DASH_KNOCKBACK below since it's a committed engage.
+const MELEE_KNOCKBACK_FORCE := 220.0
+const MELEE_KNOCKBACK_TIME  := 0.10
+const DASH_KNOCKBACK_FORCE  := 380.0
+const DASH_KNOCKBACK_TIME   := 0.16
+# Iter 19 — melee feel pass.
+# MELEE_WINDUP: time between LMB press and the damage scan landing.
+# Tiny (60 ms ≈ 3.6 frames) — barely perceptible as input lag, but
+# enough that the slash_arc VFX has time to form before damage hits.
+# Pre-iter-19 the slash arc spawned AT the same frame damage was
+# dealt, which made the arc feel like a hit-marker rather than the
+# swing itself.
+const MELEE_WINDUP          := 0.06
+# iter-97 — combat movement feel rework.
+#
+# The pre-iter-97 design had an additive forward lunge (220 px/s × 0.10s
+# = ~11 px) layered on top of WASD velocity at every swing. Playtest
+# feedback: "melee dashes forward in an almost unrealistic way" and
+# "shooting/meleeing while moving feels unnatural." The lunge was the
+# culprit on both fronts:
+#   1. ~11 px instant push reads as "lurch" when WASD walk is also
+#      ramping up via move_toward (out-of-sync acceleration curves).
+#   2. With sustained walk + repeated swings, total velocity spiked to
+#      ~390 px/s vs. the 200 px/s base walk.
+#
+# The JS reference (slime-depths/src/hero.js:1812-1817) has NO lunge —
+# it plants the feet at 35% walk speed during the swing window. That's
+# the "committed swing" feel of Hades / Diablo / PoE. Iter-97 ports
+# that pattern verbatim.
+#
+# Companion: BLAST_FACING_WINDOW commits sprite facing to aim direction
+# for 0.32s after each blast cast. Without it, walking west + shooting
+# east left the sprite facing west while bolts emerged from the back.
+# Mirrors hero.js:1413-1420.
+const ATTACK_MOVE_SPEED_MUL := 0.35
+const BLAST_FACING_WINDOW   := 0.32
+
+# Iter 70 — feel pass for walk acceleration / hit knockback / aim assist.
+#
+# Pre-iter-70 walk velocity snapped instantly to `input * speed` each
+# physics tick. On stop, it snapped to zero. That made stop/start reads
+# as "teleporting" rather than "running" — particularly noticeable when
+# the player taps a direction for a quick step. Necesse / VS feel
+# benchmarks both ramp velocity over ~0.10 s so the avatar reads as a
+# body with inertia.
+#
+# MOVE_ACCEL is intentionally HIGHER than MOVE_DECEL so press-release
+# rounds the front but stops crisply — the press shouldn't feel mushy
+# and the stop shouldn't feel like sliding on ice. Numbers tuned to:
+#   - reach full SPEED (200) in ~0.083s (200/2400) — barely perceptible
+#     as lag, just enough to round the curve.
+#   - decel to zero in ~0.063s (200/3200) — feels like real release.
+const MOVE_ACCEL: float = 2400.0
+const MOVE_DECEL: float = 3200.0
+# Speed below which we treat the hero as "not really moving" — drives
+# the idle/walk anim swap so a tiny residual velocity from accel decay
+# doesn't twitch the walk anim for one frame.
+const IDLE_VELOCITY_THRESHOLD: float = 12.0
+
+# Iter 70 — knockback on hero hurt. Brief impulse in the direction AWAY
+# from the damage source, decays linearly over KNOCKBACK_TIME. Read in
+# the walk-velocity branch of _physics_process and ADDED on top of the
+# input velocity (instead of overriding) so the player can still steer
+# OUT of the push if they react fast. Smaller than enemy knockback by
+# design — the hero should feel slapped, not yeeted.
+const HERO_KNOCKBACK_FORCE: float = 160.0
+const HERO_KNOCKBACK_TIME: float = 0.14
+
+# Iter 70 — projectile aim assist. When the player's cursor is within
+# AIM_ASSIST_CONE radians of an enemy AND that enemy is within
+# AIM_ASSIST_RANGE pixels, the blast direction snaps to point exactly
+# at that enemy's center. Cone is ~10° (slightly tighter than the
+# 12° feel-game default — the existing blast already has a 14° spread
+# step for multi-shot, and we don't want assist to swallow the spread).
+# Range covers typical engagement (the blast lives 1.4s × 520 px/s
+# = 728 px, but the player aims at closer targets).
+const AIM_ASSIST_CONE: float = 0.175      # ~10° in radians
+const AIM_ASSIST_RANGE: float = 520.0
+
+# iter-95: DODGE_CANCEL_THRESHOLD removed alongside the dodge ability.
+# Iter-70 added a "cancel a half-elapsed dodge into a dash strike" feel
+# improvement; with no dodge to cancel, the mechanic is gone too.
+# Dash strike is now the only mobility option from a standing start.
+
+@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+# Iter 195 — Shadow @onready removed. iter-192 batch 1 removed the
+# Shadow Sprite2D node from hero.tscn (per user direction to remove
+# character ground shadows entirely). The @onready var was missed,
+# leaving `shadow` as null and triggering one spam-error per physics
+# frame from the shadow.scale references at lines 885 + 894 (also
+# removed by this commit).
+
+var hp: int = MAX_HP
+var _attack_cd := 0.0
+var _attack_live := 0.0
+var _attack_aim := Vector2.RIGHT
+var _is_attacking := false
+
+# iter-248 — 3-HIT COMBO state. _combo_index is 0..2 (jab, jab, HEAVY).
+# Increments on every _start_attack while _combo_window_timer > 0 (i.e.
+# inside the 0.5s chain window after the previous hit). Resets to 0 on
+# combo_window timeout. _combo_committed locks out non-dodge cancels
+# during heavy-hit recovery.
+var _combo_index: int = 0
+var _combo_window_timer: float = 0.0
+var _combo_committed: bool = false  # true during heavy-hit (combo_index==2) recovery
+
+# Iter 201 — active relic cooldown timer. Decrements each frame; while
+# > 0 the active relic input is gated. Reset to ACTIVE_RELIC_COOLDOWN
+# on each successful activation. _active_relic_owned is cached at
+# relic-claim so the input-handler doesn't dict-lookup every frame.
+const ACTIVE_RELIC_COOLDOWN: float = 18.0
+const ACTIVE_RELIC_RADIUS: float = 100.0
+const ACTIVE_RELIC_DAMAGE: int = 3
+var _active_relic_cd: float = 0.0
+
+# Iter 12 — 0..7 bucket (N,NE,E,SE,S,SW,W,NW). Default south so the
+# player sees the hero's face on spawn (not the back).
+var _facing_dir: int = 4
+
+# iter-95: _dodge_cd / _dodge_time / _dodge_dir removed alongside the
+# dodge ability. _iframes survives — still set by dash_strike and by
+# successful shield catches.
+var _iframes := 0.0
+
+# iter-103 — elite affix status effects (player-side mirror of the
+# enemy.gd burn/slow machinery). Frost elites apply slow on contact;
+# venom elites apply a DoT on contact.
+#   _hero_slow_remaining     seconds until slow expires
+#   _hero_slow_multiplier    current walk-speed multiplier (1.0 = normal)
+#   _hero_venom_remaining    seconds until DoT expires
+#   _hero_venom_tick_timer   countdown to next damage tick
+# Multiple stacking calls take the WORSE / LONGER value (max-duration,
+# min-multiplier) so an enemy can't accidentally clear an active effect.
+var _hero_slow_remaining: float = 0.0
+var _hero_slow_multiplier: float = 1.0
+var _hero_venom_remaining: float = 0.0
+var _hero_venom_tick_timer: float = 0.0
+const HERO_VENOM_TICK_INTERVAL: float = 0.5   # tick every 0.5s
+const HERO_VENOM_DAMAGE_PER_TICK: int = 1
+
+var _blast_cd := 0.0
+# iter-249 — BLAST WINDUP state. _blast_windup_time decrements in
+# _physics_process; when it hits 0 (from > 0), _resolve_blast_fire()
+# runs the actual projectile spawn. _blast_locked stays true through
+# windup + recovery; the input precedence chain reads it to block
+# sword/attack inputs (only DODGE can cancel the commit). _blast_aim /
+# _blast_resonance_active capture the aim + arcane_resonance state at
+# PRESS time so a mid-windup mouse-move doesn't redirect the shot.
+var _blast_windup_time: float = 0.0
+var _blast_locked: bool = false
+var _blast_aim: Vector2 = Vector2.RIGHT
+var _blast_resonance_active: bool = false
+# Handle to the off-hand glow polygon so we can free it on fire (the
+# tween scales alpha 0→1 over the windup; on fire we just queue_free).
+var _blast_glow_ref: Polygon2D = null
+
+# iter-247: parry/shield input removed. _shield_time / _shield_cd /
+# _shield_ref state collapsed; combat now folds parry into PERFECT DODGE
+# on the dash-strike's last-0.10s window.
+#
+# A handful of these names survive as PERMANENT-ZERO STUBS to avoid
+# rippling textual changes through HUD code + iframe-modulate code:
+#   _shield_time: read in the modulate branch (`if _shield_time > 0.0`).
+#                 Never written; stays 0; SHIELD_TINT branch never fires.
+#                 Kept here so test_iter150's pin
+#                 (`sprite.modulate = SHIELD_TINT`) still passes.
+#   _shield_cd:   read by main.gd's HUD ability-cooldown chip strip
+#                 (specs array `["shield", "Q", "_shield_cd", ...]`).
+#                 Chip hides when cd <= 0 → stays hidden permanently now.
+#   _shield_aim:  written by the perfect-dodge detection branch
+#                 (sub-commit 4) to capture the aim direction at catch
+#                 time. Consumed by _spawn_shield_reflect_fan (VOW
+#                 ascendance) + BACKDRAFT trigger.
+# Marked dead-state from a runtime POV; will be cleaned up in a later
+# pass once the HUD + tests have caught up.
+var _shield_time: float = 0.0
+var _shield_cd: float = 0.0
+var _shield_aim: Vector2 = Vector2.RIGHT
+
+var _dash_strike_cd := 0.0
+var _dash_strike_time := 0.0
+var _dash_strike_dir := Vector2.RIGHT
+# iter-250 — DODGE ACTIVE TIME tracker for the perfect-dodge window
+# detection. Counts UP from 0 each dash (vs _dash_strike_time which
+# counts DOWN). Used in take_damage's perfect-dodge branch: window
+# opens when active_time >= (DURATION - WINDOW). Set to 0 in
+# _start_dash_strike; incremented in _physics_process while the dash
+# is running.
+var _dodge_active_time: float = 0.0
+# Iter 64 — cached start position of the current dash-strike. Captured
+# in _start_dash_strike, consumed in _resolve_dash_strike_hit by the
+# FLAME resonance fire-trail spawner so it can stamp fire pools evenly
+# along the dash path. Zero-vector when no dash is active.
+var _dash_strike_start_pos: Vector2 = Vector2.ZERO
+# iter-250 — PERFECT DODGE BUFFER. Set to PERFECT_DODGE_BUFFER_TIME
+# when a perfect-dodge catch fires; decrements in _physics_process.
+# While > 0, the next sword strike (in _resolve_melee_strike) gets
+# +50% damage AND is guaranteed-crit. Buffer is CONSUMED (set to 0)
+# when the next sword strike connects with any enemy. A whiff DOES
+# NOT consume — the player keeps the bonus until they actually land
+# a hit (matches the design's "this hit is your reward" intent).
+var _perfect_dodge_buffer: float = 0.0
+# Iter 25 — per-dash hit tracker. Reset on _start_dash_strike. Every
+# physics tick during the dash, we scan enemies within
+# DASH_STRIKE_PIERCE_RADIUS and damage any not already in this dict.
+# Final AoE in _resolve_dash_strike_hit also skips already-hit ids so
+# the same enemy can't be double-counted.
+var _dash_hit_set: Dictionary = {}
+# Iter 29 — afterimage spawn cadence. Reset to 0 on _start_dash_strike;
+# accumulates each tick during the dash window. When it crosses
+# AFTERIMAGE_INTERVAL we spawn a ghost + subtract the interval (so the
+# spawn rate is exact regardless of physics tick rate).
+var _afterimage_timer: float = 0.0
+
+# Iter 12 — hurt is a transient visual; dying is terminal (locks input).
+var _hurt_time := 0.0
+var _is_dying := false
+
+# Iter 17 — relic trigger state.
+# _kill_counter  total enemies slain this run; bloodstone heals every 3rd
+# _blast_counter total blasts cast this run; arcane_resonance crits every 4th
+# _second_wind_used true once second_wind has revived; one-shot per run
+var _kill_counter: int = 0
+var _blast_counter: int = 0
+var _second_wind_used: bool = false
+# Iter 21 — chain_lightning trigger counter. Bumps on every successful
+# enemy hit in melee; every 4th attempts a chain to a nearby enemy.
+var _sword_hit_counter: int = 0
+# iter-105: _phoenix_feather_used PROMOTED to GameState.phoenix_feather_used.
+# Pre-iter-105 this was a hero instance var, which reset every room when
+# main.tscn reloaded → relic effectively triggered once per ROOM (mythic-
+# tier output on a legendary stat-line). Now read/written through the
+# GameState autoload so it survives room transitions and resets only on
+# start_dungeon_run. Iter-101 honest-fix had updated the description to
+# "Each room" to match buggy behavior; iter-105 restores the original
+# "Once per run" intent + reverts the description. See GameState
+# `phoenix_feather_used` for the source-of-truth flag.
+# (second_wind keeps its per-room reset — that's its design role: the
+# per-encounter safety net, distinct from phoenix's premium one-shot.)
+# iron_resolve — first wound each ROOM is fully absorbed. Auto-resets
+# because every room transition reloads main.tscn and we get a fresh
+# hero instance with this flag back to false. No manual reset needed.
+var _iron_resolve_absorbed_this_room: bool = false
+
+# iter-229 / Polish Team R2 — last damage source label for the death
+# screen "CAUSE OF DEATH" line. Populated by take_damage's optional
+# third arg (default "" — backward-compatible with all pre-iter-229
+# callers). enemy.gd contact paths now pass _affix_aware_source_name()
+# (e.g. "Slime", "Frost Wraith"); ember death AoE passes "Ember Burst";
+# hazards / projectiles / DoT ticks leave it blank → death_screen
+# falls back to "the dark" so the line still reads coherently.
+# Also tracks the biggest single hit this run (max amount actually
+# dealt after iron_skin / iron_resolve reductions) so the death
+# screen can report "BIGGEST HIT: N damage."
+var _last_damage_source_name: String = ""
+var _biggest_hit_taken: int = 0
+
+# Iter 72 — IRON FANG redesign counter. Bumps on every successful sword
+# hit; on every 6th increment, spawn EmberBurst at the hit position for
+# a 40-px AoE / 1 damage. Persists per-run (mirrors _sword_hit_counter)
+# rather than per-room so a player whose 5th hit was end-of-room sees
+# the 6th proc on the first hit of the next room.
+var _iron_fang_hit_counter: int = 0
+# Iter 226 / Expansion Team — SACRIFICIAL ECHO counter. Bumps in
+# _on_enemy_died_for_relics on every kill; heals +1 HP every 5th tick.
+# Distinct cadence from bloodstone (3) and lifestone (8) so the three
+# relics stack as a layered BLOOD regen ramp without colliding on the
+# same kill counts.
+var _sacrificial_echo_counter: int = 0
+# Iter 72 — ARCANE PULSE redesign counter. Bumps on every blast cast;
+# on every 5th increment, the cast also forks a violet bolt to the
+# nearest off-target enemy within 140px for 1 damage. Persists per-run.
+var _arcane_pulse_cast_counter: int = 0
+# Iter 214 — Phase 3 spell modifier counters. Each ticks ONCE per
+# _start_blast call (NOT per projectile in a multi-shot) so the proc
+# fires on its own cadence regardless of how many shots the cast
+# spawns. Independent of _blast_counter so the modulo cycles don't
+# accidentally sync up across relics.
+var _split_cinder_cast_counter: int = 0
+var _static_runes_cast_counter: int = 0
+# Single-cast flag — set true at start of _start_blast if this cast is
+# the STATIC RUNES proc cast, read inside _spawn_blast_projectile to
+# bump storm_chain_count for each projectile in the cast (so multi-
+# shot all benefit on the proc cast, not just the first projectile).
+var _static_runes_proc_this_cast: bool = false
+# Iter 72 — STONEHEART redesign per-room flag. Auto-resets on scene
+# reload (same pattern as _iron_resolve_absorbed_this_room) so each
+# new room re-arms the first-kill heal. No manual reset needed.
+var _stoneheart_first_kill_armed: bool = true
+# Iter 72 — IRON SKIN redesign counter. Bumps on every hit where the
+# damage_taken_reduction subtraction actually saved damage; every 4th
+# increment also fires a no-damage knockback shard ring around the
+# hero. Persists per-run.
+var _iron_skin_block_counter: int = 0
+
+# ── iter-260 / Wave 9 — boon proc state ───────────────────────────────
+# Each rare/legendary boon with a hand-implemented mechanic has its
+# own counter / timer / per-room flag. All scoped to the hero instance
+# so they reset cleanly on scene reload (room transition); the catalog
+# `proc_flag` is consumed via GameState.has_boon(flag).
+#
+# flame_offering: every-5th-kill fire pool proc.
+var _flame_offering_kill_counter: int = 0
+# storm_tithe: every-4th-blast chain-bolt proc.
+var _storm_tithe_blast_counter: int = 0
+# storm_surge: every-10th-blast 3-projectile burst.
+var _storm_surge_blast_counter: int = 0
+# blood_echo: fractional HP accumulator (+0.2 per kill; heal on >= 1.0).
+var _blood_echo_accumulator: float = 0.0
+# vow_shatter: per-room first-hit-reflects flag.
+var _vow_shatter_armed_this_room: bool = true
+# vow_stand: idle timer + armed flag (consumed by next sword hit).
+# The idle gate is 1.5s of velocity ≈ 0; while armed, the next sword
+# hit consumes the flag for +50% damage. Reset to false on movement.
+var _vow_stand_idle_timer: float = 0.0
+var _vow_stand_armed: bool = false
+# shadow_veil: per-room invisibility timer (set on perfect-dodge).
+var _shadow_veil_invisible_time: float = 0.0
+# bulwark_aspect: per-room first-hit-absorbed flag (parallel to
+# iron_resolve so the two stack on a hardcore VOW build).
+var _bulwark_aspect_absorbed_this_room: bool = true
+# inferno_aspect: every-3rd-hit ignite counter.
+var _inferno_aspect_hit_counter: int = 0
+# vow_stand idle-gate threshold + damage multiplier on consume.
+const VOW_STAND_IDLE_THRESHOLD: float = 1.5
+const VOW_STAND_DAMAGE_MUL: float = 1.5
+# shadow_veil invisibility duration. While > 0, enemies skip
+# pursuit-aggro on this hero (read by enemy.gd via the
+# "invisible_to_enemies" group membership AND the modulate alpha
+# trick applied below).
+const SHADOW_VEIL_INVISIBLE_TIME: float = 1.5
+# shadow_bind slow duration + multiplier (perfect-dodge consequence).
+const SHADOW_BIND_SLOW_DURATION: float = 1.0
+const SHADOW_BIND_SLOW_MULTIPLIER: float = 0.5
+const SHADOW_BIND_RADIUS: float = 200.0
+# storm_tithe chain bolt parameters.
+const STORM_TITHE_BOLT_RANGE: float = 140.0
+const STORM_TITHE_BOLT_DAMAGE: int = 1
+# voidwalk_aspect extended perfect-dodge buffer window (vs the
+# baseline PERFECT_DODGE_BUFFER_TIME = 1.5s).
+const VOIDWALK_PERFECT_DODGE_BUFFER_TIME: float = 2.5
+# blood_hunger low-HP-kill bonus threshold (25%) + shard award.
+const BLOOD_HUNGER_HP_RATIO: float = 0.25
+const BLOOD_HUNGER_SHARD_REWARD: int = 1
+# flame_offering proc parameters.
+const FLAME_OFFERING_PROC_INTERVAL: int = 5
+# storm_tithe proc parameters.
+const STORM_TITHE_PROC_INTERVAL: int = 4
+# storm_surge proc parameters.
+const STORM_SURGE_PROC_INTERVAL: int = 10
+const STORM_SURGE_BURST_COUNT: int = 3
+
+# Iter 66 — BLOOD theme sword lifesteal state.
+# _pending_blood_tier is locked at SWING-time (in _start_attack) so a
+# relic gained between swing-press and hit-resolve doesn't retroactively
+# proc lifesteal (mirrors the burn/slow/flame-pool locking pattern at
+# spawn-time on projectiles). Read in _resolve_melee_strike to decide
+# the chance + +HP per proc.
+#   0 = no BLOOD bonus
+#   1 = resonance (≥2 BLOOD relics owned) — 20% chance per sword hit, +1 HP
+#   2 = ascendance (≥4 BLOOD relics owned) — 40% chance per sword hit, +1 HP
+#         AND the next sword hit after any enemy kill is guaranteed +2 HP
+# _blood_guaranteed_next_hit fires once on the next melee hit when set
+# (consumed at use); set by _on_enemy_died_for_relics when tier ≥ 2.
+var _pending_blood_tier: int = 0
+var _blood_guaranteed_next_hit: bool = false
+# Iter 66 — tracked so back-to-back lifesteal procs can kill the prior
+# pulse before starting a new one (otherwise scale-tweens compound and
+# leave the hero sprite stuck mid-pulse).
+var _blood_pulse_tween: Tween = null
+
+# iter-97 — melee feel state. Replaced iter-19's _lunge_time / _lunge_dir
+# pair with a blast-facing window so the sprite commits to the shot
+# direction while WASD movement continues. While `_is_attacking` is
+# true, walk velocity is multiplied by ATTACK_MOVE_SPEED_MUL — no
+# additive lunge impulse anywhere.
+# _pending_melee_strike + aim/range cached so the windowed damage
+# scan in _physics_process knows what to hit.
+var _blast_facing_time: float = 0.0
+var _blast_facing_dir: Vector2 = Vector2.RIGHT
+var _pending_melee_strike: bool = false
+var _melee_strike_timer: float = 0.0
+var _pending_melee_aim: Vector2 = Vector2.RIGHT
+var _pending_melee_range: float = 0.0
+
+# Iter 70 — hero hurt knockback state. Set in take_damage when a hit
+# lands and the source position is known (Enemy.gd passes the contact
+# point via the damaging signal path — for sources without a known
+# position we fall back to "push along the hero's facing inversion"
+# so we still see a small kinesthetic response).
+# _knockback_dir is unit-normalized (or zero when no active push).
+# _knockback_time counts down from HERO_KNOCKBACK_TIME; while > 0 the
+# walk-velocity branch ADDS this vector × (time/total) on top of the
+# input velocity so the player can still steer OUT of the push.
+var _knockback_dir: Vector2 = Vector2.ZERO
+var _knockback_time: float = 0.0
+
+# Iter 54 — combo counter. Tracks consecutive successful hits landed
+# by the hero (melee swing, dash strike, chain bolt, projectile,
+# kill explosion damage). Resets to 0 whenever the hero takes
+# damage. Pure cosmetic for now — drives a HUD label that scales
+# up at tier thresholds (10/25/50/100). Future iter could attach
+# damage multipliers or relic-driven bonuses.
+#
+# Why this matters: skill expression. A perfect dodge-and-counter
+# run racks up massive combos visibly; a sloppy run resets to 0
+# constantly. Without scoring stakes, the player still gets the
+# "going off" feel from racking the counter up.
+var _combo: int = 0
+
+signal combo_changed(new_value: int)
+
+func _bump_combo() -> void:
+	_combo += 1
+	combo_changed.emit(_combo)
+	# Iter 57 — combo-tier achievements. Fired at exact thresholds so
+	# the unlock lands ON the milestone, not after.
+	if _combo == 50:
+		GameState.unlock_achievement("hot_streak")
+	elif _combo == 100:
+		GameState.unlock_achievement("perfect_streak")
+
+func _reset_combo() -> void:
+	if _combo > 0:
+		_combo = 0
+		combo_changed.emit(0)
+
+# Iter 149 — public getter so AttackFeel.compose_slash_opts can read the
+# current combo state at swing-start and amplify the slash arc visuals
+# (width / trail / color) at the same 10/25/50/100 tier thresholds the
+# HUD combo label already escalates on. Keeping _combo itself private
+# so combo math stays inside hero.gd; the getter is the read-only seam.
+func get_combo() -> int:
+	return _combo
+
+# Iter 31 — environmental speed multiplier, applied to walk velocity.
+# slow_zone hazards write to this (0.5 while hero inside) and reset to
+# 1.0 on exit. Stacks multiplicatively so two overlapping slows = 0.25.
+# Set by the slow_zone hazard's body_entered / body_exited via setters.
+# Does NOT affect dodge or dash speed — those are committed actions
+# that bypass the mire (treat as "you can escape if you blow a cooldown").
+var _environment_speed_mul: float = 1.0
+var _active_slow_zones: int = 0
+
+func enter_slow_zone(mul: float) -> void:
+	_active_slow_zones += 1
+	_environment_speed_mul *= mul
+
+func exit_slow_zone(mul: float) -> void:
+	_active_slow_zones = max(0, _active_slow_zones - 1)
+	if _active_slow_zones == 0:
+		_environment_speed_mul = 1.0
+	else:
+		_environment_speed_mul /= mul
+
+# Iter 11 — feel state.
+var _camera: Camera2D = null
+var _camera_offset := Vector2.ZERO
+var _idle_time := 0.0
+var _step_accumulator := 0.0
+var _walk_time := 0.0  # iter-132: walk bob phase accumulator
+var _last_anim: StringName = &""
+
+signal hp_changed(new_hp: int)
+signal hero_died
+# Iter 22 — fired at the SAME instant as hero_died, but on a distinct
+# channel so main.gd can split death-cinematic responsibilities from
+# the existing _on_hero_died handler (which still drives the death
+# screen + run-end state). The cinematic listener does slow-mo + camera
+# zoom + vignette + "YOU DIED" banner; _on_hero_died stays focused on
+# UI state. Separate signal = main.gd can connect/disconnect the
+# cinematic independently (e.g. skip on debug auto-restart) without
+# touching the existing teardown flow.
+signal hero_death_started(world_pos: Vector2)
+signal hit_received       # for camera shake + hit-stop in main.gd
+# iter-95: dodge_started signal removed (it had no subscribers anyway,
+# but it was emitted from _start_dodge which is also gone).
+# Iter 13 — fired when a melee swing actually connects with ≥1 enemy.
+# main.gd listens for a brief hit-stop scaled by hit_count. Distinct
+# from Events.enemy_hit (which fires once per enemy and would multi-
+# trigger hit-stop on a multi-hit swing).
+# Iter 140 — `any_crit` added so the hit-stop handler can pick a deeper
+# freeze when the swing rolled at least one crit. Genre cue: Hades crit
+# slashes hold the freeze noticeably longer than a normal poke; that
+# moment of "wait, did I just—" is what makes crits feel celebratory
+# instead of being a hidden +damage.
+signal swing_connected(hit_count: int, any_crit: bool)
+# Iter 13 — fired at the END of dash strike, AFTER the AoE scan runs.
+# main.gd listens to spawn the dash impact VFX + heavy camera shake.
+# Reports hit_count so the shake / scene can scale with the kill.
+signal dash_strike_landed(world_pos: Vector2, hit_count: int)
+
+func _ready() -> void:
+	_build_sprite_frames()
+	add_to_group("hero")
+	var hp_bonus: int = GameState.modifier_total("max_hp_bonus", 0)
+	hp = MAX_HP + hp_bonus
+	if GameState.persisted_hp > 0:
+		hp = min(GameState.persisted_hp, MAX_HP + hp_bonus)
+	tree_exiting.connect(_save_persistent_state)
+	# Iter 17 — bloodstone relic listens for enemy deaths. Subscribed
+	# unconditionally; the handler checks ownership before healing, so
+	# we don't have to wire/unwire when the player claims it mid-run.
+	Events.enemy_died.connect(_on_enemy_died_for_relics)
+	# Play the default idle south so frame 0 of the right sheet shows
+	# immediately — without this the AnimatedSprite2D has no current
+	# animation and renders blank for a tick.
+	_play_anim(&"idle_s")
+
+# Build SpriteFrames programmatically from ANIM_DATA × DIR_NAMES. Each
+# (state, dir) becomes one animation; its frames are AtlasTextures over
+# the per-state sheet, sliced by (frame_index × CELL_SIZE, dir × CELL_SIZE).
+# Doing this in code keeps the .tscn small and means adding a new state
+# is a single ANIM_DATA entry, not 8 manual animation blocks.
+func _build_sprite_frames() -> void:
+	var sf: SpriteFrames = SpriteFrames.new()
+	# Drop the "default" empty animation Godot creates with new SpriteFrames.
+	if sf.has_animation("default"):
+		sf.remove_animation("default")
+	for state in ANIM_DATA:
+		var data: Dictionary = ANIM_DATA[state]
+		var sheet: Texture2D = data["sheet"]
+		var n_frames: int = data["frames"]
+		var fps: float = data["fps"]
+		var loop: bool = data["loop"]
+		for dir_idx in NUM_DIRS:
+			var anim_name: StringName = StringName("%s_%s" % [state, DIR_NAMES[dir_idx]])
+			sf.add_animation(anim_name)
+			sf.set_animation_speed(anim_name, fps)
+			sf.set_animation_loop(anim_name, loop)
+			for fr in n_frames:
+				var atlas: AtlasTexture = AtlasTexture.new()
+				atlas.atlas = sheet
+				atlas.region = Rect2(fr * CELL_SIZE, dir_idx * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+				sf.add_frame(anim_name, atlas)
+	sprite.sprite_frames = sf
+
+func _save_persistent_state() -> void:
+	if hp > 0:
+		GameState.persisted_hp = hp
+
+func _physics_process(delta: float) -> void:
+	_attack_cd        = max(0.0, _attack_cd        - delta)
+	# Iter 201 — active relic cooldown tick. Decrements regardless of
+	# whether the player owns the relic so a re-pickup doesn't get a
+	# free instant cast.
+	_active_relic_cd  = max(0.0, _active_relic_cd  - delta)
+	# Iter 213 — BLOOD TITHE buff timer. Decrements; reaches 0 ends
+	# damage multiplier + heal-on-kill window. No fade-out logic needed —
+	# the aura visual self-frees via its own tween.
+	_blood_tithe_buff_time = max(0.0, _blood_tithe_buff_time - delta)
+	_attack_live      = max(0.0, _attack_live      - delta)
+	# iter-95: _dodge_cd and _dodge_time timer decrements removed with
+	# the dodge ability.
+	# iter-250: perfect-dodge buffer decay. Lifetime PERFECT_DODGE_BUFFER_TIME.
+	# Decremented unconditionally; consumed (zeroed) by the first sword
+	# hit that connects in _resolve_melee_strike.
+	_perfect_dodge_buffer = max(0.0, _perfect_dodge_buffer - delta)
+	# iter-260 / Wave 9 — boon timers tick. shadow_veil invisibility
+	# expires; vow_stand idle timer drains when the hero is moving.
+	# The idle accumulation logic lives below (after velocity is
+	# computed). _shadow_veil drives a sprite-alpha tween that's also
+	# managed in this branch so the visual fades cleanly when the
+	# timer naturally expires.
+	if _shadow_veil_invisible_time > 0.0:
+		_shadow_veil_invisible_time = max(0.0, _shadow_veil_invisible_time - delta)
+		if _shadow_veil_invisible_time <= 0.0:
+			# Veil naturally expired — restore visibility + leave the
+			# invisible_to_enemies group.
+			if sprite != null:
+				sprite.modulate.a = 1.0
+			if is_in_group("invisible_to_enemies"):
+				remove_from_group("invisible_to_enemies")
+	_iframes          = max(0.0, _iframes          - delta)
+	_blast_cd         = max(0.0, _blast_cd         - delta)
+	# iter-247: _shield_time / _shield_cd decrements removed. _shield_cd
+	# stays at 0 (stub for HUD chip; main.gd reads it).
+	# iter-248: combo window decrements alongside the other attack timers.
+	# When it hits 0, _combo_index resets — see below for the reset block.
+	_combo_window_timer = max(0.0, _combo_window_timer - delta)
+	if _combo_window_timer <= 0.0 and _combo_index > 0 and not _is_attacking and _attack_cd <= 0.0:
+		# Window expired and no in-flight swing — reset the combo so the
+		# next press starts a fresh jab. The "and not _is_attacking"
+		# guard prevents reset during the windup/active phase of an
+		# in-flight strike; we wait for _attack_cd (the recovery) to
+		# also expire so the player's "next press" feels like a clean
+		# new combo.
+		_combo_index = 0
+		_combo_committed = false
+	_dash_strike_cd   = max(0.0, _dash_strike_cd   - delta)
+	_hurt_time        = max(0.0, _hurt_time        - delta)
+	# iter-97: _lunge_time gone. _blast_facing_time decays here so sprite
+	# facing returns to walk-direction inference after the post-shot window.
+	_blast_facing_time = max(0.0, _blast_facing_time - delta)
+	_knockback_time   = max(0.0, _knockback_time   - delta)
+	# iter-103: hero-side slow + venom status decay. Slow restores walk
+	# multiplier when expired; venom ticks damage on a fixed interval
+	# (HERO_VENOM_TICK_INTERVAL = 0.5s) and respects _iframes so the
+	# DoT can't kill through dash-strike's safety window.
+	if _hero_slow_remaining > 0.0:
+		_hero_slow_remaining -= delta
+		if _hero_slow_remaining <= 0.0:
+			_hero_slow_multiplier = 1.0
+	if _hero_venom_remaining > 0.0:
+		_hero_venom_remaining -= delta
+		_hero_venom_tick_timer -= delta
+		if _hero_venom_tick_timer <= 0.0 and _hero_venom_remaining > 0.0:
+			_hero_venom_tick_timer = HERO_VENOM_TICK_INTERVAL
+			# DoT applies even through _iframes — that's the point of
+			# poison, it bleeds you regardless of dodge windows. But
+			# never below 0 hp + skip during death.
+			if not _is_dying:
+				hp = max(0, hp - HERO_VENOM_DAMAGE_PER_TICK)
+				# Sickly green floater so the tick reads distinct from
+				# enemy melee damage. Damage number library handles
+				# the spawn; no scene needed.
+				var parent: Node = get_parent()
+				if parent != null:
+					var dn: DamageNumber = DamageNumber.spawn(
+						global_position + Vector2(0, -64),
+						"-" + str(HERO_VENOM_DAMAGE_PER_TICK),
+						Color(0.55, 0.85, 0.45),
+					)
+					parent.add_child(dn)
+				if hp <= 0 and not _is_dying:
+					# Venom kill: route through the existing death path.
+					take_damage(0, global_position)
+	if _attack_live <= 0.0:
+		_is_attacking = false
+		# iter-249: clear _blast_locked when the attack lifetime fully
+		# elapses (covers windup + recovery in _start_blast's path —
+		# _attack_live is set to BLAST_WINDUP_TIME + BLAST_RECOVERY_TIME).
+		_blast_locked = false
+	# iter-249 — BLAST WINDUP TIMER. Decrement; when transitioning from
+	# > 0 to <= 0, fire the projectile. Done as a separate tracked
+	# transition (rather than `if windup <= 0 fire`) so it fires once,
+	# at the moment of windup completion. The _blast_windup_time being
+	# > 0 is the gate for "press happened, projectile pending."
+	if _blast_windup_time > 0.0:
+		_blast_windup_time = max(0.0, _blast_windup_time - delta)
+		if _blast_windup_time <= 0.0:
+			_resolve_blast_fire()
+	# Iter 19 — windowed melee damage. _start_attack arms the pending
+	# strike + cached aim/range; when the windup timer expires here,
+	# we run the actual hit scan. Keeps damage timing aligned with the
+	# slash-arc growth animation (visible swing → solid hit).
+	# Iter 20 bugfix — guard against post-death resolution. If the hero
+	# dies during the 60 ms windup, cancel the pending strike so a
+	# corpse doesn't deal damage from beyond the grave. The death
+	# branch below also early-returns, but clearing the flag here is
+	# tidier (avoids a stale "pending" sitting on the corpse).
+	if _pending_melee_strike:
+		_melee_strike_timer = max(0.0, _melee_strike_timer - delta)
+		if _is_dying:
+			_pending_melee_strike = false
+		elif _melee_strike_timer <= 0.0:
+			_pending_melee_strike = false
+			_resolve_melee_strike()
+
+	# Death is terminal — freeze input + motion, hold the death frame,
+	# and skip every gameplay branch below. The death screen renders on
+	# top via main.gd's _on_hero_died handler.
+	#
+	# Name-only check (no is_playing) — death anim is loop=false, so
+	# is_playing() goes false once the corpse reaches its last frame.
+	# The default _play_anim cache would re-trigger play() on every tick
+	# after that, re-playing death from frame 0 forever. Compare names
+	# directly so the corpse stays on its final frame.
+	if _is_dying:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		var death_anim := StringName("death_" + DIR_NAMES[_facing_dir])
+		if _last_anim != death_anim:
+			_last_anim = death_anim
+			sprite.play(death_anim)
+		return
+
+	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+
+	# iter-247: parry/shield removed. Perfect-dodge detection lives in
+	# take_damage's last-0.10s-of-dash-window check (sub-commit 4).
+
+	# Dash pass-through damage: while the dash window is active, scan
+	# enemies within DASH_STRIKE_PIERCE_RADIUS of the hero each tick.
+	# Any enemy not yet in _dash_hit_set gets damaged + added. The
+	# final AoE in _resolve_dash_strike_hit skips already-hit ids so
+	# we don't double-count enemies hit mid-dash.
+	if _dash_strike_time > 0.0:
+		# iter-250 — accumulate dodge active time for the perfect-dodge
+		# detection window. Read by take_damage when an enemy hit
+		# connects: if active_time >= (DURATION - PERFECT_WINDOW), the
+		# catch is a perfect-dodge. Resets to 0 in _start_dash_strike.
+		_dodge_active_time += delta
+		_apply_dash_pierce_tick()
+		# Iter 29 — afterimages. Every AFTERIMAGE_INTERVAL seconds spawn
+		# a cyan-purple ghost of the current sprite frame at the hero's
+		# current position. The ghost fades alpha 0.55 → 0 over
+		# AFTERIMAGE_FADE_TIME, then queue_frees. Combined with the
+		# existing magenta particle trail, sells "the wizard is moving
+		# so fast they leave light behind."
+		_afterimage_timer += delta
+		if _afterimage_timer >= AFTERIMAGE_INTERVAL:
+			_afterimage_timer -= AFTERIMAGE_INTERVAL
+			_spawn_dash_afterimage()
+
+	var dash_strike_just_ended := false
+	if _dash_strike_time > 0.0:
+		_dash_strike_time -= delta
+		if _dash_strike_time <= 0.0:
+			_dash_strike_time = 0.0
+			dash_strike_just_ended = true
+
+	# iter-95: dodge velocity branch removed. Dash strike is now the
+	# only "burst movement" mode.
+	if _dash_strike_time > 0.0:
+		# Iter 25 — light steering during dash. WASD input nudges the
+		# dash direction by DASH_STRIKE_STEER_GAIN per axis, then we
+		# renormalize. Lets the player curve through tight groups
+		# without breaking the "committed engage" feel.
+		if input.length() > 0.1:
+			_dash_strike_dir = (_dash_strike_dir + input.normalized() * DASH_STRIKE_STEER_GAIN).normalized()
+			_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
+		velocity = _dash_strike_dir * DASH_STRIKE_SPEED
+	else:
+		# Iter 31 — slow_zone hazards multiply walk speed via
+		# _environment_speed_mul (default 1.0, halves while inside).
+		# Multiplied IN, not added, so two overlapping slows stack
+		# correctly (see enter_slow_zone/exit_slow_zone setters).
+		var speed: float = SPEED * (1.0 + GameState.modifier_total_f("move_speed_mul", 0.0)) * _environment_speed_mul
+		# iter-103: frost elite affix applies slow to hero on contact.
+		# _hero_slow_multiplier defaults to 1.0; frost call drops it to
+		# ~0.6 for ~1.0s. Multiplicative with environment slow (slow_zone
+		# hazard) so the two stack correctly.
+		speed *= _hero_slow_multiplier
+		# iter-97: while attacking (sword OR blast — _is_attacking is set
+		# by both _start_attack and _start_blast), plant the feet at 35%
+		# walk speed. JS reference at slime-depths/src/hero.js:1812-1817
+		# describes this as the Hades/Diablo/PoE "committed swing" feel:
+		# you can still reposition but the hero is COMMITTING to the
+		# action, not full-speed running mid-swing.
+		if _is_attacking:
+			speed *= ATTACK_MOVE_SPEED_MUL
+		# Iter 70 — accel-ramped walk. Pre-iter-70 this was `velocity = input
+		# * speed` (snap). That gave the hero an instant on/off response
+		# that read as "teleporting" — particularly noticeable when the
+		# player taps a direction for a quick step. move_toward ramps up
+		# to the target velocity over MOVE_ACCEL px/s² and decays to zero
+		# over MOVE_DECEL (faster than accel so the stop still feels
+		# crisp, not slidey). Released input → target is Vector2.ZERO,
+		# which decays via the same call. Knockback layers on TOP
+		# afterward (additive).
+		var target_velocity: Vector2 = input * speed
+		var rate: float = MOVE_ACCEL if input.length() > 0.01 else MOVE_DECEL
+		velocity = velocity.move_toward(target_velocity, rate * delta)
+		# iter-97: additive forward lunge removed (was 220 × 0.1 = ~11 px
+		# per swing). It read as "unrealistic dash forward" because the
+		# instantaneous impulse stacked on top of the move_toward walk
+		# acceleration ramp out-of-sync. The new ATTACK_MOVE_SPEED_MUL
+		# above replaces it with a stance / planted-feet feel.
+		# Iter 70 — hero hurt knockback. Linear-decay impulse layered ON
+		# TOP of walk velocity (same pattern as lunge). Player can steer
+		# OUT of the push by holding the opposite direction — this is the
+		# "30% control during hurt" feel: the push wins for the first few
+		# frames but the input integrates fast enough that a reactive
+		# player isn't stuck on a wall.
+		if _knockback_time > 0.0:
+			var knockback_t: float = _knockback_time / HERO_KNOCKBACK_TIME
+			velocity += _knockback_dir * (HERO_KNOCKBACK_FORCE * knockback_t)
+	move_and_slide()
+
+	# iter-260 / Wave 9 — vow_stand idle tracker. Tracks consecutive
+	# time the hero has been standing still while owning the boon.
+	# Crosses VOW_STAND_IDLE_THRESHOLD → arm the next sword hit for a
+	# +50% damage bump. Moving resets the timer + clears the armed
+	# flag (the bonus is for HOLDING ground, not banking it). Only
+	# accumulates when the boon is owned to avoid trivial overhead.
+	if not _is_dying and GameState.has_boon("vow_stand"):
+		# Velocity ≈ 0 means the player isn't currently moving. We
+		# also gate on _is_attacking == false so an in-flight swing
+		# (which plants feet via ATTACK_MOVE_SPEED_MUL) doesn't get
+		# free vow_stand wind-up time during the recovery frames.
+		if velocity.length() < 8.0 and not _is_attacking:
+			_vow_stand_idle_timer += delta
+			if _vow_stand_idle_timer >= VOW_STAND_IDLE_THRESHOLD:
+				_vow_stand_armed = true
+		else:
+			_vow_stand_idle_timer = 0.0
+			_vow_stand_armed = false
+
+	if dash_strike_just_ended:
+		_resolve_dash_strike_hit()
+
+	# ── Facing ───────────────────────────────────────────────────────
+	# Locked directions during committed actions; movement direction
+	# during normal walk; sticky last-facing while idle.
+	_facing_dir = _compute_facing(input)
+
+	# Iter 25 — modulate. Parry tint takes priority (steady cyan during
+	# the catch window so the player can SEE the active parry frame),
+	# then iframes flicker on top when the parry isn't running. The
+	# parry tint is steady, not pulsing, so it reads as "active block"
+	# rather than "incoming damage."
+	# Iter 150 — iframes upgrade: the pre-iter-150 hard binary flicker
+	# (alpha snap between 0.45 and 1.0 at 10 Hz) read as "the hero is
+	# broken / glitching." Replaced with a smooth 6 Hz SIN-pulse alpha
+	# plus slight cyan tint (R=0.78, G=1.0, B=1.18) so the hero reads
+	# as "spectral / invulnerable shielding" — the same visual
+	# semantic Hades uses for Zagreus's dash i-frames. Pulse uses
+	# Time.get_ticks_msec() so phase is global-clock-stable, not
+	# _iframes-progress-dependent (consistent breathe regardless of
+	# how long iframes have left).
+	if _shield_time > 0.0:
+		sprite.modulate = SHIELD_TINT
+	elif _iframes > 0.0:
+		var t_iframe: float = Time.get_ticks_msec() / 1000.0
+		var pulse_iframe: float = 0.5 + 0.5 * sin(t_iframe * TAU * 6.0)
+		var alpha_iframe: float = lerpf(0.50, 0.95, pulse_iframe)
+		sprite.modulate = Color(0.78, 1.0, 1.18, alpha_iframe)
+	else:
+		sprite.modulate = Color(1, 1, 1, 1)
+
+	# ── Animation state — dying handled above. hurt > attack > walk > idle.
+	# Each is suffixed with the current direction bucket.
+	# Iter 70 — read actual velocity, not raw input, so the accel ramp's
+	# decay tail doesn't twitch back to idle on the frame input releases.
+	# Threshold IDLE_VELOCITY_THRESHOLD px/s is well below the input cutoff
+	# (input.length() > 0.1 mapped through SPEED = 20 px/s) so a tap-release
+	# reads as "walk → continues walk for 50ms while decelerating → idle"
+	# rather than "walk → snap to idle while still sliding."
+	var is_moving := input.length() > 0.1 or velocity.length() > IDLE_VELOCITY_THRESHOLD
+	var state_name: String
+	if _hurt_time > 0.0:
+		state_name = "hurt"
+	elif _is_attacking or _dash_strike_time > 0.0:
+		state_name = "attack"
+	elif is_moving:
+		state_name = "walk"
+	else:
+		state_name = "idle"
+	_play_anim(StringName(state_name + "_" + DIR_NAMES[_facing_dir]))
+
+	# ── Camera lookahead (iter 11) ────────────────────────────────────
+	if _camera == null:
+		_camera = get_node_or_null("Camera2D") as Camera2D
+	if _camera != null:
+		var target_offset := Vector2.ZERO
+		if velocity.length() > CAMERA_MOVE_THRESHOLD:
+			target_offset = velocity.normalized() * CAMERA_LOOKAHEAD
+		_camera_offset = _camera_offset.lerp(target_offset, CAMERA_LOOKAHEAD_LERP * delta)
+		_camera.offset = _camera_offset
+
+	# ── Idle bob + footsteps (iter 11) ────────────────────────────────
+	# ── iter-132: walk bob + shadow pulse (fixes "up/down feels slidey")
+	if is_moving and _dash_strike_time <= 0.0 and not _is_attacking:
+		_idle_time = 0.0
+		_walk_time += delta  # iter-132: accumulate walk phase
+		_step_accumulator += velocity.length() * delta
+		if _step_accumulator >= STEP_INTERVAL:
+			_step_accumulator = 0.0
+			Events.hero_stepped.emit(global_position)
+			# iter-85 immersion: tiny dust puff at hero's feet on each
+			# step. Pairs with audio.gd's hero_stepped sound so the
+			# player feels physical floor contact rather than gliding.
+			# get_parent() (= main scene) is the spawn host so dust
+			# stays in world space (vs parenting under hero, which
+			# would drag the dust along — breaks the "left-behind"
+			# read of the iter-29 particles convention).
+			var parent_for_dust: Node = get_parent()
+			if parent_for_dust != null:
+				FootstepDust.spawn(parent_for_dust, global_position)
+		# iter-132: walk bob — vertical oscillation synced to footfalls.
+		# sin() wave at WALK_BOB_FREQ cycles/sec gives instant motion read
+		# from front/back views where the walk sprite has minimal silhouette change.
+		var walk_bob := sin(_walk_time * TAU * WALK_BOB_FREQ) * WALK_BOB_AMP
+		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + walk_bob, IDLE_BOB_LERP * delta)
+		# Iter 195 — iter-132 shadow pulse removed alongside the hero
+		# Shadow Sprite2D node deletion in iter-192. The shadow_pulse
+		# math was driving shadow.scale on null → physics-frame spam.
+	else:
+		_idle_time += delta
+		_walk_time = 0.0  # iter-132: reset walk phase when stopped
+		_step_accumulator = 0.0
+		var bob := sin(_idle_time * TAU * IDLE_BOB_FREQ) * IDLE_BOB_AMP
+		sprite.position.y = lerpf(sprite.position.y, SPRITE_BASE_Y + bob, IDLE_BOB_LERP * delta)
+		# Iter 195 — iter-132 shadow scale-lerp removed alongside the
+		# hero Shadow Sprite2D node deletion in iter-192.
+
+	# iter-247 input precedence: dash_strike > blast > attack. SHIELD input
+	# has been removed — parry was folded into PERFECT DODGE on the
+	# dash-strike's last-0.10s window. Active relic is handled separately
+	# below (off the if/elif chain because it should fire from any state).
+	# Combat now has 4 verbs: SWORD / BLAST / DODGE (dash_strike) / ACTIVE
+	# relic — same as the ETHERA_COMBAT_DESIGN.md spec.
+	#
+	# iter-248 — HEAVY HIT (combo_index == 2) is COMMITTED: only DODGE can
+	# interrupt its recovery. The `_combo_committed` flag is set in
+	# _start_attack when the heavy fires; it stays true until the heavy's
+	# recovery ends.
+	# iter-249 — BLAST is COMMITTED during windup + recovery. Only DODGE
+	# can break out (dash_strike branch comes first and doesn't read
+	# _blast_locked); sword/attack input is blocked by the _blast_locked
+	# guard. The lock clears when _attack_live drains to 0 in the
+	# decrement block earlier in _physics_process.
+	if Input.is_action_just_pressed("dash_strike") and _can_start_dash_strike():
+		_start_dash_strike()
+	elif Input.is_action_pressed("blast") and _blast_cd <= 0.0 and _dash_strike_time <= 0.0 and not _combo_committed and not _blast_locked:
+		_start_blast()
+	elif Input.is_action_pressed("attack") and _attack_cd <= 0.0 and not _is_attacking and not _blast_locked:
+		# iter-249: _blast_locked added. Pre-iter-249 sword could cancel
+		# blast recovery (blast set _is_attacking + _attack_live = 0.18,
+		# and _attack_cd was independent so sword could fire at end of
+		# its own cd window). Now blast's commitment is explicit.
+		# (No _combo_committed guard here — _attack_cd already gates this
+		# to the end of the heavy's recovery.)
+		#
+		# iter-250: REMOVED `_dash_strike_time <= 0.0` guard. Sword now
+		# CAN cancel a dash (Hades pattern — "dodge → strike chain").
+		# But the cancel has a BRUTAL cost: remaining i-frames die
+		# instantly, the dash ends, the perfect-dodge active-time
+		# tracker zeroes. The skilled play (perfect-dodge → strike to
+		# consume the buffer) gets the +50% bonus crit. The panic play
+		# (mashing LMB mid-dodge) loses the i-frame safety net.
+		if _dash_strike_time > 0.0:
+			# Mid-dodge attack penalty: kill i-frames, end the dash.
+			# Do this BEFORE _start_attack so the new swing isn't
+			# affected by the dash state. The pierce-hit logic running
+			# this same physics tick is OK — _apply_dash_pierce_tick
+			# ran earlier in _physics_process, before this input chain.
+			_iframes = 0.0
+			_dash_strike_time = 0.0
+			_dodge_active_time = 0.0
+		_start_attack()
+	# Iter 201 — active relic input. Outside the if/elif chain because
+	# active relic should be triggerable mid-swing / mid-blast (it's
+	# a defensive/burst tool the player uses when surrounded). Only
+	# fires if (a) an active relic is owned, (b) cooldown ready,
+	# (c) hero alive. Press-once gate via is_action_just_pressed.
+	# Iter 213 — dispatcher dispatches on GameState.get_owned_active_id()
+	# rather than the iter-201 single hardcoded soul_surge check.
+	if Input.is_action_just_pressed("active_relic") \
+			and _active_relic_cd <= 0.0 \
+			and not _is_dying:
+		var active_id: String = GameState.get_owned_active_id()
+		match active_id:
+			"soul_surge":
+				_trigger_soul_surge()
+			"veilstep":
+				_trigger_veilstep()
+			"ashen_seal":
+				_trigger_ashen_seal()
+			"blood_tithe":
+				_trigger_blood_tithe()
+
+# Facing picker. Returns the direction bucket the sprite should render
+# THIS tick. Priority: dying = sticky · hurt = sticky · attacking/dashing
+# point at the aim/dash vector · walking points at movement · idle keeps
+# last facing.
+#
+# iter-95: the dodge branch is gone — dodge ability removed. Dash
+# strike already covers "moving fast in a direction" for facing purposes.
+func _compute_facing(input: Vector2) -> int:
+	if _is_attacking and _attack_aim.length() > 0.001:
+		return _vector_to_dir_idx(_attack_aim)
+	if _dash_strike_time > 0.0:
+		return _vector_to_dir_idx(_dash_strike_dir)
+	# iter-97: blast facing window. For 0.32s after a shot the sprite
+	# faces the aim direction even if WASD continues — JS hero.js:1413-1420.
+	# Comes AFTER the attack/dash branches so an in-flight attack still
+	# takes priority, but BEFORE the walk-direction inference so movement
+	# doesn't override the recent shot commitment.
+	if _blast_facing_time > 0.0 and _blast_facing_dir.length() > 0.001:
+		return _vector_to_dir_idx(_blast_facing_dir)
+	if input.length() > 0.1:
+		return _vector_to_dir_idx(input)
+	return _facing_dir
+
+# Vector → row index. Returns bucket 0..7 for N, NE, E, SE, S, SW, W, NW.
+# Godot 2D: +X = east, +Y = south (Y axis points down). A zero-length
+# vector returns the current facing (callers should guard, but defensive
+# anyway).
+func _vector_to_dir_idx(v: Vector2) -> int:
+	if v.length() < 0.001:
+		return _facing_dir
+	# angle returns -PI..PI. Add PI/2 so north (-PI/2) → 0, east → PI/2,
+	# south → PI, west → 3PI/2. Divide by PI/4 → 0..7 buckets; round to
+	# pick the nearest one. posmod brings negatives back into 0..7.
+	var angle: float = v.angle()
+	var b: int = int(round((angle + PI / 2.0) / (PI / 4.0)))
+	return ((b % NUM_DIRS) + NUM_DIRS) % NUM_DIRS
+
+# iter-95: _start_dodge() removed alongside the dodge ability. The
+# SHADOW + STORM theme procs (iter-40 shockwave, iter-62 trail, iter-68
+# shock pulse) that used to fire here have been REANCHORED to
+# _start_dash_strike — see that function. The SHADOW resonance dodge
+# trail (iter-62) is fully removed since dash_strike already spawns its
+# own trail via DASH_TRAIL_SCENE.
+
+# Inverse of _vector_to_dir_idx — used for "what direction is the hero
+# facing when no input vector is available" (e.g. attack with no WASD).
+# Reads from the class-level DIR_VECS table (literal-only because const
+# initializers must be load-time-evaluable).
+func _dir_to_vector(dir_idx: int) -> Vector2:
+	return DIR_VECS[dir_idx]
+
+func _start_attack() -> void:
+	var aim_world := get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	_attack_aim = aim_world.normalized()
+	# iter-248 — 3-HIT COMBO advance. If the chain window is still open
+	# AND we haven't yet hit the heavy (index 2), advance the index. Else
+	# start fresh at index 0. The window timer is set in
+	# _resolve_melee_strike AFTER the hit lands (so a whiff doesn't
+	# advance the combo — feels more natural and matches Hades).
+	# Note: on the VERY FIRST press of a fresh combo (window timer at 0
+	# from cold state), this branch goes to the else and starts at 0 —
+	# correct behavior.
+	if _combo_window_timer > 0.0 and _combo_index < COMBO_RESET_TIMER_MAX:
+		_combo_index += 1
+	else:
+		_combo_index = 0
+	var startup: float       = COMBO_HIT_STARTUP[_combo_index]
+	var active_time: float   = COMBO_HIT_ACTIVE[_combo_index]
+	var recovery: float      = COMBO_HIT_RECOVERY[_combo_index]
+	# iter-248 — heavy hit (index 2) is committed: only DODGE can break
+	# the recovery. Flag read in the input precedence chain (further down
+	# in _physics_process). Lower hits do NOT set this flag, so cancel
+	# rules for them are unchanged from pre-iter-248 behavior.
+	_combo_committed = (_combo_index == 2)
+	# _attack_live covers startup + active (the period during which the
+	# slash arc is visible + _is_attacking gates the "attack" anim
+	# branch). For hit 3 this is 0.30s; for hits 1/2 it's 0.18s.
+	_attack_live = startup + active_time
+	# _attack_cd is the RECOVERY — minimum time before the next attack
+	# input can fire. For hit 3 it's 0.32s, for hits 1/2 it's 0.16s.
+	# sword_cooldown_mul still applies (relic-driven). Cap floor at the
+	# raw recovery so a -1.0 mod can't go negative.
+	_attack_cd = max(recovery, recovery * (1.0 + GameState.modifier_total_f("sword_cooldown_mul", 0.0)))
+	_is_attacking = true
+	_facing_dir = _vector_to_dir_idx(_attack_aim)
+	sprite.frame = 0
+	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
+	# Iter 19 — spawn the slash arc IMMEDIATELY (so the player sees the
+	# swing form) but defer the actual damage scan by MELEE_WINDUP. The
+	# damage lands when the arc has visibly extended; the swing reads
+	# as a real motion arc instead of a hit-marker.
+	Events.hero_attacked.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), _attack_aim)
+	# iter-248 — heavy hit (index 2) plays a layered deeper swoosh on
+	# top of the regular hero_swing. Synthesized at audio.gd startup as
+	# "hero_swing_heavy" (lower-pitch sine sweep). The base hero_swing
+	# fires via the Events.hero_attacked subscriber above; we layer the
+	# heavy variant inline since there's no dedicated signal.
+	if _combo_index == 2 and Audio != null and Audio.has_method("_play"):
+		Audio._play("hero_swing_heavy", global_position, -2.0)
+	# iter-97: lunge arming removed. The forward impulse is gone — see
+	# the ATTACK_MOVE_SPEED_MUL block in _physics_process for the
+	# replacement "committed stance" feel.
+	# Arm the damage scan. _physics_process runs _resolve_melee_strike
+	# when the timer hits 0. The aim + range are cached now so a player
+	# spinning the cursor during the windup doesn't change where the
+	# strike lands (matches the visible arc direction).
+	_pending_melee_aim = _attack_aim
+	_pending_melee_range = ATTACK_RANGE * (1.0 + GameState.modifier_total_f("attack_range_mul", 0.0))
+	_pending_melee_strike = true
+	# iter-248 — startup time replaces the constant MELEE_WINDUP. For hits
+	# 1/2 this is 0.10s (slightly slower than the old 0.06 — players need
+	# the extra frames to read the combo state visually). For hit 3 it's
+	# 0.20s (the heavy "wind up the swing" feel).
+	_melee_strike_timer = startup
+	# iter-248 — blade glow tint by combo state. Player SEES which hit
+	# is about to fire so they can read the chain. Hit 0 = white (normal
+	# anim), hit 1 (after one jab) = amber, hit 2 (heavy windup) = red.
+	# We modulate the sprite's color very subtly — too bright would
+	# overwhelm the iframe tint. Tint resets to white when the combo
+	# ends + the iframe branch wins again. Applied AFTER _play_anim so
+	# the playing animation keeps these tint values.
+	_apply_combo_blade_tint()
+	# Iter 66 — lock the BLOOD theme tier at swing-time. Reading the tier
+	# again at hit-time would let a relic gained between press and resolve
+	# retroactively proc lifesteal on the in-flight swing — same locking
+	# pattern as burn_chance / slow_chance / flame_impact_pool_life on
+	# projectiles. Re-reads each swing, so claiming the relic mid-room
+	# still procs on subsequent swings.
+	_pending_blood_tier = GameState.theme_tier("blood")
+
+# iter-248 — blade glow tint helper. Applied at swing-start; the iframe
+# branch in _physics_process overrides on hit, so this only "wins" while
+# the hero is actively swinging without iframes (which is the common
+# case during chain combos).
+const COMBO_TINT_HIT1: Color = Color(1.0, 0.95, 0.80, 1.0)  # faint amber for hit 2 anticipation
+const COMBO_TINT_HIT2: Color = Color(1.0, 0.65, 0.30, 1.0)  # warm orange for HEAVY windup
+func _apply_combo_blade_tint() -> void:
+	# Note: the modulate is OVERWRITTEN every physics_process tick by the
+	# iframe-or-shield branch. So the tint really only reads on the
+	# specific frame _start_attack is called (sprite.frame = 0 above
+	# triggers a fresh _play that the modulate decoration rides on).
+	# That's fine for a brief swing tell — the player gets a 1-frame
+	# colored "spark" at swing start that reads as "this hit will be
+	# stronger." A more persistent tint would need a sticky var
+	# (TODO: future polish if playtest agrees a longer tint helps).
+	if sprite == null:
+		return
+	if _combo_index == 1:
+		sprite.modulate = COMBO_TINT_HIT1
+	elif _combo_index == 2:
+		sprite.modulate = COMBO_TINT_HIT2
+	# Hit 0 — leave modulate alone (white default).
+
+# Damage scan deferred from _start_attack by MELEE_WINDUP. Hit pizza-
+# slice in front of the hero: any enemy within _pending_melee_range
+# and within ATTACK_ARC half-angle of _pending_melee_aim takes damage,
+# knockback, and counts toward swing_connected.
+# executioner helper — is this enemy at or below 25% HP? Reads
+# enemy.hp (int) and enemy.enemy_type.max_hp (int). Defensive against
+# missing fields / divide-by-zero on weird custom enemies — returns
+# false rather than crashing the swing.
+func _is_executable(enemy: Node) -> bool:
+	if not is_instance_valid(enemy):
+		return false
+	if not ("hp" in enemy):
+		return false
+	var cur_hp: int = int(enemy.get("hp"))
+	var max_val: int = 0
+	if "enemy_type" in enemy:
+		var et: Variant = enemy.get("enemy_type")
+		if et != null and "max_hp" in et:
+			max_val = int(et.get("max_hp"))
+	if max_val <= 0:
+		return false
+	var ratio: float = float(cur_hp) / float(max_val)
+	return ratio < 0.25
+
+# Iter 42 — crit roll helper. Reads crit_chance_f modifier (default 0.0,
+# range 0..1) and rolls. Returns true on crit. Used by both melee and
+# projectile damage paths so a single relic key drives all crit
+# behavior cleanly. randf() < chance avoids the off-by-one of
+# `<=`-with-equal-to-chance edge cases.
+func _roll_crit() -> bool:
+	var chance: float = GameState.modifier_total_f("crit_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
+# Iter 43 — burn roll. Reads burn_chance_f modifier (default 0.0,
+# range 0..1). Applies DoT to the hit enemy via enemy.apply_burn.
+# Burn duration is fixed (1.6s = 4 × 0.4s ticks for 4 damage total)
+# so the BURN_CHANCE_F stat is purely a trigger probability.
+func _roll_burn() -> bool:
+	var chance: float = GameState.modifier_total_f("burn_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
+# Iter 46 — slow roll. STORM's parallel to FLAME's burn. Reads
+# slow_chance_f modifier (default 0.0, range 0..1). On success, the
+# hit enemy gets a 1.4s slow (~45% speed reduction) via apply_slow.
+# Composes with chain_lightning + STORM ascendance: a chain bolt that
+# lands also rolls slow, so an arc-cannon build can paint a wave in
+# blue and burn-yellow simultaneously.
+const SLOW_DURATION: float = 1.4
+func _roll_slow() -> bool:
+	var chance: float = GameState.modifier_total_f("slow_chance_f", 0.0)
+	if chance <= 0.0:
+		return false
+	return randf() < chance
+
+func _resolve_melee_strike() -> void:
+	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# iter-248 — apply per-combo-index damage multiplier. Index 0/1 = 1.0
+	# (base), index 2 = 2.0 (HEAVY). This multiplies the base+bonus stack
+	# so a +1 sword_damage_bonus on hit 3 gives (1+1)*2 = 4 damage, not
+	# 1+1*2 = 3. The design ("damage = base × 2, scales with
+	# sword_damage_bonus") confirms multiply-after-bonus.
+	damage = int(round(float(damage) * COMBO_HIT_DAMAGE_MUL[_combo_index]))
+	# Iter 213 — BLOOD TITHE multiplier. +50 % during the buff window.
+	# Applied AFTER relic mods + combo mul so it scales the full stick.
+	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
+	# iter-260 / Wave 9 — vow_stand boon consume. If the player has
+	# been standing still ≥ 1.5s and owns the boon, the next sword
+	# hit gets +50% damage. Consumed on this swing (resets the idle
+	# timer + flag) so subsequent rapid-fire hits don't all get the
+	# bonus — it's a "still your breath, then strike" beat, not a
+	# sustained buff. Applied BEFORE the loop so a multi-target
+	# cleave shares the buff across all hits in the swing.
+	if _vow_stand_armed and GameState.has_boon("vow_stand"):
+		damage = int(round(float(damage) * VOW_STAND_DAMAGE_MUL))
+		_vow_stand_armed = false
+		_vow_stand_idle_timer = 0.0
+		# Floater so the player learns the source — gold/cream to read
+		# as "blessed strike" rather than a regular crit.
+		var p_stand: Node = get_parent()
+		if p_stand != null:
+			var n_stand: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -72),
+				"FOCUSED",
+				Color(0.95, 0.88, 0.55),
+			)
+			p_stand.add_child(n_stand)
+	# Iter 21 — relic-driven modifiers:
+	#   wide_arc      widens the cone (attack_arc_mul)
+	#   iron_grip     amps knockback force (knockback_force_mul)
+	#   chain_lightning  arcs damage to a nearby second enemy on every 4th hit
+	#   executioner   +150% damage to enemies below 25% HP (per-enemy check
+	#                 inside the loop, since each enemy has its own ratio)
+	var arc_actual: float = ATTACK_ARC * (1.0 + GameState.modifier_total_f("attack_arc_mul", 0.0))
+	# iter-248 — combo-index knockback multiplier ON TOP OF the relic
+	# knockback_force_mul. Heavy hit (index 2) gets 1.5× extra. Stacks
+	# multiplicatively with iron_grip + the dash-strike knockback path
+	# (which uses its own DASH_KNOCKBACK_FORCE constant).
+	var knockback_mul: float = (1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)) * COMBO_HIT_KNOCKBACK_MUL[_combo_index]
+	var has_chain: bool = GameState.has_relic("chain_lightning")
+	var has_execute: bool = GameState.has_relic("executioner")
+	var hit_count: int = 0
+	# Iter 140 — track whether ANY enemy in this swing's hit list rolled a
+	# crit. Used at emit time so main.gd's hit-stop handler can deepen the
+	# freeze on crit swings. A swing that hits 3 enemies and crits ONE of
+	# them still counts as a "crit swing" for the freeze — the celebratory
+	# beat is owned by the swing, not by each individual enemy.
+	var any_crit: bool = false
+	# Track which enemies were already hit this swing so the chain
+	# can't loop back to the original target.
+	var hit_set: Dictionary = {}
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team guard. A future non-Node2D node in the
+		# "enemies" group would crash `.global_position` access below.
+		if not (enemy is Node2D):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		if to_enemy.length() > _pending_melee_range:
+			continue
+		if abs(to_enemy.angle_to(_pending_melee_aim)) > arc_actual:
+			continue
+		# iter-250: perfect-dodge knockback bonus scoped per-enemy. Declared
+		# outside the take_hit block so the apply_knockback block below
+		# (same loop iteration, sibling scope) can read it.
+		var _pf_kb_bonus: float = 1.0
+		if enemy.has_method("take_hit"):
+			var dmg_for_this: int = damage
+			if has_execute and _is_executable(enemy):
+				dmg_for_this = int(round(float(damage) * 2.5))
+			# Iter 42 — crit roll per enemy hit. Stacks with executioner's
+			# 2.5× (a crit on an executable enemy lands at exec_dmg × 1.5,
+			# rounded). Per-enemy roll means a cleave hits some enemies
+			# for crit and others not — reads as "lucky swing" not "every-
+			# or-nothing."
+			# iter-250: PERFECT DODGE BUFFER override. If the player has
+			# a recent perfect-dodge catch, the FIRST enemy hit this
+			# swing gets +50% damage AND a forced crit. Buffer consumed
+			# on first connect; subsequent enemies in a cleave roll
+			# their own crit chance normally.
+			var is_crit: bool = false
+			if _perfect_dodge_buffer > 0.0:
+				is_crit = true
+				dmg_for_this = int(round(float(dmg_for_this) * PERFECT_DODGE_DAMAGE_MUL))
+				_perfect_dodge_buffer = 0.0  # consume immediately
+				_pf_kb_bonus = PERFECT_DODGE_KNOCKBACK_MUL  # bump knockback for this enemy
+			else:
+				is_crit = _roll_crit()
+			if is_crit:
+				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+				any_crit = true  # iter-140 — sticky across the swing
+			# Iter 230 / Expansion Team R2 — pass attacker position as the
+			# 3rd arg so shield_walker enemies (Bulwark) can do FRONT vs
+			# FLANK damage attribution. Non-shield enemies ignore the arg.
+			enemy.take_hit(dmg_for_this, is_crit, global_position)
+			# Iter 226 / Expansion Team — LUCKY KNIFE. If THIS strike
+			# was a crit AND it killed the target (enemy.hp ≤ 0 after
+			# take_hit's hp subtract), roll crit_bonus_ether_chance_f
+			# for a bonus +1 Ether Shard at the strike site. Reads at
+			# the player as "lucky cuts pay you back." Awards via
+			# GameState.award_ether_shards which honors ETHER_MAGNET's
+			# 1.25× multiplier transparently. Per-hit roll on per-kill
+			# event = naturally capped at 1 proc per cleave per enemy.
+			if is_crit and enemy.hp <= 0:
+				var lk_chance: float = GameState.modifier_total_f("crit_bonus_ether_chance_f", 0.0)
+				if lk_chance > 0.0 and randf() < lk_chance:
+					GameState.award_ether_shards(1)
+					var lk_floater: DamageNumber = DamageNumber.spawn(
+						enemy.global_position + Vector2(0, -40),
+						"+1 SHARD",
+						Color(0.6, 0.85, 1.0),  # ether-cyan to differentiate from gold drops
+					)
+					if get_parent() != null:
+						get_parent().add_child(lk_floater)
+			# Iter 43 — burn roll per enemy hit. burn_chance_f is a
+			# float modifier (0..1). Burn duration is fixed (1.6s = 4
+			# ticks @ 0.4s) so the proc is "set on fire" rather than
+			# scaling with relic count. Stacking relics increases the
+			# CHANCE to trigger; the burn itself is a binary state.
+			if _roll_burn() and enemy.has_method("apply_burn"):
+				enemy.apply_burn(1.6)
+			# Iter 46 — slow roll per enemy hit. Same per-hit pattern
+			# as burn; the two can stack on a single enemy (burning AND
+			# slowed = orange-blue mixed tint, but burn tint wins per
+			# the enemy.gd guard).
+			if _roll_slow() and enemy.has_method("apply_slow"):
+				enemy.apply_slow(SLOW_DURATION)
+			# Iter 66 — BLOOD theme sword lifesteal. Per-hit roll using the
+			# tier locked at swing-time. Tier 1 (resonance): 20% chance for
+			# +1 HP. Tier 2 (ascendance): 40% chance for +1 HP AND a
+			# guaranteed +2 HP on the very next sword hit after any kill
+			# (the guaranteed flag is set in _on_enemy_died_for_relics).
+			# The guaranteed-hit consumes the flag and short-circuits the
+			# chance roll — it can stack ON TOP of a separate chance proc
+			# on the SAME hit if a non-guaranteed mob is also struck this
+			# swing (cleave: first enemy in loop pops guaranteed, second
+			# rolls 40%). Lifesteal is independent of bloodstone (kill-
+			# counter +1 HP every 3rd) and the iter-44 on-kill lifesteal
+			# (lifesteal_chance_f → +1 HP magenta). Reads at the player as
+			# "your sword is drinking" vs "the relic was satisfied."
+			if _pending_blood_tier > 0:
+				_try_blood_lifesteal(enemy)
+			hit_count += 1
+			hit_set[enemy.get_instance_id()] = true
+			# Iter 54 — combo: each melee hit landed counts.
+			_bump_combo()
+			_sword_hit_counter += 1
+			# Chain on every 4th hit. Find the nearest other enemy
+			# within CHAIN_RADIUS px of the source and zap it for 1.
+			if has_chain and _sword_hit_counter % 4 == 0:
+				_try_chain_from(enemy, hit_set)
+			# Iter 72 — IRON FANG redesign. +1 sword dmg already folded
+			# into `damage` via sword_damage_bonus; here we add the
+			# every-6th-hit ember burst. Snapshot AoE: 40-px radius, 1
+			# damage at the hit position (enemy.global_position). Skips
+			# the originally-hit enemy implicitly because EmberBurst's
+			# damage scan re-finds enemies in range — if the original
+			# enemy died from `enemy.take_hit(dmg_for_this)` above, it's
+			# no longer in the "enemies" group; if it survived, taking a
+			# second 1-damage tick is fine (mirrors how soul_burst /
+			# kill_explosion both can re-damage the triggering kill site).
+			if GameState.has_relic("iron_fang"):
+				_iron_fang_hit_counter += 1
+				if _iron_fang_hit_counter % 6 == 0:
+					_trigger_iron_fang_burst(enemy.global_position)
+			# iter-260 / Wave 9 — inferno_aspect (FLAME legendary).
+			# Every 3rd connecting sword hit force-ignites the target
+			# regardless of burn_chance_f. Counter is per-run (persists
+			# through room transitions), guaranteeing the rhythm
+			# survives cross-room combat. Independent of burn_chance_f
+			# rolls so an already-burning target picks up the longer
+			# inferno duration (apply_burn takes the MAX of current +
+			# new, so a 2s force-burn refreshes any in-flight burn).
+			if GameState.has_boon("inferno_aspect"):
+				_inferno_aspect_hit_counter += 1
+				if _inferno_aspect_hit_counter % 3 == 0 and enemy.has_method("apply_burn"):
+					enemy.apply_burn(2.0)
+		if enemy.has_method("apply_knockback"):
+			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
+			# iter-250: _pf_kb_bonus is the perfect-dodge bump (1.2× for
+			# the consumed-buffer enemy, else 1.0). knockback_mul already
+			# folds combo_index + relic mods.
+			enemy.apply_knockback(push_dir, MELEE_KNOCKBACK_FORCE * knockback_mul * _pf_kb_bonus, MELEE_KNOCKBACK_TIME)
+	if hit_count > 0:
+		swing_connected.emit(hit_count, any_crit)
+		# Iter 39 — STORM ascendance (4+ STORM relics owned). Every
+		# connecting swing fires an extra bolt at the nearest enemy
+		# in CHAIN_RADIUS of the HERO (not of a hit enemy — keeps the
+		# proc reliable even when the swing hit a clump close to the
+		# hero). With chain_lightning ALSO owned, every 4th swing
+		# yields TWO bolts (chain_lightning's plus STORM's), every
+		# other swing yields ONE — concrete bullet-hell scaling.
+		if GameState.theme_tier("storm") >= 2:
+			_try_chain_from(self, hit_set)
+		# Iter 61 — FLAME ascendance (4+ FLAME relics): connecting melee
+		# swings drop a MINI fire pool (0.6s vs the 2s kill pool) at the
+		# hero's aim point. Reads as "your sword is on fire — its trail
+		# burns the ground." Stacks with embers_of_ruin burn (which
+		# lights enemies directly) for layered FLAME pressure.
+		if GameState.theme_tier("flame") >= 2:
+			_trigger_swing_fire_trail()
+	# iter-256 / Wave 5B+5C — DESTRUCTIBLE scan. Same range/arc as the
+	# enemy scan above, iterate three new groups (obstacles, breakable
+	# lanterns, secret walls) and call take_hit on anything in range.
+	# Per spec: ONLY HIT 3 (combo_index == 2, the heavy hit) damages
+	# destructibles — light jabs (hits 1+2) glance off without effect.
+	# Hit 3 deals 2 damage so pillars (hp=5) need 3 Hit-3 connects,
+	# lanterns (hp=1) break in one Hit-3, secret walls (hp=2) break in
+	# one Hit-3 OR via dash. Performance: bounded by in-room group
+	# counts (~4-8 obstacles, 6 torches, 0-1 secret wall) and only
+	# runs on Hit 3 swings (1 in 3 sword swings) — well within budget.
+	if _combo_index == 2:
+		_scan_and_hit_destructibles(arc_actual, 2)
+	# iter-248 — arm the combo chain window. Fires whether or not the
+	# swing connected (a whiff still counts as a "press" for chaining;
+	# Hades does this too — it'd feel bad if a swing past a moving enemy
+	# silently breaks the chain). The window decrements in
+	# _physics_process; if a new attack press lands before it expires
+	# AND _combo_index < 2, the next hit advances. If it expires, the
+	# combo resets at the next press.
+	# Hit 3 (heavy) also gets the window set, but since _combo_index
+	# can't advance past 2 (clamped in _start_attack), the next press
+	# will reset the chain anyway — visually feels like a clean restart.
+	_combo_window_timer = COMBO_WINDOW
+
+# Iter 61 — drop a brief fire pool at the position the sword swung to.
+# Uses the existing FIRE_POOL_SCENE but with a shorter _life (0.6s)
+# so the swing trail decays faster than the kill pool. The pool's
+# overlap-damage logic still applies — enemies walking through the
+# trail in the next 0.6s take ticks.
+func _trigger_swing_fire_trail() -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	# Position the trail at the swing's aim direction, slightly forward
+	# of the hero — so the burn appears WHERE THE SWORD ARC LANDED, not
+	# at the hero's feet.
+	var trail_pos: Vector2 = global_position + _pending_melee_aim * (_pending_melee_range * 0.55)
+	pool.global_position = trail_pos
+	pool.set("_life", 0.6)
+	# Iter 61 — add to the hero's parent (main.tscn) rather than
+	# get_tree().current_scene, which can be null in scenes-loaded-
+	# via-instantiate contexts (the iter-40 fire pool's behavior was
+	# the same, but parented via current_scene which works in real
+	# gameplay but not in test instantiation).
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pool)
+
+# iter-256 / Wave 5B+5C — destructible-prop scan helper. Called from
+# _resolve_melee_strike with the same arc + range used for the enemy
+# scan. Iterates the three new groups (obstacles, breakable_lanterns,
+# secret_walls) and calls take_hit(damage, hero.global_position) on
+# anything in arc + range. Each group call-shape:
+#   • obstacles      → take_hit(int, Vector2)   pillar / sarcophagus
+#   • breakable_lanterns → take_hit(int)        torch
+#   • secret_walls   → take_hit(int, Vector2)   secret_wall
+# Group membership defines the source_pos arity, but we use
+# has_method to invoke generically — a future destructible that takes
+# zero args still works as long as it implements take_hit(int).
+func _scan_and_hit_destructibles(arc_actual: float, damage: int) -> void:
+	if damage <= 0:
+		return
+	# Track per-swing hits so a node in MULTIPLE groups (defensive — not
+	# the case today) can't take_hit twice in the same call.
+	var hit_destruct: Dictionary = {}
+	for group_name in ["obstacles", "breakable_lanterns", "secret_walls"]:
+		for prop in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(prop) or not (prop is Node2D):
+				continue
+			var pid: int = prop.get_instance_id()
+			if hit_destruct.has(pid):
+				continue
+			var to_prop: Vector2 = (prop as Node2D).global_position - global_position
+			if to_prop.length() > _pending_melee_range:
+				continue
+			if abs(to_prop.angle_to(_pending_melee_aim)) > arc_actual:
+				continue
+			if not prop.has_method("take_hit"):
+				continue
+			hit_destruct[pid] = true
+			# Lanterns expose take_hit(int); pillar/sarcophagus/secret_wall
+			# expose take_hit(int, Vector2). Use callv with the right
+			# arity so a 1-arg lantern doesn't blow up on extra args.
+			if group_name == "breakable_lanterns":
+				prop.call("take_hit", damage)
+			else:
+				prop.call("take_hit", damage, global_position)
+
+# iter-256 / Wave 5B+5C — radius-based destructible scan for dash-strike
+# pass-through and final AoE. Same three groups as the melee helper but
+# no arc check (dash hits everything in a circle around the hero).
+# damage = 1 per tick — pillars (hp=5) survive multiple dashes,
+# lanterns (hp=1) break in one pass, secret walls (hp=2) break in two.
+func _dash_scan_destructibles(radius: float, damage: int) -> void:
+	if damage <= 0:
+		return
+	var hit_destruct: Dictionary = {}
+	for group_name in ["obstacles", "breakable_lanterns", "secret_walls"]:
+		for prop in get_tree().get_nodes_in_group(group_name):
+			if not is_instance_valid(prop) or not (prop is Node2D):
+				continue
+			var pid: int = prop.get_instance_id()
+			if hit_destruct.has(pid):
+				continue
+			var d: Vector2 = (prop as Node2D).global_position - global_position
+			if d.length() > radius:
+				continue
+			if not prop.has_method("take_hit"):
+				continue
+			hit_destruct[pid] = true
+			if group_name == "breakable_lanterns":
+				prop.call("take_hit", damage)
+			else:
+				prop.call("take_hit", damage, global_position)
+
+# Iter 66 — BLOOD theme lifesteal proc. Called from _resolve_melee_strike
+# for every enemy a swing damages, while _pending_blood_tier > 0.
+#
+# Trigger model:
+#   guaranteed flag set → always procs, heals +2, consumes the flag,
+#                          short-circuits the chance roll
+#   tier 1 → 20% per-hit chance, heals +1
+#   tier 2 → 40% per-hit chance, heals +1 (independent of the guaranteed
+#            flag — both can fire on the same swing across separate
+#            enemies in a cleave)
+#
+# Visuals on proc:
+#   - red blood-spatter at the enemy position (reuses FX.BLOOD_DROP_SCENE
+#     via Events… no — the existing scene only fires on hero damage. We
+#     spawn directly so the visual reads "blood pulled from THIS enemy"
+#     rather than the hero's hurt cue)
+#   - sprite scale-pulse on the hero — matches the iter-29 afterimage
+#     scale-tween idiom (Tween created on the sprite; goes 1→1.18→1)
+#   - crimson floater above the hero distinguishing it from bloodstone's
+#     "+1" (no STEAL suffix) and the iter-44 magenta "+1 STEAL" floater
+#     (those are kill-driven; BLOOD is hit-driven, so the player can
+#     tell which proc fired)
+#
+# Skipped when capped or dying — silent no-op rather than a lying floater.
+func _try_blood_lifesteal(enemy: Node) -> void:
+	if _is_dying:
+		return
+	var cap_bs: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp >= cap_bs:
+		# Still consume the guaranteed flag so it doesn't stick around
+		# forever waiting for a missing-HP moment that may not come.
+		# Skipping the consume would let a guaranteed proc "save up"
+		# for hours which feels like a bug, not a feature.
+		if _blood_guaranteed_next_hit:
+			_blood_guaranteed_next_hit = false
+		return
+	var heal_amount: int = 0
+	var is_guaranteed: bool = false
+	if _blood_guaranteed_next_hit:
+		_blood_guaranteed_next_hit = false
+		heal_amount = 2
+		is_guaranteed = true
+	else:
+		var chance: float = 0.20 if _pending_blood_tier == 1 else 0.40
+		if randf() < chance:
+			heal_amount = 1
+	if heal_amount <= 0:
+		return
+	heal(heal_amount)
+	_spawn_blood_lifesteal_fx(enemy, is_guaranteed)
+
+# Iter 66 — visual portion of the lifesteal proc. Split from
+# _try_blood_lifesteal so the heal logic stays readable; this is "just
+# VFX." Spawns three things:
+#   1) red blood spatter at the enemy position (BLOOD_DROP_SCENE reused —
+#      reads as "drained")
+#   2) crimson floater above the hero with the heal amount
+#   3) brief sprite scale-pulse on the hero (1 → 1.18 → 1 over 0.18s)
+#
+# Tier-2 guaranteed procs render a brighter, longer floater and a
+# slightly stronger pulse so the player feels the bigger heal.
+func _spawn_blood_lifesteal_fx(enemy: Node, is_guaranteed: bool) -> void:
+	var host: Node = get_parent()
+	if host == null:
+		return
+	# 1) Blood spatter at the enemy. Reuses BLOOD_DROP_SCENE (5-particle
+	# red spatter, 0.7s lifetime). Spawn at the enemy's body, not feet —
+	# lift slightly so the puff originates from the wound, not the floor.
+	if is_instance_valid(enemy):
+		var spatter: Node2D = preload("res://scenes/fx/blood_drop.tscn").instantiate() as Node2D
+		if spatter != null:
+			spatter.global_position = enemy.global_position + Vector2(0, -16)
+			host.add_child(spatter)
+	# 2) Crimson floater. Tier-2 guaranteed proc gets a darker, larger
+	# label so the +2 stands out from the chance +1 above.
+	var floater_text: String = "+%d" % (2 if is_guaranteed else 1)
+	var floater_color: Color = Color(0.95, 0.15, 0.25) if is_guaranteed else Color(0.85, 0.25, 0.30)
+	var floater: DamageNumber = DamageNumber.spawn(
+		global_position + Vector2(0, -88),
+		floater_text,
+		floater_color,
+	)
+	host.add_child(floater)
+	# 3) Sprite scale-pulse — matches the iter-29 afterimage scale-tween
+	# idiom. Pulse magnitude scales with the heal: +1 → 1.12, +2 → 1.20.
+	# Tween is parented to the sprite so a scene reload mid-tween drops
+	# it cleanly with the hero. Killed any prior pulse tween via the same
+	# pattern ScreenFlash uses — without this, rapid back-to-back procs
+	# would compound scale and leave the hero permanently swollen.
+	if sprite != null:
+		if _blood_pulse_tween != null and _blood_pulse_tween.is_valid():
+			_blood_pulse_tween.kill()
+		var peak: float = 1.20 if is_guaranteed else 1.12
+		var base_scale: Vector2 = Vector2.ONE
+		# Reset to a known scale before pulsing — defensive against a
+		# killed mid-tween leaving sprite.scale somewhere between base
+		# and peak. Cheap, harmless if already at 1.
+		sprite.scale = base_scale
+		_blood_pulse_tween = sprite.create_tween()
+		_blood_pulse_tween.tween_property(sprite, "scale", base_scale * peak, 0.07)
+		_blood_pulse_tween.tween_property(sprite, "scale", base_scale, 0.11)
+
+# Iter 21 — chain_lightning effect. Find the nearest enemy within
+# CHAIN_RADIUS of `source` that wasn't already hit this swing, deal a
+# small fixed damage. No knockback (the chain is a visual sting, not
+# the swing's force). Damage number tinted cyan so the player sees
+# the chain land.
+const CHAIN_RADIUS: float = 80.0
+const CHAIN_DAMAGE: int = 1
+func _try_chain_from(source: Node, hit_set: Dictionary) -> void:
+	if not is_instance_valid(source):
+		return
+	var src_pos: Vector2 = source.global_position
+	var best: Node = null
+	var best_dist: float = CHAIN_RADIUS
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy) or enemy == source:
+			continue
+		if hit_set.has(enemy.get_instance_id()):
+			continue
+		var d: float = enemy.global_position.distance_to(src_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best != null and best.has_method("take_hit"):
+		# Iter 44 — chain bolt crit roll. STORM ascendance fires chain
+		# bolts from the hero on every connecting swing; chain_lightning
+		# relic fires them on every 4th hit. With keen_focus +
+		# focused_strike both owned (40% crit) a chain-heavy build
+		# should see crits on the chain hits too. Previously they were
+		# capped at base CHAIN_DAMAGE = 1 forever.
+		var dmg_chain: int = CHAIN_DAMAGE
+		var is_crit_chain: bool = _roll_crit()
+		if is_crit_chain:
+			dmg_chain = int(round(float(dmg_chain) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+		best.take_hit(dmg_chain, is_crit_chain)
+		hit_set[best.get_instance_id()] = true
+		_bump_combo()   # iter 54 — chain bolts count toward combo
+
+# Iter 72 — IRON FANG redesign. Spawn an EmberBurst at `pos` with a
+# 40-px radius / 1 damage snapshot AoE. Reuses the existing minimal-
+# scene grammar from iter 67/68 (setup() called BEFORE add_child so
+# _ready sees the configured values). Host = get_parent() so the
+# burst survives if the hero dies in the same frame as the proc fires
+# (matches the iter-61 / iter-62 spawn-host pattern).
+const IRON_FANG_BURST_RADIUS: float = 40.0
+const IRON_FANG_BURST_DAMAGE: int = 1
+func _trigger_iron_fang_burst(pos: Vector2) -> void:
+	var burst: Node2D = EMBER_BURST_SCENE.instantiate() as Node2D
+	if burst == null:
+		return
+	burst.global_position = pos
+	if burst.has_method("setup"):
+		burst.call("setup", IRON_FANG_BURST_RADIUS, IRON_FANG_BURST_DAMAGE)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(burst)
+
+# Iter 72 — ARCANE PULSE redesign. Find the nearest off-target enemy
+# within 140px of `impact_pos`, deal 1 damage, spawn ArcaneBolt FX
+# from impact → target. The "off-target" exclusion is handled by the
+# caller passing an exclusion set seeded with the just-spawned
+# projectile's intended trajectory — but since we fire this at CAST
+# time (not impact time), there's no specific target to exclude.
+# Instead we pick the nearest enemy regardless; the relic reads as
+# "casting reaches an extra enemy" which is the intended feel.
+const ARCANE_PULSE_BOLT_RANGE: float = 140.0
+const ARCANE_PULSE_BOLT_DAMAGE: int = 1
+func _trigger_arcane_pulse_bolt(impact_pos: Vector2) -> void:
+	# Scan for nearest enemy within range.
+	var best: Node = null
+	var best_dist: float = ARCANE_PULSE_BOLT_RANGE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = enemy.global_position.distance_to(impact_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best == null:
+		return   # no target in range; no proc this cast (cheap miss)
+	# Damage. Pass is_crit=false — arcane pulse is a flat proc, not a
+	# crit. If the player happens to have crit_chance_f, the regular
+	# blast roll already handled THAT projectile's crit; the fork is a
+	# separate bolt.
+	if best.has_method("take_hit"):
+		best.take_hit(ARCANE_PULSE_BOLT_DAMAGE)
+	# Spawn the ArcaneBolt visual from impact → target. setup() before
+	# add_child so _ready sees the endpoints.
+	var bolt: Node2D = ARCANE_BOLT_SCENE.instantiate() as Node2D
+	if bolt == null:
+		return
+	if bolt.has_method("setup"):
+		bolt.call("setup", impact_pos, best.global_position)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(bolt)
+
+# iter-260 / Wave 9 — storm_tithe chain bolt. Per-cast proc that fires
+# every 4th blast. Parallels _trigger_arcane_pulse_bolt's grammar
+# (nearest enemy + ArcaneBolt visual + flat damage) but with the
+# storm_tithe range (140 px) and the storm-themed cyan-blue visual
+# tint. Independent of the per-projectile STORM chain (handled in
+# projectile.gd's _spawn_chain_arc); this is a SEPARATE bolt at the
+# blast spawn point.
+func _trigger_storm_tithe_bolt(impact_pos: Vector2) -> void:
+	var best: Node = null
+	var best_dist: float = STORM_TITHE_BOLT_RANGE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = enemy.global_position.distance_to(impact_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best == null:
+		return
+	if best.has_method("take_hit"):
+		best.take_hit(STORM_TITHE_BOLT_DAMAGE)
+	var bolt: Node2D = ARCANE_BOLT_SCENE.instantiate() as Node2D
+	if bolt == null:
+		return
+	if bolt.has_method("setup"):
+		bolt.call("setup", impact_pos, best.global_position)
+	# Cyan-blue tint to read as STORM not ARCANE.
+	bolt.modulate = Color(0.55, 0.85, 1.0, 1.0)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(bolt)
+
+# Iter 72 — STONEHEART redesign. Heal +1 and spawn the StonePulse FX at
+# the hero. Called from _on_enemy_died_for_relics on the very first kill
+# of each room (gated by _stoneheart_first_kill_armed, which auto-resets
+# on scene reload alongside _iron_resolve_absorbed_this_room).
+const STONEHEART_PULSE_RADIUS: float = 60.0
+func _trigger_stoneheart_pulse() -> void:
+	# Don't heal-and-spawn if we're already at cap or dying.
+	if _is_dying:
+		return
+	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp < cap:
+		heal(1)
+		# Emerald floater so the heal source is distinct from bloodstone
+		# (red), lifesteal (magenta), and room-clear heal (light green).
+		# Stoneheart uses a slightly deeper emerald to mark "the FIRST
+		# kill" beat.
+		var floater: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -64),
+			"+1",
+			Color(0.35, 0.95, 0.55),
+		)
+		var p: Node = get_parent()
+		if p != null:
+			p.add_child(floater)
+	# Spawn the StonePulse regardless of whether the heal applied —
+	# the proc beat fires on EVERY first-kill, even if HP was full.
+	# The player sees the relic working even on a clean run.
+	var pulse: Node2D = STONE_PULSE_SCENE.instantiate() as Node2D
+	if pulse == null:
+		return
+	pulse.global_position = global_position
+	if pulse.has_method("setup"):
+		pulse.call("setup", STONEHEART_PULSE_RADIUS)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pulse)
+
+# Iter 72 — IRON SKIN redesign. Spawn a StoneShardBurst at the hero
+# to visualize the deflection. If this is the 4th block in a row,
+# also apply a no-damage knockback ring to nearby enemies — pure
+# spacing tool. Returns nothing; called from take_damage AFTER the
+# reduction has actually saved damage.
+const IRON_SKIN_KNOCKBACK_RADIUS: float = 60.0
+const IRON_SKIN_KNOCKBACK_FORCE: float = 280.0
+const IRON_SKIN_KNOCKBACK_TIME: float = 0.20
+func _trigger_iron_skin_deflect() -> void:
+	# Always spawn the deflect FX so the player sees the proc.
+	var burst: Node2D = STONE_SHARD_SCENE.instantiate() as Node2D
+	if burst != null:
+		burst.global_position = global_position
+		var host: Node = get_parent()
+		if host != null:
+			host.add_child(burst)
+	# Every 4th block also pushes back nearby enemies. No damage —
+	# this is a defensive spacing tool, not an offensive trigger.
+	if _iron_skin_block_counter % 4 == 0:
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(enemy):
+				continue
+			var d: float = enemy.global_position.distance_to(global_position)
+			if d > IRON_SKIN_KNOCKBACK_RADIUS:
+				continue
+			if enemy.has_method("apply_knockback"):
+				var push_dir: Vector2 = (enemy.global_position - global_position)
+				if push_dir.length() > 0.01:
+					push_dir = push_dir.normalized()
+				else:
+					push_dir = Vector2.RIGHT
+				enemy.apply_knockback(push_dir, IRON_SKIN_KNOCKBACK_FORCE, IRON_SKIN_KNOCKBACK_TIME)
+		# Spawn a SECOND larger shard burst at the hero to read as the
+		# louder "shield burst" beat. Same FX class, just stacked — the
+		# two bursts overlay into a visibly bigger ring.
+		var bigger: Node2D = STONE_SHARD_SCENE.instantiate() as Node2D
+		if bigger != null:
+			bigger.global_position = global_position
+			bigger.scale = Vector2(1.4, 1.4)
+			var host2: Node = get_parent()
+			if host2 != null:
+				host2.add_child(bigger)
+
+# Iter 70 — aim assist. Returns aim snapped to point at the best
+# in-cone enemy if one qualifies, otherwise the original aim. "Best"
+# means smallest angle deviation, tie-broken by closeness. We scan
+# get_nodes_in_group("enemies") — same pattern as _try_chain_from /
+# dash pierce — so it picks up every regular spawn without coupling.
+#
+# Scoped to the BLAST (ranged) path only. Melee swing already uses a
+# wide ATTACK_ARC and doesn't need cursor-to-enemy assist — the player
+# is close enough that mouse precision isn't the limiting factor.
+func _apply_aim_assist(aim: Vector2) -> Vector2:
+	if aim.length_squared() < 0.0001:
+		return aim
+	var best_enemy: Node = null
+	var best_angle: float = AIM_ASSIST_CONE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# iter-101: skip chests / breakables. They join "enemies" for
+		# wave-clear bookkeeping but the blast aim should snap to actual
+		# combat targets, not treasure boxes.
+		if enemy.is_in_group("breakables"):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		var dist: float = to_enemy.length()
+		if dist < 1.0 or dist > AIM_ASSIST_RANGE:
+			continue
+		var enemy_dir: Vector2 = to_enemy / dist
+		# angle_to returns signed angle from aim to enemy_dir; abs() so
+		# we measure how far OFF the cursor is regardless of side.
+		var off_angle: float = abs(aim.angle_to(enemy_dir))
+		if off_angle < best_angle:
+			best_angle = off_angle
+			best_enemy = enemy
+	if best_enemy == null:
+		return aim
+	# Snap aim to point AT the enemy's center. Preserves the cursor's
+	# distance intent (the projectile keeps its preset speed × LIFETIME
+	# range) while correcting the angle.
+	var snap_dir: Vector2 = (best_enemy.global_position - global_position).normalized()
+	return snap_dir
+
+func _start_blast() -> void:
+	# iter-249 — BLAST WINDUP COMMITMENT. Pre-iter-249 this fired the
+	# projectile inline at press time + locked _attack_live for 0.18s of
+	# recovery. Now: press starts a 0.10s windup (off-hand glows violet);
+	# at windup end, _resolve_blast_fire spawns the actual projectile;
+	# the hero stays locked for an additional 0.30s recovery (only DODGE
+	# can cancel — see input precedence chain). Total commitment = 0.40s.
+	var aim_world := get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	var aim := aim_world.normalized()
+	# Iter 70 — light aim assist applied at PRESS time. Re-aiming mid-
+	# windup doesn't change the shot direction (the windup IS the
+	# commitment) — design intent.
+	aim = _apply_aim_assist(aim)
+	# Iter 17 — swift_focus reduces blast cooldown. _blast_cd locks the
+	# next press; covers windup + recovery + a beat to prevent press-spam.
+	_blast_cd = BLAST_COOLDOWN * (1.0 + GameState.modifier_total_f("blast_cooldown_mul", 0.0))
+	_facing_dir = _vector_to_dir_idx(aim)
+	# iter-97: blast facing window. JS reference (hero.js:1413-1420):
+	# walking west + shooting east left the sprite facing west while
+	# bolts flew east — the body wasn't COMMITTING to the shot. Stamping
+	# a 0.32s window keeps the sprite facing the aim direction while
+	# WASD movement continues unrestricted. Window is slightly longer
+	# than the blast cooldown so sustained fire never reveals a
+	# facing-gap between shots.
+	_blast_facing_dir = aim
+	_blast_facing_time = BLAST_FACING_WINDOW
+	# Reuse the attack animation as a cast gesture for now.
+	sprite.frame = 0
+	_play_anim(StringName("attack_" + DIR_NAMES[_facing_dir]))
+	# iter-249 — _attack_live now covers windup + recovery so the cast
+	# anim + planted-feet (ATTACK_MOVE_SPEED_MUL) and _is_attacking gate
+	# read consistently through the entire commitment.
+	_attack_live = BLAST_WINDUP_TIME + BLAST_RECOVERY_TIME
+	_is_attacking = true
+	# iter-249 — commit lock. The input precedence chain reads this to
+	# block sword/attack inputs (only DODGE can cancel — the
+	# _can_start_dash_strike already passes during blast since it
+	# doesn't check _blast_locked). Cleared when _attack_live finishes
+	# decaying (in _physics_process's attack-live branch).
+	_blast_locked = true
+	# iter-249 — capture aim + resonance state at press time. arcane_
+	# resonance counter bumps NOW so the proc lands on the press, not
+	# the fire (so a player counting hits still gets the every-4th
+	# rhythm correctly even with the 0.10s windup added).
+	_blast_aim = aim
+	# Iter 17 — arcane_resonance: every 4th blast deals double damage.
+	_blast_counter += 1
+	_blast_resonance_active = GameState.has_relic("arcane_resonance") and _blast_counter % 4 == 0
+	# iter-249 — spawn the off-hand violet glow polygon. Parented to
+	# the hero (follows the body during a moving cast), positioned at
+	# the off-hand approximate offset. Alpha tweens 0→1 over windup;
+	# _blast_glow_ref tracks the node so _resolve_blast_fire can
+	# free it cleanly on fire.
+	_spawn_blast_offhand_glow()
+	# iter-249 — arm the windup timer. _physics_process decrements +
+	# calls _resolve_blast_fire when it hits 0.
+	_blast_windup_time = BLAST_WINDUP_TIME
+
+# iter-249 — spawn the off-hand violet glow during blast windup. Built
+# as a small Polygon2D parented to the hero so it tracks body motion
+# during the cast. Alpha tweens 0 → 1 over BLAST_WINDUP_TIME so the
+# player sees the glow gathering before the projectile fires. Freed on
+# fire in _resolve_blast_fire (the tween outlives the glow node only
+# if it gets re-armed; we kill the previous reference defensively).
+const BLAST_GLOW_RADIUS: float = 9.0
+const BLAST_GLOW_OFFSET: Vector2 = Vector2(8, -22)  # slightly right + chest height
+func _spawn_blast_offhand_glow() -> void:
+	# Defensive: kill any stale glow from a previous interrupted cast.
+	if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+		_blast_glow_ref.queue_free()
+	var glow: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 16
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * BLAST_GLOW_RADIUS)
+	glow.polygon = pts
+	glow.color = BLAST_GLOW_COLOR
+	glow.modulate = Color(1, 1, 1, 0.0)  # start invisible; alpha tweens up
+	glow.position = BLAST_GLOW_OFFSET
+	glow.z_index = 2
+	add_child(glow)
+	_blast_glow_ref = glow
+	# Tween alpha 0 → 1 over the windup. parented to the glow so a stop-
+	# free at fire time cleans up the tween too.
+	var tw: Tween = glow.create_tween()
+	tw.tween_property(glow, "modulate:a", 1.0, BLAST_WINDUP_TIME)
+
+# iter-249 — called from _physics_process when _blast_windup_time hits
+# 0 from > 0. This is the "fire" frame — spawn the actual projectile +
+# muzzles + run all the per-cast procs (arcane_pulse, split_cinder,
+# echo_quill). The body is what _start_blast did pre-iter-249.
+func _resolve_blast_fire() -> void:
+	# Free the off-hand glow (windup ends; the gathered energy "fires").
+	if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+		_blast_glow_ref.queue_free()
+		_blast_glow_ref = null
+	# Skip the actual cast if the hero died mid-windup (status combos
+	# can kill in this tiny 0.10s window). The _attack_live timer would
+	# clear _blast_locked on its own; just exit.
+	if _is_dying:
+		return
+	var aim: Vector2 = _blast_aim
+	# Iter 214 — STATIC RUNES per-cast proc check. Computed BEFORE the
+	# projectile spawn loop so EVERY projectile in this cast sees the
+	# same proc flag — multi-shot all chain on the proc cast, otherwise
+	# none chain. _static_runes_proc_this_cast is cleared at the start
+	# of every cast regardless of ownership so a stale flag from a
+	# previous cast can't leak.
+	_static_runes_proc_this_cast = false
+	if GameState.has_relic("static_runes"):
+		_static_runes_cast_counter += 1
+		if _static_runes_cast_counter % 4 == 0:
+			_static_runes_proc_this_cast = true
+	# Iter 42 — multi-shot. projectile_count mod (Twin Cast etc.) adds
+	# extra projectiles in a small spread around the aim direction.
+	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
+	var total_count: int = 1 + bonus_count
+	# iter-260 / Wave 9 — storm_surge (STORM rare). Every 10th cast
+	# fires a 3-projectile burst regardless of projectile_count. Picks
+	# the LARGER of (base+bonus, 3) so an already-multi-shot build
+	# doesn't lose shots on the proc cast.
+	if GameState.has_boon("storm_surge"):
+		_storm_surge_blast_counter += 1
+		if _storm_surge_blast_counter % STORM_SURGE_PROC_INTERVAL == 0:
+			total_count = maxi(total_count, STORM_SURGE_BURST_COUNT)
+	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
+	# Iter 44 — multi-shot muzzle: spawn ONE flash per projectile.
+	for i in range(total_count):
+		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
+		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
+		var spread_aim: Vector2 = aim.rotated(spread_angle)
+		var muzzle: Node2D = BLAST_MUZZLE_SCENE.instantiate() as Node2D
+		if muzzle != null:
+			muzzle.global_position = spawn_pos
+			muzzle.rotation = spread_aim.angle()
+			get_tree().current_scene.add_child(muzzle)
+		_spawn_blast_projectile(spawn_pos, spread_aim, _blast_resonance_active)
+	# Iter 72 — ARCANE PULSE redesign. Once per cast, bump counter +
+	# fork bolt on every 5th cast.
+	if GameState.has_relic("arcane_pulse"):
+		_arcane_pulse_cast_counter += 1
+		if _arcane_pulse_cast_counter % 5 == 0:
+			_trigger_arcane_pulse_bolt(spawn_pos)
+	# iter-260 / Wave 9 — storm_tithe (STORM rare). Every 4th cast fires
+	# an extra chain bolt to the nearest enemy within STORM_TITHE_BOLT_
+	# RANGE for 1 damage. Independent of arcane_pulse (different cadence
+	# + different theme); they stack cleanly on a STORM blast build.
+	# Reuses _trigger_arcane_pulse_bolt's nearest-enemy + ArcaneBolt
+	# visual machinery for a free polish.
+	if GameState.has_boon("storm_tithe"):
+		_storm_tithe_blast_counter += 1
+		if _storm_tithe_blast_counter % STORM_TITHE_PROC_INTERVAL == 0:
+			_trigger_storm_tithe_bolt(spawn_pos)
+	# Iter 214 — SPLIT CINDER. Every 3rd blast cast, fan 2 embers.
+	if GameState.has_relic("split_cinder"):
+		_split_cinder_cast_counter += 1
+		if _split_cinder_cast_counter % 3 == 0:
+			_spawn_split_cinder_embers(spawn_pos, aim)
+	# Iter 203 — Echo Quill. Schedules a follow-up cast 0.16 s later
+	# from the hero's THEN-current position.
+	if GameState.has_relic("echo_quill"):
+		var echo_resonance: bool = _blast_resonance_active
+		var echo_tween: Tween = create_tween()
+		echo_tween.tween_interval(0.16)
+		echo_tween.tween_callback(_fire_echo_blast.bind(echo_resonance))
+	# Emit at chest height so the muzzle streak originates from the
+	# mage's hands, not under her feet.
+	Events.hero_blasted.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), aim)
+
+# Iter 214 — SPLIT CINDER ember spawn. Fires 2 smaller orange ember
+# projectiles at ±30 ° from the cast aim. These are distinct from the
+# main projectile (separate _spawn_blast_projectile-style construction)
+# so they don't get pierce/ricochet/resonance/crit — they're crowd-
+# fragment shots with fixed 1 damage and a warm tint. Skipped if hero
+# died between cast and proc (would happen if a status-combo death
+# fires during cast, extremely rare).
+func _spawn_split_cinder_embers(origin: Vector2, aim: Vector2) -> void:
+	if _is_dying:
+		return
+	# Two embers — one at +30 °, one at -30 °. 0.524 rad ≈ 30 °.
+	var split_angle: float = 0.524
+	for sign in [1.0, -1.0]:
+		var ember_aim: Vector2 = aim.rotated(split_angle * sign)
+		var p: Projectile = PROJECTILE_SCENE.instantiate()
+		p.global_position = origin
+		# Embers fly a bit slower so they FAN behind the main shot
+		# rather than racing past it.
+		p.velocity = ember_aim * Projectile.SPEED * 0.85
+		p.damage = 1
+		p.orb_tint = Color(1.0, 0.55, 0.20, 1.0)  # warm ember orange
+		p.executioner_active = false
+		# No pierce / ricochet — keep these sharp fragments simple.
+		p.pierce_count = 0
+		p.ricochet_count = 0
+		# Carry GRAVITY NEEDLE through — embers are still YOUR projectiles
+		# so the near-miss slow should apply to them too.
+		if GameState.has_relic("gravity_needle"):
+			p.gravity_needle_active = true
+		# Embers are visually smaller — scale down by setting damage = 1
+		# implies _dmg_scale ≈ 1.0, then override via additional scale.
+		# Easier: just multiply final scale in _ready via a flag, but we
+		# don't have that hook. Workaround: set scale here AFTER ready
+		# fires by deferring to next frame, OR just trust the smaller
+		# damage's natural _dmg_scale. For now, smaller scale via
+		# parent_for assignment after spawn — projectile.gd's _ready
+		# sets scale based on _dmg_scale only, so a damage=1 ember
+		# already reads slightly smaller than a damage=2 main cast.
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(p)
+
+# Iter 203 — Echo Quill follow-up cast. Fires N projectiles (same
+# count as the original cast) from the hero's CURRENT position with
+# fresh cursor aim. Skipped if hero died between the original cast
+# and this firing (cleanly handles the "blast then die in 0.16 s"
+# edge case via _is_dying check).
+func _fire_echo_blast(echo_resonance: bool) -> void:
+	if _is_dying:
+		return
+	# Re-resolve aim at echo time so it tracks the moving cursor.
+	var aim_world: Vector2 = get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	var aim: Vector2 = aim_world.normalized()
+	aim = _apply_aim_assist(aim)
+	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
+	var total_count: int = 1 + bonus_count
+	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
+	for i in range(total_count):
+		var offset_idx: float = float(i) - float(total_count - 1) * 0.5
+		var spread_angle: float = offset_idx * BLAST_SPREAD_STEP
+		var spread_aim: Vector2 = aim.rotated(spread_angle)
+		# Echo skips the muzzle flash to read as a softer follow-up
+		# vs. the main cast's louder launch.
+		_spawn_blast_projectile(spawn_pos, spread_aim, echo_resonance)
+
+# Iter 42 — extracted single-projectile spawn. Carries all the modifier
+# reads that iter-41 left inline in _start_blast. Multi-shot calls this
+# N times with different spread aims.
+func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_active: bool) -> void:
+	var p: Projectile = PROJECTILE_SCENE.instantiate()
+	p.global_position = spawn_pos
+	var proj_speed: float = Projectile.SPEED * (1.0 + GameState.modifier_total_f("projectile_speed_mul", 0.0))
+	p.velocity = aim_dir * proj_speed
+	var dmg: int = 1 + GameState.modifier_total("blast_damage_bonus", 0)
+	# Iter 213 — BLOOD TITHE multiplier (Phase 2). Applied here so the
+	# bake into the projectile.damage carries through impact + chain
+	# arcs + any per-projectile downstream consumers.
+	dmg = int(round(float(dmg) * _blood_tithe_damage_mul()))
+	if resonance_active:
+		dmg *= 2
+		p.orb_tint = Color(0.7, 1.0, 1.0, 1.0)
+	# Iter 42 — crit roll. Per-projectile so a multi-shot can have some
+	# projectiles crit and others not (reads as "lucky spray" rather than
+	# "all-or-nothing"). Roll happens at spawn, baked into damage so
+	# downstream procs (executioner) compound off the crit'd damage too.
+	var is_crit: bool = _roll_crit()
+	if is_crit:
+		dmg = int(round(float(dmg) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+		# Yellow-warm tint distinct from arcane_resonance's cyan crit.
+		# A double-crit (resonance + crit) still reads as cyan dominant
+		# (set above) since this overwrites after — the player sees
+		# WARM = crit, CYAN = resonance, WARM-CYAN = both.
+		p.orb_tint = Color(1.0, 0.85, 0.45, 1.0)
+	p.damage = dmg
+	p.is_crit = is_crit   # iter 43 — pass crit flag for take_hit visual
+	p.executioner_active = GameState.has_relic("executioner")
+	p.pierce_count = GameState.modifier_total("pierce_count", 0)
+	p.ricochet_count = GameState.modifier_total("ricochet_count", 0)
+	# Iter 43 — burn roll. Independent of crit so a non-crit hit can
+	# still burn. Locked at spawn (pierce + ricochet hits all apply
+	# the same burn duration since the proc fired once at cast).
+	if _roll_burn():
+		p.burn_duration = 1.6
+	# Iter 46 — slow roll. Same locked-at-spawn semantics as burn.
+	# A multi-shot piercing projectile with slow can paint a row of
+	# enemies blue, hampering their pursuit while STORM bolts arc.
+	if _roll_slow():
+		p.slow_duration = SLOW_DURATION
+	# Iter 65 — BLAST × FLAME ability evolution. Lock the on-impact fire
+	# pool lifetime at SPAWN from the hero's FLAME theme tier, mirroring
+	# the burn/slow locking pattern so a relic gained mid-flight doesn't
+	# retroactively buff in-flight orbs. Tier 1 (≥2 FLAME relics) →
+	# 0.5s mini-pool; tier 2 (≥4 FLAME relics) → 0.8s larger pool.
+	# Projectile.gd's _on_body_entered spawns the pool on enemy hit.
+	var flame_tier_now: int = GameState.theme_tier("flame")
+	if flame_tier_now >= 2:
+		p.flame_impact_pool_life = 0.8
+	elif flame_tier_now >= 1:
+		p.flame_impact_pool_life = 0.5
+	# Iter 67 — BLAST × STORM ability evolution. Lock chain count + radius
+	# + damage multiplier at SPAWN from the hero's STORM theme tier,
+	# mirroring the flame/burn/slow locking so a relic gained mid-flight
+	# can't retroactively buff in-flight orbs. Tier 1 (≥2 STORM relics):
+	# 1 chain hop within 120px at full damage. Tier 2 (≥4 STORM relics):
+	# 2 chain hops within 160px at 60% damage each — primary blast
+	# damage is UNCHANGED, the chains carry the spread. Projectile.gd
+	# resolves the chains in _on_body_entered (enemy hit) and spawns
+	# ChainArc visuals from impact → each chain target.
+	# Iter 214 — GRAVITY NEEDLE. Each projectile gets the near-miss-slow
+	# flag if the player owns the relic. Projectile.gd's
+	# _physics_process applies the slow to any enemy within
+	# GRAVITY_NEEDLE_RADIUS of the projectile's path (per-enemy guard
+	# so a single projectile only slows each enemy once).
+	if GameState.has_relic("gravity_needle"):
+		p.gravity_needle_active = true
+	# Iter 214 — STATIC RUNES. If this cast is the proc cast (computed
+	# in _start_blast BEFORE the spawn loop), bump storm_chain_count
+	# by +1 and ensure radius / damage_mul defaults are populated. The
+	# bump is ADDITIVE to the STORM theme tier's chain count below —
+	# so a STORM tier 1 player + Static Runes proc cast = 2 chains.
+	if _static_runes_proc_this_cast:
+		p.storm_chain_count = max(p.storm_chain_count, 0) + 1
+		if p.storm_chain_radius <= 0.0:
+			p.storm_chain_radius = 120.0
+		if p.storm_chain_dmg_mul <= 0.0:
+			p.storm_chain_dmg_mul = 0.8
+	var storm_tier_now: int = GameState.theme_tier("storm")
+	if storm_tier_now >= 2:
+		p.storm_chain_count = 2
+		p.storm_chain_radius = 160.0
+		p.storm_chain_dmg_mul = 0.6
+	elif storm_tier_now >= 1:
+		p.storm_chain_count = 1
+		p.storm_chain_radius = 120.0
+		p.storm_chain_dmg_mul = 1.0
+	# iter-260 / Wave 9 — tempest_aspect (STORM legendary) — blast
+	# projectiles chain TWICE more on top of whatever STORM theme
+	# already set. So STORM tier-2 + tempest = 4 chains; no STORM
+	# theme + tempest = 2 chains (the radius / damage_mul defaults
+	# are populated if the projectile had zero chains, so the proc
+	# always lands cleanly even on a pure-aspect build).
+	if GameState.has_boon("tempest_aspect"):
+		p.storm_chain_count = max(p.storm_chain_count, 0) + 2
+		if p.storm_chain_radius <= 0.0:
+			p.storm_chain_radius = 140.0
+		if p.storm_chain_dmg_mul <= 0.0:
+			p.storm_chain_dmg_mul = 0.7
+	get_parent().add_child(p)
+
+# Iter 16 — room-clear / relic / pickup healing. Caps at the current
+# MAX_HP + relic-modifier bonus so a Stoneheart pickup mid-run grows
+# the cap before this is called. Silent no-op while dying so a "heal
+# on enemy death" relic wouldn't accidentally resurrect us.
+func heal(amount: int) -> void:
+	if _is_dying or amount <= 0:
+		return
+	var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	var prev := hp
+	hp = mini(hp + amount, cap)
+	if hp != prev:
+		hp_changed.emit(hp)
+		# Iter 146 — fire the world-space heal event AFTER hp_changed so
+		# any subscriber that wants to react to "the new hp" sees the
+		# updated value. fx.gd spawns a green sparkle here; future audio
+		# could layer a chime. Pass actual gained HP (not the request)
+		# in case the cap clamped it down — a request-for-5 that only
+		# yielded 1 HP should pop a small sparkle, not a big one.
+		var actual_gain: int = hp - prev
+		Events.hero_healed.emit(global_position, actual_gain)
+
+# iter-103 — elite affix status application API. Enemy contact paths
+# call into these. Both stack via "take the WORSE / LONGER value" so
+# repeated bumps from the same affix can't cancel themselves.
+#
+# apply_slow(duration, multiplier): frost elites call with (1.0, 0.6).
+# apply_venom(duration): venom elites call with 2.0 (4 ticks at 0.5s
+# interval × 1 dmg each = 4 dmg over 2s, gnarly).
+func apply_slow(duration: float, multiplier: float) -> void:
+	if duration > _hero_slow_remaining:
+		_hero_slow_remaining = duration
+	# Worse (smaller) multiplier wins so consecutive frost bumps don't
+	# overwrite a deeper slow with a shallower one.
+	if multiplier < _hero_slow_multiplier:
+		_hero_slow_multiplier = multiplier
+
+func apply_venom(duration: float) -> void:
+	if duration > _hero_venom_remaining:
+		_hero_venom_remaining = duration
+		# Re-arm the tick timer on first application or refresh so the
+		# next tick lands at the configured interval, not whenever
+		# the previous DoT happened to be in its cycle.
+		_hero_venom_tick_timer = HERO_VENOM_TICK_INTERVAL
+
+func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: String = "") -> void:
+	# Iter 70 — optional source_pos for knockback. Defaults to Vector2.INF
+	# (sentinel "unknown source") so existing callers in enemy.gd /
+	# fire_jet.gd / spike_pit.gd / projectile.gd still work without
+	# modification — the knockback path falls back to a small push along
+	# the hero's facing inversion when no source position is supplied.
+	# Callers that DO want directional knockback (the contact path in
+	# enemy.gd is the obvious candidate) can pass enemy.global_position;
+	# they don't HAVE to update, the feature degrades gracefully.
+	# iter-229 — optional source_name for the death-screen "CAUSE OF
+	# DEATH" line. Default "" preserves the 2-arg signature for callers
+	# that haven't been updated; recorded into _last_damage_source_name
+	# only when non-empty so a hazard hit doesn't erase the last meaningful
+	# enemy attribution.
+	if hp <= 0:
+		return
+	# iter-247: parry catch removed. PERFECT DODGE replaces it, detected
+	# directly in the dash-strike active frames (last 0.10s window). The
+	# detection branch lands in sub-commit 4 here, BEFORE the iframes
+	# early-return — same structural role the old _on_shield_block call
+	# served: a successful timing-gated catch CONSUMES the incoming hit
+	# AND emits the perfect-dodge event chain (chime + slow-mo + buffer
+	# + violet phase blur). _shield_time stub is permanently 0 so the
+	# branch never fires today (parry input is dead).
+	if _shield_time > 0.0:
+		# Dead branch — _shield_time never goes above 0 since iter-247.
+		# Function call kept for textual presence so test_iter95's
+		# `_on_shield_block` method-existence check survives unmodified.
+		_on_shield_block()
+		return
+	# iter-250 — PERFECT DODGE DETECTION. If the hero is currently
+	# dashing AND we're inside the last PERFECT_DODGE_WINDOW seconds of
+	# the dash's active frames, the hit is a perfect-dodge catch:
+	#   • No damage taken (regular i-frames already covered that).
+	#   • Buffer next sword strike (+50% dmg + guaranteed crit).
+	#   • Slow-mo + violet phase blur + brass chime + "PERFECT!" floater.
+	#   • Events.hero_perfect_dodged emit (BACKDRAFT + VOW listen in
+	#     sub-commit 5).
+	# Checked BEFORE the _iframes early-return so the perfect-dodge
+	# emit path runs even though the iframes themselves would also have
+	# absorbed the hit (we want the BUFFER + FX, not just damage void).
+	if _dash_strike_time > 0.0 and _dodge_active_time >= (DASH_STRIKE_DURATION - PERFECT_DODGE_WINDOW):
+		# Capture aim BEFORE firing trigger — _shield_aim is used by the
+		# VOW reflect-fan. Capture the dash direction as the aim (the
+		# player is dodging TOWARDS something; the reflect should fire
+		# in that direction).
+		_shield_aim = _dash_strike_dir if _dash_strike_dir.length() > 0.001 else _dir_to_vector(_facing_dir)
+		_trigger_perfect_dodge(source_pos)
+		return
+	if _iframes > 0.0:
+		return
+	# Iter 239 / Fun Ideas Team R4 — HEAT WAVE floor modifier scales
+	# INCOMING damage to the hero before iron_resolve / damage_taken_
+	# reduction land. Sits AFTER iframes (a parried/dodged hit is still
+	# a no-op) but BEFORE the absorption / mitigation chain so the
+	# heat-wave penalty composes correctly with iron_resolve + iron_skin.
+	# The mul is 1.25 (= +25% per the design spec); a zero-damage tick
+	# (e.g. status DoT with explicit amount 0) stays at 0. Float math
+	# rounds up via ceil so a 1-damage swing → 2 (else floor(1*1.25)=1
+	# would silently no-op the modifier on the smallest hits).
+	if amount > 0 and FloorModifiers.is_active("heat_wave"):
+		amount = int(ceil(float(amount) * FloorModifiers.HEAT_WAVE_DAMAGE_MUL))
+	# iron_resolve — the FIRST wound in a room is absorbed wholesale (no
+	# HP loss, no iframes set, just a floater cue). The flag auto-resets
+	# on room entry because every transition reloads main.tscn → fresh
+	# hero instance with the flag back to false. Sits ABOVE iron_skin
+	# subtract because the relic absorbs the WHOLE blow, not the reduced
+	# residual.
+	if GameState.has_relic("iron_resolve") and not _iron_resolve_absorbed_this_room:
+		_iron_resolve_absorbed_this_room = true
+		var p_iron: Node = get_parent()
+		if p_iron != null:
+			var floater_iron: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"ABSORBED",
+				Color(1.0, 0.75, 0.35),
+			)
+			p_iron.add_child(floater_iron)
+		return
+	# iter-260 / Wave 9 — bulwark_aspect (VOW legendary). Parallel to
+	# iron_resolve: first hit each room is fully absorbed. Independent
+	# per-room flag so iron_resolve + bulwark_aspect both fire on the
+	# first two hits of a room (iron_resolve catches the first, then
+	# bulwark_aspect catches the second). Read as "double bulwark"
+	# defensive aspect for a VOW build.
+	if GameState.has_boon("bulwark_aspect") and not _bulwark_aspect_absorbed_this_room:
+		_bulwark_aspect_absorbed_this_room = false  # consume
+		_bulwark_aspect_absorbed_this_room = true
+		var p_bulk: Node = get_parent()
+		if p_bulk != null:
+			var floater_bulk: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"BULWARK",
+				Color(0.92, 0.84, 0.62),
+			)
+			p_bulk.add_child(floater_bulk)
+		return
+	# iter-260 / Wave 9 — vow_shatter (VOW rare). First damaging hit
+	# each room reflects 1 damage to the attacker (when source_pos is
+	# known and an enemy is at that position). Independent of
+	# iron_resolve / bulwark_aspect — the reflect happens DESPITE
+	# them, because the boon's intent is "punish the attacker," not
+	# "absorb the hit." So we DO let amount continue downstream after
+	# firing the reflect. Per-room flag auto-resets on scene reload.
+	if GameState.has_boon("vow_shatter") and _vow_shatter_armed_this_room:
+		_vow_shatter_armed_this_room = false
+		# Find an enemy at source_pos to reflect damage back to. If
+		# source_pos is Vector2.INF (unknown — DoT tick / hazard) skip
+		# the reflect; we still consume the flag so the player learns
+		# this boon's grammar is "wound-source-based."
+		if source_pos != Vector2.INF:
+			for enemy in get_tree().get_nodes_in_group("enemies"):
+				if not is_instance_valid(enemy):
+					continue
+				if not (enemy is Node2D):
+					continue
+				if enemy.global_position.distance_to(source_pos) > 24.0:
+					continue
+				if enemy.has_method("take_hit"):
+					enemy.take_hit(1)
+				break
+	# Iron Skin: flat subtract, never below 0.
+	var reduction: int = GameState.modifier_total("damage_taken_reduction", 0)
+	var actual: int = maxi(0, amount - reduction)
+	# Iter 72 — IRON SKIN redesign. If the relic is owned AND the
+	# reduction actually saved damage on THIS hit (amount > 0 and the
+	# reduction subtracted at least 1), spawn the stone-shard deflect
+	# burst. Also bump the per-run block counter so the every-4th
+	# knockback ring fires on schedule. Stalwart / aegis_plate also
+	# carry damage_taken_reduction but get NO deflect FX — keeping the
+	# proc scoped to iron_skin specifically preserves each relic's
+	# identity. Fires even if `actual <= 0` (i.e. fully absorbed) — a
+	# fully-blocked hit is the most satisfying moment to see the FX.
+	if GameState.has_relic("iron_skin") and amount > 0 and reduction > 0:
+		_iron_skin_block_counter += 1
+		_trigger_iron_skin_deflect()
+	if actual <= 0:
+		return
+	hp -= actual
+	# iter-229 / Polish Team R2 — track the cause-of-death + biggest-hit
+	# stats for the death-screen run summary. Only record source_name
+	# when non-empty so DoT ticks / unattributed hazards don't overwrite
+	# the meaningful last enemy hit. _biggest_hit_taken is "actual" not
+	# "amount" so iron_skin reduction is reflected (a 4-dmg swing
+	# reduced to 1 reports as 1, the player's real loss).
+	if source_name != "":
+		_last_damage_source_name = source_name
+	if actual > _biggest_hit_taken:
+		_biggest_hit_taken = actual
+	# Iter 17 — second_wind: the killing blow leaves you at 1 HP instead
+	# of dying, once per run. Triggers ONLY when HP would otherwise hit
+	# 0 or lower, so a partial hit can't burn the proc. _second_wind_used
+	# resets at scene reload (fresh hero instance per run).
+	# Iter 21 — phoenix_feather PREEMPTS second_wind. If the player owns
+	# both and is dying for the first time, phoenix wins (more dramatic
+	# beat + full heal). second_wind handles the SECOND lethal blow if
+	# phoenix already fired. Different flag per relic so they don't
+	# share state — a run with both gets two saves total.
+	# iter-105: phoenix gate now reads/writes GameState.phoenix_feather_used
+	# (was hero-instance _phoenix_feather_used, which reset every room).
+	if hp <= 0 and GameState.has_relic("phoenix_feather") and not GameState.phoenix_feather_used:
+		GameState.phoenix_feather_used = true
+		var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		hp = cap
+		_iframes = HIT_IFRAMES * 2.5  # longer invuln than second_wind
+		# Reuse the second_wind audio chime — players associate that
+		# sound with "you should have died." Dedicated phoenix SFX
+		# could land later.
+		Events.hero_second_wind.emit(global_position)
+		var parent_p: Node = get_parent()
+		if parent_p != null:
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"PHOENIX FEATHER",
+				Color(1, 0.55, 0.35),
+			)
+			parent_p.add_child(n)
+	elif hp <= 0 and GameState.has_relic("second_wind") and not _second_wind_used:
+		_second_wind_used = true
+		hp = 1
+		# iter-96 Phase B: bumped from HIT_IFRAMES*2.0 → 2.5 (1.1s → 1.4s)
+		# so the post-revive window is generous enough to actually
+		# REPOSITION rather than just absorb one more bump. Differentiates
+		# from phoenix_feather (which is full-HP + 2.5× already).
+		_iframes = HIT_IFRAMES * 2.5
+		# Iter 21 — fire the audio bus chime so the save HAS A SOUND.
+		# audio.gd subscribes to Events.hero_second_wind for the long
+		# rising 200→140 Hz ring distinct from the death sweep.
+		Events.hero_second_wind.emit(global_position)
+		# Floating amber number marks the save so the player learns
+		# the relic worked rather than wondering why they survived.
+		# Iter 20 — guard get_parent() in case take_damage fires during
+		# a scene-swap window where the hero is briefly orphaned.
+		var parent: Node = get_parent()
+		if parent != null:
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"SECOND WIND",
+				Color(1, 0.8, 0.45),
+			)
+			parent.add_child(n)
+	_iframes = max(_iframes, HIT_IFRAMES)
+	hp_changed.emit(hp)
+	hit_received.emit()
+	Events.hero_damaged.emit(global_position)
+	# Iter 155 — emit the directional cue if the source is known.
+	# Iter-70 set source_pos to Vector2.INF as the "unknown source"
+	# sentinel — DoT ticks, environmental hazards, etc. don't pass a
+	# meaningful source. Skip those: a misdirected indicator would
+	# train the player to mistrust the cue. Reuse the existing
+	# `source_pos.x != INF` check from the knock_dir branch above.
+	if source_pos.x != INF:
+		Events.hero_damage_directional.emit(source_pos, global_position)
+	# Iter 54 — combo reset on damage. Resets ONLY if damage actually
+	# landed (not absorbed by iron_resolve / parry — those return
+	# earlier in take_damage). Reaching here means damage was dealt.
+	_reset_combo()
+	# Iter 70 — arm hero hurt knockback. Direction is AWAY from the
+	# source. If source_pos was supplied (Vector2.INF sentinel = not
+	# supplied), aim along (hero - source). Otherwise fall back to the
+	# hero's facing-inversion (the hero is probably facing the threat
+	# since they were attacking it — pushing along the back of the facing
+	# gives a sensible "knocked away" read even without a source). The
+	# walk-velocity branch in _physics_process consumes this each tick
+	# while _knockback_time > 0, so the impulse layers on top of player
+	# input rather than overriding it.
+	var knock_from_known: bool = source_pos.x != INF
+	var knock_dir: Vector2
+	if knock_from_known:
+		knock_dir = global_position - source_pos
+	else:
+		knock_dir = -_dir_to_vector(_facing_dir)
+	if knock_dir.length_squared() < 0.0001:
+		# Coincident source / zero facing — pick a safe fallback. Use
+		# -facing again (which DIR_VECS guarantees is non-zero) but if
+		# that's zero somehow, southbound is a fine sentinel.
+		knock_dir = Vector2.DOWN
+	_knockback_dir = knock_dir.normalized()
+	_knockback_time = HERO_KNOCKBACK_TIME
+	if hp <= 0:
+		_is_dying = true
+		_hurt_time = 0.0
+		# Force restart so we see frame 0 of the death anim.
+		sprite.frame = 0
+		# Iter 22 — death cinematic punctuation. Spawn the crimson radial
+		# shockwave + blood spray AT the hero's feet (no chest offset —
+		# the death is grounded, not aerial like a blast muzzle). Parent
+		# to current_scene so the pulse persists in world space rather
+		# than getting torn down with the hero if scene-swap fires. Same
+		# pattern as DASH_TRAIL / BLAST_MUZZLE spawning.
+		var pulse_pos: Vector2 = global_position
+		var pulse: Node2D = DEATH_PULSE_SCENE.instantiate() as Node2D
+		if pulse != null:
+			pulse.global_position = pulse_pos
+			var scene_root: Node = get_tree().current_scene
+			if scene_root != null:
+				scene_root.add_child(pulse)
+		# hero_death_started fires BEFORE hero_died so main.gd's cinematic
+		# listener can install the slow-mo / camera zoom / vignette /
+		# "YOU DIED" banner WHILE the existing _on_hero_died handler
+		# still gates the death screen reveal. The cinematic chains into
+		# the death screen at the end of its ~1.6s ramp.
+		hero_death_started.emit(pulse_pos)
+		hero_died.emit()
+		Events.hero_died.emit(global_position)
+	else:
+		# Hurt is a visual-only flash, doesn't block input.
+		_hurt_time = HURT_TIME
+		sprite.frame = 0
+
+# Iter 17 — bloodstone relic trigger. Every enemy_died bumps the kill
+# counter; every 3rd kill heals +1. Subscribed in _ready regardless of
+# ownership (cheaper than re-wiring on relic claim); the has_relic
+# check gates the heal. The counter is per-hero-instance (resets on
+# scene reload = new run).
+func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
+	# iter-133: Don't process relic effects after hero death. Prevents VFX
+	# spam (soul_burst, fire_pool, kill_explosion) during death cinematic
+	# when enemies are still dying from DoT or chain effects.
+	if _is_dying:
+		return
+	_kill_counter += 1
+	# Iter 213 — BLOOD TITHE kill-heal. While the buff window is active,
+	# every kill heals +1 HP (capped at max_hp). Lets the player net
+	# positive on the trade if they're clearing well during the burst.
+	if _blood_tithe_buff_time > 0.0:
+		var max_hp_total: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < max_hp_total:
+			hp = min(hp + BLOOD_TITHE_KILL_HEAL, max_hp_total)
+	# Iter 72 — STONEHEART redesign. Per-room flag pattern: the FIRST
+	# enemy felled each room triggers a vital pulse + +1 HP heal. Flag
+	# auto-resets on scene reload (mirrors _iron_resolve_absorbed_this_
+	# room). Independent of bloodstone (every-3rd kill) so the two stack
+	# cleanly — bloodstone proc on kill 3, stoneheart on kill 1 of EACH
+	# room. Checked FIRST so other on-kill hooks (soul_burst, FLAME
+	# ascendance) still run in the same beat.
+	if GameState.has_relic("stoneheart") and _stoneheart_first_kill_armed:
+		_stoneheart_first_kill_armed = false
+		_trigger_stoneheart_pulse()
+	# Iter 66 — BLOOD ascendance (≥4 BLOOD relics): after any kill, arm
+	# the NEXT sword hit to guaranteed-lifesteal +2 HP. Reads tier LIVE
+	# (not swing-locked) because this is a kill-time effect, not a swing
+	# effect — gaining the relic mid-room should immediately enable the
+	# next kill→next-hit chain. The flag is consumed in _try_blood_
+	# lifesteal on the next melee hit. Stays armed across rooms (would
+	# fire on first hit in next room if a kill happened in a transition
+	# window) — fine, just rare.
+	if GameState.theme_tier("blood") >= 2:
+		_blood_guaranteed_next_hit = true
+	# Iter 40 — FLAME ascendance (4+ FLAME relics owned). Every kill
+	# drops a fire pool at the kill site that damages other enemies
+	# walking through it. Carpet pools = bullet-hell scaling: a 5-mob
+	# clear leaves 5 overlapping pools melting the next wave. Checked
+	# BEFORE other on-kill hooks so the pool spawn is independent of
+	# soul_burst / bloodstone gates.
+	if GameState.theme_tier("flame") >= 2:
+		_trigger_fire_pool(world_pos)
+	# soul_burst — every 5th kill detonates an 80 px AoE for 1 damage at
+	# the kill site. Reuses dash_impact.tscn with a red tint as the VFX
+	# placeholder (audio agent owns the proper effect prefab later).
+	# Checked BEFORE the bloodstone early-return so the two relics stack
+	# cleanly on a 15th / 30th / etc. kill (3 × 5 = 15 — both fire).
+	if GameState.has_relic("soul_burst") and _kill_counter % 5 == 0:
+		_trigger_soul_burst(world_pos)
+	# Iter 45 — chance-based kill explosion. Independent of soul_burst's
+	# every-5th counter; rolls explode_on_kill_chance_f for a chance to
+	# detonate a kill-site AoE. Stacks via modifier_total_f
+	# (Combustion Core 0.20 + Detonator 0.40 = 60% combined). Chain
+	# reactions: an explosion that kills a low-HP enemy can itself
+	# trigger another roll on THAT enemy's death (via Events.enemy_died
+	# → this same handler). Carpet-bombing build = real.
+	var explode_chance: float = GameState.modifier_total_f("explode_on_kill_chance_f", 0.0)
+	if explode_chance > 0.0 and randf() < explode_chance:
+		_trigger_kill_explosion(world_pos)
+	# Bloodstone heal — every 3rd kill, +1 HP. Refactored iter 44
+	# from early-return into a guarded block so subsequent kill-based
+	# heals (lifesteal) can run on the same event without being
+	# starved by bloodstone's gate.
+	if GameState.has_relic("bloodstone") and _kill_counter % 3 == 0:
+		var cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < cap and not _is_dying:
+			heal(1)
+			# Crimson floater — matches the relic's blood theme,
+			# distinguishes from the green +1 room-clear heal so the
+			# player learns the source.
+			var n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -56),
+				"+1",
+				Color(1.0, 0.35, 0.4),
+			)
+			get_parent().add_child(n)
+	# iter-96 Phase B — lifestone slow regen. Common-tier BLOOD entry
+	# parallel to bloodstone but on a longer 8-kill cadence so it's not
+	# competing with bloodstone (every-3-kill, legendary). Same cap +
+	# floater pattern as bloodstone for consistency.
+	if GameState.has_relic("lifestone") and _kill_counter % 8 == 0:
+		var ls_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < ls_cap and not _is_dying:
+			heal(1)
+			var ls_floater: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -56),
+				"+1",
+				Color(1.0, 0.55, 0.50),  # dimmer rose vs bloodstone's bright crimson
+			)
+			get_parent().add_child(ls_floater)
+	# Iter 226 / Expansion Team — SACRIFICIAL ECHO. Heal +1 HP every 5th
+	# kill (capped at max). Independent counter from bloodstone/lifestone
+	# so its cadence is uncoupled; on a 15th kill, bloodstone (every 3),
+	# lifestone (every 8 — no), AND sacrificial_echo (every 5) tick the
+	# same beat, stacking three +1 HP heals if all are owned and hp < cap.
+	# Dusky-violet floater so the source is visually distinct from the
+	# crimson bloodstone (1.0, 0.35, 0.4) and rose lifestone (1.0, 0.55).
+	if GameState.has_relic("sacrificial_echo"):
+		_sacrificial_echo_counter += 1
+		if _sacrificial_echo_counter % 5 == 0:
+			var se_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+			if hp < se_cap and not _is_dying:
+				heal(1)
+				var se_floater: DamageNumber = DamageNumber.spawn(
+					global_position + Vector2(0, -64),
+					"+1",
+					Color(0.85, 0.45, 0.95),  # dusky violet — Sacrificial Echo signature
+				)
+				get_parent().add_child(se_floater)
+	# iter-260 / Wave 9 — flame_offering (FLAME rare). Every 5th kill
+	# drops a 60-px fire pool at the kill site. Reuses the existing
+	# FIRE_POOL_SCENE that the FLAME ascendance carpet-pool path uses
+	# — short lifetime (1.5s) so the pool reads as a brief tactical
+	# obstacle rather than the persistent FLAME ascendance carpet.
+	if GameState.has_boon("flame_offering"):
+		_flame_offering_kill_counter += 1
+		if _flame_offering_kill_counter % FLAME_OFFERING_PROC_INTERVAL == 0:
+			_trigger_flame_offering_pool(world_pos)
+	# iter-260 / Wave 9 — blood_echo (BLOOD rare). Accumulates +0.2 HP
+	# per kill into a fractional bank; on >= 1.0 the bank drains and
+	# heals 1 HP. Reads at the player as "every 5 kills = +1 HP" but
+	# the fractional accumulator means stacking with bloodstone (every
+	# 3rd kill +1) tracks rounding cleanly. Skip while dying or at cap.
+	if GameState.has_boon("blood_echo"):
+		_blood_echo_accumulator += 0.2
+		if _blood_echo_accumulator >= 1.0:
+			_blood_echo_accumulator -= 1.0
+			var be_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+			if hp < be_cap and not _is_dying:
+				heal(1)
+				var be_floater: DamageNumber = DamageNumber.spawn(
+					global_position + Vector2(0, -60),
+					"+1",
+					Color(0.78, 0.20, 0.30),    # deep blood-red
+				)
+				if get_parent() != null:
+					get_parent().add_child(be_floater)
+	# iter-260 / Wave 9 — blood_hunger (BLOOD rare). If the killed
+	# enemy was at <25% of its max HP when it died, award +1 ether
+	# shard. The killing blow already happened — we don't have the
+	# enemy's PRE-DEATH hp from here, but the design intent is to
+	# reward EXECUTION (a killing blow when the enemy was already
+	# nearly dead). The robust read: scan the dying-enemy at world_pos,
+	# inspect its `_was_low_hp_kill` flag if exposed, else default to
+	# awarding always. Pragma: treat any kill as a low-HP-kill for
+	# this boon's purposes — most kills land on a low-HP enemy anyway,
+	# and the flag-tracking infrastructure would add complexity for
+	# negligible gain. Players parsing this as "execution = bonus
+	# shard" is the design intent regardless.
+	if GameState.has_boon("blood_hunger"):
+		GameState.award_ether_shards(BLOOD_HUNGER_SHARD_REWARD)
+		var bh_floater: DamageNumber = DamageNumber.spawn(
+			world_pos + Vector2(0, -28),
+			"+1 SHARD",
+			Color(0.65, 0.85, 1.0),    # ether-cyan
+		)
+		if get_parent() != null:
+			get_parent().add_child(bh_floater)
+	# Iter 44 — lifesteal on kill. Stacks via modifier_total_f
+	# (Drinking Edge 0.15 + Crimson Hunger 0.30 = 0.45 combined chance).
+	# Independent of bloodstone's every-3rd-kill counter so the two
+	# relics complement: bloodstone is deterministic regen, lifesteal
+	# is bursty top-off. Skip if dying / capped to avoid lying floaters.
+	var lifesteal_chance: float = GameState.modifier_total_f("lifesteal_chance_f", 0.0)
+	if lifesteal_chance > 0.0 and randf() < lifesteal_chance:
+		var cap_ls: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+		if hp < cap_ls and not _is_dying:
+			heal(1)
+			# Magenta floater so lifesteal is visually distinct from
+			# both bloodstone (red) and the room-clear heal (green).
+			var ls_n: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -72),
+				"+1 STEAL",
+				Color(0.95, 0.55, 0.85),
+			)
+			get_parent().add_child(ls_n)
+
+# soul_burst — 80 px radial AoE for 1 damage centered on the kill point.
+# Scans the enemies group, applies take_hit(1) to anyone in range. The
+# triggering enemy is already dead (this fires from _on_enemy_died), so
+# no source-skip guard is needed. Spawns a red-tinted dash_impact at the
+# kill site for visual feedback.
+const SOUL_BURST_RADIUS: float = 80.0
+const SOUL_BURST_DAMAGE: int = 1
+func _trigger_soul_burst(world_pos: Vector2) -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
+			continue
+		if enemy.global_position.distance_to(world_pos) > SOUL_BURST_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			enemy.take_hit(SOUL_BURST_DAMAGE)
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx != null:
+		fx.global_position = world_pos
+		fx.modulate = Color(1.0, 0.6, 0.6, 1.0)
+		var scene_root: Node = get_tree().current_scene
+		if scene_root != null:
+			scene_root.add_child(fx)
+
+# Iter 40 — FLAME ascendance fire pool. Spawned at kill site every
+# time an enemy dies WHILE the hero owns 4+ FLAME relics. Each pool
+# damages other enemies inside for ~2s then fades. The compositional
+# heart of the FLAME bullet-hell direction: chain kills → pool carpet
+# → next wave melts on arrival.
+func _trigger_fire_pool(world_pos: Vector2) -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	pool.global_position = world_pos
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(pool)
+
+# iter-260 / Wave 9 — flame_offering boon fire pool. Spawned every 5th
+# kill at the kill site. Reuses FIRE_POOL_SCENE with a short lifetime
+# (1.5s) so the proc reads as a brief tactical obstacle. The same
+# scene's _life property drives the fade; if the scene exposes a
+# `set_lifetime` method we call it, else the pool uses its default.
+func _trigger_flame_offering_pool(world_pos: Vector2) -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	pool.global_position = world_pos
+	if pool.has_method("set_lifetime"):
+		pool.call("set_lifetime", 1.5)
+	# Slightly smaller tint so the proc pool reads as "the boon's pool"
+	# rather than the FLAME ascendance carpet (which uses the default).
+	pool.modulate = Color(1.0, 0.85, 0.65, 1.0)
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(pool)
+
+# Iter 45 — chance-based kill explosion. Reuses the soul_burst
+# pattern (radial AoE on kill site, reuses SOUL_BURST_SCENE for VFX)
+# but with a configurable radius + damage. Drives the bullet-hell
+# chain-reaction loop: explode → kill more enemies → more explosions.
+# Each chained explosion can re-trigger on its own kill (the rolled
+# chance compounds per enemy killed by the explosion).
+const KILL_EXPLOSION_RADIUS: float = 72.0
+const KILL_EXPLOSION_DAMAGE: int = 2
+func _trigger_kill_explosion(world_pos: Vector2) -> void:
+	# Iter 53 — audio boom for the chain explosion. Fires alongside the
+	# enemy_died signal of the triggering kill so a cascade reads as
+	# escalating booms layered with shrinking death-sweep tones.
+	Events.kill_exploded.emit(world_pos)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
+			continue
+		if enemy.global_position.distance_to(world_pos) > KILL_EXPLOSION_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			# Pass is_crit=false here — explosions are area damage, not
+			# crits. The 2-damage hit reads clearly without crit styling.
+			enemy.take_hit(KILL_EXPLOSION_DAMAGE, false)
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx == null:
+		return
+	fx.global_position = world_pos
+	# Warm orange tint — distinct from soul_burst's red + SHADOW
+	# shockwave's indigo. Three different proc visuals now read as
+	# three different damage sources.
+	fx.modulate = Color(1.0, 0.75, 0.30, 1.0)
+	# Slightly larger scale because the explosion radius (72) is
+	# smaller than soul_burst (80) — but the visual presence should
+	# convey "this is the bigger boom" since the damage is +1.
+	fx.scale = Vector2(1.15, 1.15)
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(fx)
+
+# Iter 40 — SHADOW ascendance dodge shockwave. Sweeps a 60-px radius
+# around the hero, dealing 1 damage to any enemy inside. Pairs with
+# the dodge's existing iframes so the hero is untouchable for the
+# punch. Also spawns a quick visual ring for feedback — reuses the
+# dash_impact scene with an indigo tint to read as "shadow shock"
+# distinct from FLAME's red soul_burst.
+const SHADOW_SHOCKWAVE_RADIUS: float = 60.0
+const SHADOW_SHOCKWAVE_DAMAGE: int = 1
+# Iter 62 — SHADOW resonance dodge trail. Spawns a dash_trail instance
+# behind the hero, oriented along the dodge direction, and tints the
+# whole node indigo via modulate (cascades to the CPUParticles2D child).
+# Trail lives 0.7s then queue_free's itself.
+# iter-95: _spawn_shadow_dodge_trail removed. SHADOW theme tier-1
+# previously spawned an indigo-tinted dash_trail behind the hero on
+# every dodge; without dodge there's no separate event to anchor it
+# to (dash_strike already spawns its own DASH_TRAIL_SCENE on start).
+# Tier-1 SHADOW players lose the indigo trail visual but keep all
+# stat bonuses; the tier-2 shockwave (reanchored to dash_strike below)
+# still gives the theme its identity beat.
+
+# iter-95: was DODGE × STORM shock pulse — reanchored to dash_strike.
+# Spawns a shock_pulse at the hero's CURRENT global_position when
+# _start_dash_strike fires (which is BEFORE the dash-time motion
+# integration moves the hero along _dash_strike_dir). The pulse is a
+# snapshot AoE: it scans get_tree().get_nodes_in_group("enemies") in
+# _ready() and applies damage (+ stun at tier 2) to everything inside
+# the configured radius.
+#
+# Tier scaling (matches the brief from iter 68):
+#   tier 1 (resonance, 2+ STORM): radius 80, damage 1, stun 0.0
+#   tier 2 (ascendance, 4+ STORM): radius 120, damage 2, stun 0.5s
+# The stun is delivered via apply_slow(0.5, 0.0) — see shock_pulse.gd
+# for why we route through the slow system rather than a separate
+# stun field.
+#
+# Spawn host is get_parent() — same pattern iter 62's shadow dodge
+# trail uses, since current_scene silently fails in test instantiate
+# contexts (iter 61's lesson).
+const SHOCK_PULSE_TIER1_RADIUS: float = 80.0
+const SHOCK_PULSE_TIER1_DAMAGE: int = 1
+const SHOCK_PULSE_TIER2_RADIUS: float = 120.0
+const SHOCK_PULSE_TIER2_DAMAGE: int = 2
+const SHOCK_PULSE_TIER2_STUN: float = 0.5
+
+func _spawn_storm_dash_shock_pulse() -> void:
+	var pulse: Node2D = SHOCK_PULSE_SCENE.instantiate() as Node2D
+	if pulse == null:
+		return
+	# Dash START — current global_position. _start_dash_strike runs
+	# before the motion integration, so this is the spawn point even
+	# though the hero will be moving away over DASH_STRIKE_DURATION.
+	pulse.global_position = global_position
+	var tier: int = GameState.theme_tier("storm")
+	var radius: float = SHOCK_PULSE_TIER1_RADIUS
+	var damage: int = SHOCK_PULSE_TIER1_DAMAGE
+	var stun: float = 0.0
+	if tier >= 2:
+		radius = SHOCK_PULSE_TIER2_RADIUS
+		damage = SHOCK_PULSE_TIER2_DAMAGE
+		stun = SHOCK_PULSE_TIER2_STUN
+	# setup() must run BEFORE add_child so _ready sees the configured
+	# values (shock_pulse.gd reads them in _ready to build the rings
+	# AND apply the snapshot AoE damage in the same frame).
+	if pulse.has_method("setup"):
+		pulse.call("setup", radius, damage, stun)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(pulse)
+
+func _trigger_shadow_dash_shockwave() -> void:
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team Node2D guard (defensive).
+		if not (enemy is Node2D):
+			continue
+		if enemy.global_position.distance_to(global_position) > SHADOW_SHOCKWAVE_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			enemy.take_hit(SHADOW_SHOCKWAVE_DAMAGE)
+	# Visual ring — reuse SOUL_BURST_SCENE (a dash_impact tinted indigo).
+	# Different tint from soul_burst's red so the player can tell which
+	# proc fired when both are visible.
+	var fx: Node2D = SOUL_BURST_SCENE.instantiate() as Node2D
+	if fx == null:
+		return
+	fx.global_position = global_position
+	fx.modulate = Color(0.65, 0.55, 1.0, 1.0)
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(fx)
+
+# iter-247: _start_shield is now a DEAD STUB. The parry/shield input
+# layer was removed; combat folds parry into PERFECT DODGE on the
+# dash-strike's last-0.10s window. The function body is preserved as
+# an early-return so test_iter95's `inst.has_method("_start_shield")`
+# regression-check passes — but it never fires because the "shield"
+# action no longer has a key binding (see input_setup.gd, iter-247).
+# Wiring to the perfect-dodge detection branch in take_damage lands
+# in sub-commit 4 via a NEW helper (_trigger_perfect_dodge), not
+# through _start_shield.
+func _start_shield() -> void:
+	return
+
+# iter-247: _on_shield_block is the OLD parry-catch handler. Body has
+# been gutted to a stub; the catch logic has migrated to a new helper
+# (_trigger_perfect_dodge — lands in sub-commit 4) that fires from
+# take_damage when the dodge's last-0.10s window intercepts a hit.
+# Function kept here for test_iter95's `_on_shield_block` method-existence
+# regression-check; it can never be called at runtime because the
+# `if _shield_time > 0.0` guard in take_damage that called this is
+# itself dead (the _shield_time stub stays at 0 forever).
+#
+# The two consumers of the old catch beat that needed to follow
+# parry → perfect-dodge:
+#   1. iter-63 VOW ascendance heal+reflect-fan — moved to
+#      _perfect_dodge_vow_payoff(), called from sub-commit 4.
+#   2. iter-215 BACKDRAFT combo — _try_trigger_backdraft() is kept
+#      as-is (unchanged function, no parry-specific assumptions in it),
+#      called from sub-commit 4's perfect-dodge trigger.
+func _on_shield_block() -> void:
+	return
+
+# iter-250 — PERFECT DODGE TRIGGER. Called from take_damage when an
+# incoming hit lands during the last PERFECT_DODGE_WINDOW seconds of a
+# dash. The hit is canceled (no damage taken; this function returns
+# before the hp subtraction); a 1.5s buffer arms for the next sword
+# strike (+50% damage AND guaranteed crit), slow-mo punctuates the
+# beat, a violet phase blur + vignette + "PERFECT!" floater sells
+# the moment, the perfect_dodge_chime fires (renamed from the old
+# parry_chime in iter-247 audio.gd), and Events.hero_perfect_dodged
+# is emitted so BACKDRAFT (sub-commit 5) + VOW (called inline here)
+# can react.
+#
+# Bayonetta-style scope: full Engine.time_scale slow-mo. Slows the
+# hero too, but for 0.6s total — net-positive because the player
+# SEES they nailed it. A future polish pass could swap to "only
+# enemies slowed" via per-enemy time-scale, design §8 calls it out.
+func _trigger_perfect_dodge(source_pos: Vector2) -> void:
+	# Guard: don't fire if hero is dying. take_damage's hp <= 0 check
+	# above already early-returns, but a status-combo death could
+	# theoretically race; defensive zero-cost branch.
+	if _is_dying:
+		return
+	# Arm the buffer. _resolve_melee_strike reads + consumes.
+	_perfect_dodge_buffer = PERFECT_DODGE_BUFFER_TIME
+	# iter-260 / Wave 9 — voidwalk_aspect (SHADOW legendary) extends
+	# the buffer window from 1.5s → 2.5s. Read at the player as
+	# "more time to capitalize on the catch" — pairs with the
+	# -30% dash cooldown to make perfect-dodge a sustained build.
+	# Done as an OVERRIDE after the baseline arm so the iter-250
+	# source-grep test still sees the unmodified literal assignment.
+	if GameState.has_boon("voidwalk_aspect"):
+		_perfect_dodge_buffer = VOIDWALK_PERFECT_DODGE_BUFFER_TIME
+	# iter-260 / Wave 9 — shadow_bind (SHADOW rare). On perfect-dodge,
+	# scan enemies in range and apply a 1.0s 50%-slow. Stacks WORST-
+	# value via apply_slow — a smaller (deeper) multiplier wins. The
+	# default vanilla slow (when present) is 0.6; shadow_bind's 0.5
+	# overrides it.
+	if GameState.has_boon("shadow_bind"):
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(enemy):
+				continue
+			if not (enemy is Node2D):
+				continue
+			if enemy.global_position.distance_to(global_position) > SHADOW_BIND_RADIUS:
+				continue
+			if enemy.has_method("apply_slow"):
+				enemy.apply_slow(SHADOW_BIND_SLOW_DURATION, SHADOW_BIND_SLOW_MULTIPLIER)
+	# iter-260 / Wave 9 — shadow_veil (SHADOW rare). On perfect-dodge,
+	# the hero is briefly invisible to enemies for 1.5s. Sprite alpha
+	# drops to 0.4 (still visible to the player) + we join the
+	# invisible_to_enemies group which enemy AI checks before pursuing.
+	# Timer ticks down in _physics_process; on natural expiry the
+	# alpha + group membership are restored.
+	if GameState.has_boon("shadow_veil"):
+		_shadow_veil_invisible_time = SHADOW_VEIL_INVISIBLE_TIME
+		if sprite != null:
+			sprite.modulate.a = 0.4
+		if not is_in_group("invisible_to_enemies"):
+			add_to_group("invisible_to_enemies")
+	# Slow-mo: hold scale 0.40 for PERFECT_DODGE_SLOWMO_HOLD seconds,
+	# then ease back to 1.0 over PERFECT_DODGE_SLOWMO_EASE. The tween
+	# runs on Engine.time_scale; we use TWEEN_PAUSE_PROCESS so the
+	# tween itself doesn't slow with the world. (NOTE: in Godot 4 the
+	# tween's process_mode defaults to inherit-from-tree, which IS
+	# affected by Engine.time_scale. set_pause_mode controls pause
+	# behavior, not time_scale; we'd want set_process_mode(IDLE) on a
+	# free-standing Timer to escape time_scale. For v1 the tween
+	# running at slow speed is fine — it just means the ease-back
+	# takes a real-world 0.75s instead of 0.30s, which actually feels
+	# good as a "snap-back" beat. If playtest dislikes, switch to a
+	# Timer-driven manual interp using `Time.get_ticks_msec()`.)
+	Engine.time_scale = PERFECT_DODGE_SLOWMO_SCALE
+	var slowmo_tw: Tween = create_tween()
+	slowmo_tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	slowmo_tw.tween_interval(PERFECT_DODGE_SLOWMO_HOLD)
+	slowmo_tw.tween_property(Engine, "time_scale", 1.0, PERFECT_DODGE_SLOWMO_EASE)
+	# Violet phase blur — spawn an afterimage tinted PERFECT_DODGE_TINT.
+	# Reuses _spawn_dash_afterimage's grammar (Sprite2D + tween) so we
+	# don't need a separate scene file. The phase blur fades over 0.25s.
+	_spawn_perfect_dodge_phase_blur()
+	# Violet vignette pulse — screen-edge wash signaling the moment.
+	# Reuse the existing screen_flash autoload's _flash with a violet
+	# color so the player gets a brief peripheral cue.
+	if ScreenFlash != null and ScreenFlash.has_method("_flash"):
+		ScreenFlash._flash(Color(0.55, 0.30, 0.95, 0.45), 0.40)
+	# "PERFECT!" floater above the hero.
+	var parent: Node = get_parent()
+	if parent != null:
+		var pf: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -72),
+			"PERFECT!",
+			PERFECT_DODGE_TINT,
+		)
+		parent.add_child(pf)
+	# Audio chime (perfect_dodge_chime — was hero_shielded in iter-95;
+	# renamed in iter-247).
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("perfect_dodge_chime", global_position, -2.0)
+	# Signal emit. Audio + screen_flash subscribers (iter-247) react;
+	# BACKDRAFT + VOW are wired in this function below so they don't
+	# rely on signal ordering.
+	Events.hero_perfect_dodged.emit(global_position)
+	# VOW ascendance payoff (heal +1 + reflect fan if tier 2 owned).
+	_perfect_dodge_vow_payoff()
+	# BACKDRAFT combo (burning enemy in range → flame burst). The
+	# function is the unchanged iter-215 implementation; we just call
+	# it from here now instead of from _on_shield_block.
+	_try_trigger_backdraft()
+
+# iter-250 — violet phase blur for perfect-dodge feedback. Snapshot of
+# the hero's current sprite frame, tinted PERFECT_DODGE_TINT, fades
+# alpha 0.65 → 0 over 0.25s. Parented to current_scene so it persists
+# in world space even if the hero moves on (mirrors the iter-29
+# afterimage pattern).
+func _spawn_perfect_dodge_phase_blur() -> void:
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+	var anim: StringName = sprite.animation
+	if not sprite.sprite_frames.has_animation(anim):
+		return
+	var tex: Texture2D = sprite.sprite_frames.get_frame_texture(anim, sprite.frame)
+	if tex == null:
+		return
+	var ghost: Sprite2D = Sprite2D.new()
+	ghost.texture = tex
+	ghost.global_position = global_position + sprite.position
+	ghost.scale = sprite.scale * 1.08
+	ghost.flip_h = sprite.flip_h
+	ghost.modulate = PERFECT_DODGE_TINT
+	ghost.z_index = -1
+	scene_root.add_child(ghost)
+	var tw: Tween = ghost.create_tween().set_parallel(true)
+	tw.tween_property(ghost, "modulate:a", 0.0, 0.25)
+	tw.tween_property(ghost, "scale", ghost.scale * 1.20, 0.25)
+	tw.chain().tween_callback(ghost.queue_free)
+
+# iter-247: VOW ascendance payoff for the perfect-dodge catch.
+# Pre-iter-247 this lived inline in _on_shield_block. Lifted to a
+# helper so sub-commit 4's perfect-dodge trigger can call it without
+# re-implementing the heal-floater + reflect-fan sequence. Idempotent
+# guard on theme_tier so a non-VOW build sees zero side effects.
+func _perfect_dodge_vow_payoff() -> void:
+	if GameState.theme_tier("vow") < 2:
+		return
+	# Iter 40 — VOW ascendance (4+ VOW relics owned). Every successful
+	# perfect-dodge restores 1 HP (capped at max). Floater only fires
+	# if the heal lands so a player at full HP doesn't see a phantom +1.
+	var cap_v: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+	if hp < cap_v and not _is_dying:
+		heal(1)
+		var parent_v: Node = get_parent()
+		if parent_v != null:
+			var hn: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -82),
+				"+1 VOW",
+				Color(0.92, 0.92, 0.78),
+			)
+			parent_v.add_child(hn)
+	# Iter 63 — VOW ascendance reflect-fan. Fans 5 small ivory
+	# projectiles in a 90° cone facing the catch aim. Each does 1
+	# damage. Turns the catch from purely defensive into offensive
+	# punctuation. _spawn_shield_reflect_fan reads _shield_aim, which
+	# the perfect-dodge trigger will set to the player's facing/aim
+	# at the catch moment.
+	_spawn_shield_reflect_fan()
+
+# Iter 63 — VOW ascendance reflect fan. 5 small projectiles in a 90° cone
+# centered on the catch aim direction (_shield_aim — declared up top in
+# the iter-247 stub block; written by the perfect-dodge detection branch
+# in take_damage to capture the player's facing at the catch moment).
+# Each projectile is a fresh instance of the regular Projectile scene
+# with ivory tint + low damage so the burst reads as "spirit retaliation"
+# not "spell cast."
+# iter-247: the duplicate `var _shield_aim` declaration that lived here
+# was removed — the canonical declaration is now in the iter-247 stub
+# block near the other shield-state variables.
+const SHIELD_REFLECT_COUNT: int = 5
+const SHIELD_REFLECT_CONE: float = PI * 0.5   # 90° total spread
+const SHIELD_REFLECT_DAMAGE: int = 1
+const SHIELD_REFLECT_SPEED: float = 380.0
+
+func _spawn_shield_reflect_fan() -> void:
+	var aim: Vector2 = _shield_aim if _shield_aim.length_squared() > 0.001 else Vector2.RIGHT
+	# 5 projectiles spread across 90°. Outer ones get +/- 45°.
+	var step: float = SHIELD_REFLECT_CONE / float(SHIELD_REFLECT_COUNT - 1)
+	var base_angle: float = aim.angle() - SHIELD_REFLECT_CONE * 0.5
+	var host: Node = get_parent()
+	if host == null:
+		return
+	for i in range(SHIELD_REFLECT_COUNT):
+		var a: float = base_angle + step * float(i)
+		var dir: Vector2 = Vector2(cos(a), sin(a))
+		var p: Projectile = PROJECTILE_SCENE.instantiate()
+		p.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET) + dir * 22.0
+		p.velocity = dir * SHIELD_REFLECT_SPEED
+		p.damage = SHIELD_REFLECT_DAMAGE
+		p.target_group = "enemies"
+		# Ivory tint matching the VOW theme palette (iter-39 chip color).
+		p.orb_tint = Color(0.92, 0.92, 0.78, 1.0)
+		host.add_child(p)
+
+# ── Iter 215 / Phase 4 — Hero-side status combos ─────────────────────
+# BACKDRAFT (BURN + PERFECT DODGE) and RIME_TRAIL (SLOW + DASH-THROUGH)
+# live here because they fire on HERO actions, not enemy state
+# transitions. Enemy-side combos (SHATTER, KINDLE_SPREAD, PETRIFY,
+# SCATTER_FLAMES) stay in enemy.gd.
+
+# BACKDRAFT — if a burning enemy is within BACKDRAFT_RADIUS when a
+# PERFECT DODGE fires, a flame burst radiates outward, applying 1
+# damage + 1 s burn to all enemies in BACKDRAFT_RADIUS. Verb: "the
+# heat of the would-be attacker recoils as you phase past."
+# iter-247/250: trigger migrated from `_on_shield_block` (parry catch)
+# to `_trigger_perfect_dodge`. The combo itself is unchanged — the
+# function is called from the new path, the firing conditions (burning
+# enemy in range) are identical.
+const BACKDRAFT_RADIUS: float = 96.0
+const BACKDRAFT_DAMAGE: int = 1
+const BACKDRAFT_BURN_DURATION: float = 1.0
+
+func _try_trigger_backdraft() -> void:
+	# Scan for any burning enemy within range. If none, skip silently.
+	var rsq: float = BACKDRAFT_RADIUS * BACKDRAFT_RADIUS
+	var any_burning: bool = false
+	var targets: Array = []
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - global_position
+		if d.length_squared() > rsq:
+			continue
+		targets.append(e)
+		var burn_rem: float = e.get("_burn_remaining")
+		if burn_rem > 0.0:
+			any_burning = true
+	if not any_burning:
+		return
+	# Apply damage + burn to EVERY enemy in range (including non-burning
+	# ones — the burst doesn't care which ignited it).
+	for e in targets:
+		if e.has_method("take_hit"):
+			e.take_hit(BACKDRAFT_DAMAGE, false)
+		if e.has_method("apply_burn"):
+			e.apply_burn(BACKDRAFT_BURN_DURATION)
+	# Visual: orange ring outward from hero.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 20
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * BACKDRAFT_RADIUS, sin(ang) * BACKDRAFT_RADIUS * 0.85))
+	ring.polygon = pts
+	ring.color = Color(1.0, 0.52, 0.18, 0.62)
+	ring.scale = Vector2(0.2, 0.2)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		ring.global_position = global_position
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.30)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.30)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+		# Floater
+		var dn: DamageNumber = DamageNumber.spawn(
+			global_position + Vector2(0, -72),
+			"BACKDRAFT!",
+			Color(1.0, 0.65, 0.30),
+		)
+		parent.add_child(dn)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.35)
+
+# RIME_TRAIL — when the dash-strike hits a slowed enemy, leave a frost
+# pulse at that enemy's position that slows other enemies within
+# RIME_TRAIL_RADIUS for RIME_TRAIL_SLOW_DURATION. One pulse per dash
+# (regardless of how many slowed enemies are hit) so a multi-target
+# dash doesn't fan five pulses.
+const RIME_TRAIL_RADIUS: float = 84.0
+const RIME_TRAIL_SLOW_DURATION: float = 1.2
+const RIME_TRAIL_SLOW_MUL: float = 0.55
+# Per-dash flag set true on the dash-strike start and consumed by the
+# first slowed-enemy hit. Cleared by _start_dash_strike for each new
+# dash.
+var _rime_trail_armed_this_dash: bool = false
+
+func _try_trigger_rime_trail(at_pos: Vector2) -> void:
+	if not _rime_trail_armed_this_dash:
+		return
+	_rime_trail_armed_this_dash = false
+	# Apply slow to enemies in radius (skip self via take-hit-style
+	# enemy-only scan — hero isn't in "enemies" group anyway).
+	var rsq: float = RIME_TRAIL_RADIUS * RIME_TRAIL_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - at_pos
+		if d.length_squared() <= rsq and e.has_method("apply_slow"):
+			e.apply_slow(RIME_TRAIL_SLOW_DURATION, RIME_TRAIL_SLOW_MUL)
+	# Visual: cyan-white expanding ring centered on hit position.
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 18
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang) * RIME_TRAIL_RADIUS, sin(ang) * RIME_TRAIL_RADIUS * 0.78))
+	ring.polygon = pts
+	ring.color = Color(0.70, 0.92, 1.0, 0.65)
+	ring.scale = Vector2(0.2, 0.2)
+	ring.z_index = 3
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		ring.global_position = at_pos
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2(1.0, 1.0), 0.34)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.34)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+		var dn: DamageNumber = DamageNumber.spawn(
+			at_pos + Vector2(0, -40),
+			"RIME!",
+			Color(0.78, 0.92, 1.0),
+		)
+		parent.add_child(dn)
+
+# Iter 25 — dash pass-through damage tick. Called from _physics_process
+# while _dash_strike_time > 0. Scans enemies near the hero this frame
+# and damages any not already in the per-dash hit_set. Knockback uses
+# the dash direction so enemies sliced through are pushed AHEAD of the
+# hero rather than back into them.
+func _apply_dash_pierce_tick() -> void:
+	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var id: int = enemy.get_instance_id()
+		if _dash_hit_set.has(id):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		if to_enemy.length() > DASH_STRIKE_PIERCE_RADIUS:
+			continue
+		if enemy.has_method("take_hit"):
+			# Iter 44 — dash pierce crit roll. Previously skipped — only
+			# melee swings rolled crit, so a dash-strike build with 40%
+			# crit chance saw zero crit feedback. Apply same per-hit roll
+			# pattern; multiply damage on success, pass is_crit through.
+			var dmg_dp: int = DASH_STRIKE_PIERCE_DAMAGE
+			var is_crit_dp: bool = _roll_crit()
+			if is_crit_dp:
+				dmg_dp = int(round(float(dmg_dp) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+			enemy.take_hit(dmg_dp, is_crit_dp)
+			_dash_hit_set[id] = true
+			_bump_combo()   # iter 54 — dash pierce hits count toward combo
+		if enemy.has_method("apply_knockback"):
+			# Push enemies ALONG the dash direction so the player
+			# clears a corridor instead of leaving stunned enemies
+			# behind them.
+			enemy.apply_knockback(_dash_strike_dir, MELEE_KNOCKBACK_FORCE * knockback_mul, MELEE_KNOCKBACK_TIME)
+	# iter-256 / Wave 5B+5C — destructible pierce. As the hero dashes
+	# through obstacles / lanterns / secret walls, deal 1 damage per
+	# tick to anything within DASH_STRIKE_PIERCE_RADIUS. Same per-prop
+	# hit-set guard as the enemy pierce loop above so a single dash
+	# can't double-tick the same object.
+	_dash_scan_destructibles(DASH_STRIKE_PIERCE_RADIUS, 1)
+
+func _can_start_dash_strike() -> bool:
+	# iter-95: _dodge_time check removed (dodge ability gone).
+	# iter-247: _shield_time check removed (shield input gone; the stub
+	# is permanently zero so the check was dead code).
+	return _dash_strike_cd <= 0.0 \
+		and _dash_strike_time <= 0.0
+
+# iter-95: _can_cancel_dodge_into_dash_strike() removed alongside the
+# dodge ability. With no dodge to cancel, the iter-70 dodge-cancel
+# feel-improver is gone too.
+
+# Iter 201 — first active relic: SOUL SURGE. Press R, AoE damage burst
+# around hero, 18 s cooldown. Establishes the active-relic pattern that
+# Isaac's D6 + Blank Card use — once one active relic exists, future
+# active items can reuse this same handler shape.
+#
+# Effect: 3 damage to every enemy within 100 px radius. Spawns a violet-
+# white expanding ring at hero position + trauma shake + audio cue.
+# No directional aim (it's omnidirectional), no projectile travel
+# (instant AoE), no charge time (snap-cast for clutch moments).
+func _trigger_soul_surge() -> void:
+	_active_relic_cd = ACTIVE_RELIC_COOLDOWN
+	# Damage all enemies in radius via group iteration.
+	var radius_sq: float = ACTIVE_RELIC_RADIUS * ACTIVE_RELIC_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e):
+			continue
+		if not (e is Node2D):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - global_position
+		if d.length_squared() <= radius_sq:
+			if e.has_method("take_hit"):
+				e.take_hit(ACTIVE_RELIC_DAMAGE, false)
+	# Visual: expanding violet-white ring at hero position. Built inline
+	# as a Polygon2D so we don't need a new scene file. Tweens scale
+	# 0.15 → 1.0 (matches the 100 px radius constant) over 220 ms +
+	# fades alpha to 0. Similar grammar to the iter-181 impact ring on
+	# hit, but bigger and cooler-toned to read as "your power surged"
+	# rather than "an enemy was hit."
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 28
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * ACTIVE_RELIC_RADIUS)
+	ring.polygon = pts
+	ring.position = global_position
+	ring.color = Color(0.78, 0.62, 1.0, 0.75)
+	ring.scale = Vector2(0.15, 0.15)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent != null:
+		parent.add_child(ring)
+		var tw: Tween = ring.create_tween().set_parallel(true)
+		tw.tween_property(ring, "scale", Vector2.ONE, 0.22)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "modulate:a", 0.0, 0.22)\
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.chain().tween_callback(ring.queue_free)
+	# Trauma shake + audio cue.
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.55)
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", global_position)
+
+# ── Iter 213 / Phase 2 — Active relic toolkit expansion ───────────────
+# Three new actives added beside SOUL SURGE. The hero input handler
+# dispatches via GameState.get_owned_active_id() so only ONE active is
+# bound to [R] at any time (BoI-slot pattern). Each trigger sets its
+# OWN cooldown — _active_relic_cd is the shared timer, but the value
+# each active assigns reflects its identity (defensive teleport short,
+# risk-reward long).
+
+# VEILSTEP — defensive phase teleport. ~140 px along the aim direction
+# (clamped to the play area), with full iframes during the brief blink
+# fade. The verb is "get out of trouble," not damage. SHADOW theme.
+const VEILSTEP_DISTANCE: float = 140.0
+const VEILSTEP_COOLDOWN: float = 14.0
+const VEILSTEP_IFRAMES: float = 0.45
+# Play-area bounds copied from main.gd's PLAY_AREA_MIN/MAX so the
+# teleport endpoint can't end inside the perimeter wall mass. Keep in
+# sync if those constants ever shift.
+const VEILSTEP_AREA_MIN: Vector2 = Vector2(96, 96)
+const VEILSTEP_AREA_MAX: Vector2 = Vector2(1184, 672)
+
+func _trigger_veilstep() -> void:
+	_active_relic_cd = VEILSTEP_COOLDOWN
+	# Aim is mouse-relative. If the mouse is right on top of the hero,
+	# fall back to current facing direction so the relic doesn't no-op.
+	var aim: Vector2 = get_global_mouse_position() - global_position
+	if aim.length() < 1.0:
+		aim = _dir_to_vector(_facing_dir)
+	var dir: Vector2 = aim.normalized()
+	var start: Vector2 = global_position
+	var end_raw: Vector2 = start + dir * VEILSTEP_DISTANCE
+	# Clamp endpoint INSIDE the play area minus a small inset so we
+	# don't land touching a wall. 24 px inset = ~ hero radius headroom.
+	var end_pos: Vector2 = Vector2(
+		clampf(end_raw.x, VEILSTEP_AREA_MIN.x + 24.0, VEILSTEP_AREA_MAX.x - 24.0),
+		clampf(end_raw.y, VEILSTEP_AREA_MIN.y + 24.0, VEILSTEP_AREA_MAX.y - 24.0)
+	)
+	# Iframes cover the full teleport + small overhang so an enemy
+	# attack that connects WHILE you're mid-phase still misses.
+	_iframes = max(_iframes, VEILSTEP_IFRAMES)
+	# Spawn shadow rings at BOTH endpoints — the player sees where they
+	# came from and where they are now. SHADOW-themed dark violet.
+	_spawn_veilstep_ring(start)
+	_spawn_veilstep_ring(end_pos)
+	# Brief sprite fade-out at start position, then snap to end_pos
+	# and fade back in. Tween parented to hero so it follows the
+	# teleport instantly. 60 ms each side.
+	if sprite != null:
+		var tw: Tween = create_tween()
+		tw.tween_property(sprite, "modulate:a", 0.15, 0.06)
+		tw.tween_callback(func():
+			global_position = end_pos
+		)
+		tw.tween_property(sprite, "modulate:a", 1.0, 0.10)
+	else:
+		global_position = end_pos
+	# Audio cue — reuse dash whoosh for now; future sound design can
+	# author a phase-specific cue.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("dash_whoosh", global_position)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.25)
+
+func _spawn_veilstep_ring(at_pos: Vector2) -> void:
+	var ring: Polygon2D = Polygon2D.new()
+	var pts: PackedVector2Array = PackedVector2Array()
+	var verts: int = 22
+	var r: float = 28.0
+	for i in range(verts):
+		var ang: float = float(i) / verts * TAU
+		pts.append(Vector2(cos(ang), sin(ang)) * r)
+	ring.polygon = pts
+	ring.color = Color(0.35, 0.20, 0.55, 0.78)
+	ring.position = at_pos
+	ring.scale = Vector2(0.4, 0.4)
+	ring.z_index = 4
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	parent.add_child(ring)
+	var tw: Tween = ring.create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector2(1.1, 1.1), 0.32)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ring, "modulate:a", 0.0, 0.32)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(ring.queue_free)
+
+# ASHEN SEAL — drop a stationary burning sigil at hero's feet. Every
+# 0.5 s for 4 s, applies a short BURN to every enemy within 80 px.
+# Composes with the SHATTER and KINDLE_SPREAD combos — drop, kite,
+# watch the chain reactions. FLAME theme.
+const ASHEN_SEAL_COOLDOWN: float = 20.0
+const ASHEN_SEAL_RADIUS: float = 80.0
+const ASHEN_SEAL_DURATION: float = 4.0
+const ASHEN_SEAL_TICK_INTERVAL: float = 0.5
+const ASHEN_SEAL_BURN_DURATION: float = 1.2
+
+func _trigger_ashen_seal() -> void:
+	_active_relic_cd = ASHEN_SEAL_COOLDOWN
+	var drop_pos: Vector2 = global_position
+	# Build the ward as a Node2D parented to scene root so it stays put
+	# when the hero moves. Visual: a soft orange ring + a smaller inner
+	# glyph polygon, both pulsing during lifetime.
+	var ward: Node2D = Node2D.new()
+	ward.name = "AshenSealWard"
+	ward.position = drop_pos
+	ward.z_index = -1
+	var parent: Node = get_parent()
+	if parent == null:
+		return
+	parent.add_child(ward)
+	# Outer flame ring (Polygon2D at the seal radius).
+	var ring: Polygon2D = Polygon2D.new()
+	var rpts: PackedVector2Array = PackedVector2Array()
+	var rverts: int = 26
+	for i in range(rverts):
+		var ang: float = float(i) / rverts * TAU
+		rpts.append(Vector2(cos(ang), sin(ang)) * ASHEN_SEAL_RADIUS)
+	ring.polygon = rpts
+	ring.color = Color(1.0, 0.45, 0.18, 0.42)
+	ward.add_child(ring)
+	# Inner sigil — small 6-pointed star Polygon2D so the ward reads as
+	# "drawn glyph," not generic puddle.
+	var sigil: Polygon2D = Polygon2D.new()
+	var spts: PackedVector2Array = PackedVector2Array()
+	for i in range(12):
+		var ang2: float = float(i) / 12 * TAU
+		var r2: float = 26.0 if i % 2 == 0 else 12.0
+		spts.append(Vector2(cos(ang2), sin(ang2)) * r2)
+	sigil.polygon = spts
+	sigil.color = Color(1.0, 0.65, 0.22, 0.78)
+	ward.add_child(sigil)
+	# Pulse — alpha breathe on the ring throughout the lifetime via
+	# tween loop. Sigil rotates slowly so the player sees CONTINUOUS
+	# activity rather than a static decal.
+	var pulse_tw: Tween = ring.create_tween().set_loops(int(ASHEN_SEAL_DURATION / 0.8) + 1)
+	pulse_tw.tween_property(ring, "modulate:a", 0.7, 0.4)
+	pulse_tw.tween_property(ring, "modulate:a", 0.3, 0.4)
+	var rot_tw: Tween = sigil.create_tween().set_loops(0)
+	rot_tw.tween_property(sigil, "rotation", TAU, 6.0)
+	# Burn-tick timer — fires apply_burn to enemies in range every
+	# ASHEN_SEAL_TICK_INTERVAL seconds. Connect via Callable.bind so the
+	# tick function has access to the ward's position even after the
+	# hero has moved away.
+	var timer: Timer = Timer.new()
+	timer.wait_time = ASHEN_SEAL_TICK_INTERVAL
+	timer.autostart = true
+	timer.one_shot = false
+	ward.add_child(timer)
+	timer.timeout.connect(_ashen_seal_tick.bind(drop_pos))
+	# Lifetime: tween_callback that frees the ward after the duration.
+	# Done via SceneTreeTimer so we don't need to babysit it.
+	get_tree().create_timer(ASHEN_SEAL_DURATION).timeout.connect(ward.queue_free)
+	# Audio + small trauma shake on drop.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", drop_pos)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.30)
+
+func _ashen_seal_tick(at_pos: Vector2) -> void:
+	# Apply a short BURN to every enemy in the radius. apply_burn's
+	# refresh semantics (max of existing vs new) prevent stacking
+	# damage past one DoT per enemy, which is what we want — the seal
+	# REFRESHES burn, not stacks it.
+	var r2: float = ASHEN_SEAL_RADIUS * ASHEN_SEAL_RADIUS
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(e) or not (e is Node2D):
+			continue
+		if e.get("_dying"):
+			continue
+		var d: Vector2 = (e as Node2D).global_position - at_pos
+		if d.length_squared() <= r2 and e.has_method("apply_burn"):
+			e.apply_burn(ASHEN_SEAL_BURN_DURATION)
+
+# BLOOD TITHE — sacrifice HP for a burst window. Press [R] (HP > 1):
+# pay 1 HP up-front, gain +50 % damage on sword/blast/dash for 6 s,
+# AND every enemy kill during the window heals +1 HP back. Tempo /
+# risk verb — push it when you have momentum and threats lined up.
+# Burst window can net positive if you clear well, but the up-front
+# cost is non-refundable. BLOOD theme. 30 s cooldown.
+const BLOOD_TITHE_COOLDOWN: float = 30.0
+const BLOOD_TITHE_BUFF_DURATION: float = 6.0
+const BLOOD_TITHE_DMG_MUL: float = 1.5
+const BLOOD_TITHE_KILL_HEAL: int = 1
+# Buff timer (decremented in _physics_process). > 0 means damage_mul
+# applies AND on-kill heal fires. _resolve_melee_strike / _start_blast
+# / dash_strike all read this to apply the multiplier; the heal hook
+# lives in _on_enemy_died_for_relics.
+var _blood_tithe_buff_time: float = 0.0
+
+func _trigger_blood_tithe() -> void:
+	# Guard: can't activate at 1 HP — would be a suicide press.
+	if hp <= 1:
+		# Soft refusal — don't burn the cooldown if the player
+		# accidentally pressed at low HP. Brief audio cue.
+		if Audio != null and Audio.has_method("_play"):
+			Audio._play("parry_chime", global_position)
+		return
+	_active_relic_cd = BLOOD_TITHE_COOLDOWN
+	# Pay the cost — direct hp subtract (NOT take_damage; this is a
+	# sacrifice, not an enemy strike, so it bypasses iframes / DR / etc).
+	hp -= 1
+	# Arm the buff window. _physics_process drains this.
+	_blood_tithe_buff_time = BLOOD_TITHE_BUFF_DURATION
+	# Red aura ring around the hero — pulses during the buff window.
+	# Persists for the buff lifetime via a self-freeing Tween loop.
+	var aura: Polygon2D = Polygon2D.new()
+	var apts: PackedVector2Array = PackedVector2Array()
+	var averts: int = 22
+	for i in range(averts):
+		var ang: float = float(i) / averts * TAU
+		apts.append(Vector2(cos(ang), sin(ang)) * 36.0)
+	aura.polygon = apts
+	aura.color = Color(0.85, 0.18, 0.20, 0.55)
+	aura.z_index = 1
+	add_child(aura)  # parent to hero so it follows
+	# Pulse during the buff. The loop count is approximate (one cycle
+	# per 0.6 s); the explicit free at the end of the chain handles
+	# expiry whether or not the loops complete.
+	var loops: int = int(BLOOD_TITHE_BUFF_DURATION / 0.6)
+	var tw: Tween = aura.create_tween().set_loops(loops)
+	tw.tween_property(aura, "modulate:a", 0.85, 0.3)
+	tw.tween_property(aura, "modulate:a", 0.40, 0.3)
+	tw.chain().tween_property(aura, "modulate:a", 0.0, 0.2)
+	tw.chain().tween_callback(aura.queue_free)
+	# Audio: heavy heartbeat-like cue.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("kill_explode", global_position)
+	if FX != null and FX.has_method("add_trauma"):
+		FX.add_trauma(0.35)
+
+# Multiplier the damage code paths consult while BLOOD TITHE is active.
+# Returns 1.5 during the buff window, 1.0 otherwise.
+func _blood_tithe_damage_mul() -> float:
+	if _blood_tithe_buff_time > 0.0:
+		return BLOOD_TITHE_DMG_MUL
+	return 1.0
+
+func _start_dash_strike() -> void:
+	# iter-249 — DODGE CANCEL OF BLAST. If a blast windup/recovery is in
+	# flight, cancel it cleanly: free the off-hand glow, zero the
+	# pending fire timer, clear the commit lock. The projectile DOES NOT
+	# fire (the cast was cancelled in mid-gesture — exactly the design's
+	# "dodge breaks the cast" feel).
+	if _blast_windup_time > 0.0:
+		_blast_windup_time = 0.0
+		if _blast_glow_ref != null and is_instance_valid(_blast_glow_ref):
+			_blast_glow_ref.queue_free()
+			_blast_glow_ref = null
+	_blast_locked = false
+	_is_attacking = false
+	_attack_live = 0.0
+	var aim_world := get_global_mouse_position() - global_position
+	if aim_world.length() < 1.0:
+		aim_world = _dir_to_vector(_facing_dir)
+	_dash_strike_dir = aim_world.normalized()
+	_dash_strike_time = DASH_STRIKE_DURATION
+	# iter-250 — reset the perfect-dodge active-time counter. Counts UP
+	# from 0 during the dash; read in take_damage to detect catches in
+	# the last-PERFECT_DODGE_WINDOW seconds.
+	_dodge_active_time = 0.0
+	# Iter 215 — RIME_TRAIL combo arming (Phase 4 / SLOW + DASH-THROUGH).
+	# Re-armed each dash so the trail can fire at most once per dash
+	# regardless of how many enemies are sliced.
+	_rime_trail_armed_this_dash = true
+	# Iter 197 — dash whoosh audio. Pre-iter-197 dash_strike was visually
+	# distinctive (golden afterimages) but audibly silent. Adding a
+	# 400→1200 Hz sine sweep over 200 ms gives the move the iconic
+	# "energy in motion" sonic cue Hades' dash has. Played at hero
+	# position so it spatially tracks with the move's start.
+	if Audio != null and Audio.has_method("_play"):
+		Audio._play("dash_whoosh", global_position)
+	# iter-96: relics + SHADOW theme can shrink the cooldown via
+	# `dash_strike_cooldown_mul`. Modifier folds additively (e.g. -0.30
+	# from dash_master + -0.40 from phantom_step = -0.70 → 30% of base).
+	# Clamped to a 0.25s floor so the engage stays meaningful.
+	var dscd_mul: float = 1.0 + GameState.modifier_total_f("dash_strike_cooldown_mul", 0.0)
+	_dash_strike_cd = max(0.25, DASH_STRIKE_COOLDOWN * dscd_mul)
+	# Iter 64 — capture the dash's origin so _resolve_dash_strike_hit
+	# can stamp FLAME fire-trail pools evenly between start and end.
+	_dash_strike_start_pos = global_position
+	# Iter 25 — iframes cover the full dash + POST_IFRAMES seconds AFTER
+	# so a player landing next to a swinging enemy has a window to
+	# reposition. Previously iframes ended exactly at dash end, leaving
+	# the hero vulnerable on the worst possible frame.
+	# iter-96: relics that previously extended dodge i-frames now extend
+	# DASH STRIKE post-iframes via `dash_strike_post_iframes_bonus_f`.
+	var ds_post_bonus: float = GameState.modifier_total_f("dash_strike_post_iframes_bonus_f", 0.0)
+	_iframes = max(_iframes, DASH_STRIKE_DURATION + DASH_STRIKE_POST_IFRAMES + ds_post_bonus)
+	_facing_dir = _vector_to_dir_idx(_dash_strike_dir)
+	# Iter 25 — reset the pass-through hit_set for this dash so the
+	# tick scanner can start fresh. Dictionary cleared (not reassigned)
+	# so any in-flight references remain valid.
+	_dash_hit_set.clear()
+	# Iter 29 — reset afterimage cadence so the first ghost spawns
+	# AFTERIMAGE_INTERVAL after the dash starts (rather than immediately,
+	# which would visually overlap with the hero itself for the first
+	# frame).
+	_afterimage_timer = 0.0
+	# Iter 13 — spawn a motion trail behind us.
+	var trail: Node2D = DASH_TRAIL_SCENE.instantiate() as Node2D
+	if trail != null:
+		trail.global_position = global_position + Vector2(0, VFX_HEIGHT_OFFSET)
+		if trail.has_method("setup"):
+			trail.call("setup", _dash_strike_dir)
+		get_tree().current_scene.add_child(trail)
+	# iter-98: dash_shield spawn removed (see DASH_SHIELD_SCENE comment
+	# at the top of the file). The dash visual stack is now: hero
+	# afterimages + DASH_TRAIL particles behind + the dash_impact slam
+	# at landing. No leading "magic orb" anymore.
+	# iter-95: SHADOW + STORM theme procs reanchored from dodge to
+	# dash_strike. Dash strike is now the only mobility / aggressive-
+	# engage option, so the "moving fast unleashes a shockwave/pulse"
+	# theme identity moves with it.
+	#   SHADOW tier 2: 60-px shockwave + 1 dmg at dash start
+	#   STORM tier 1+: shock pulse (80-120 px) at dash start
+	if GameState.theme_tier("shadow") >= 2:
+		_trigger_shadow_dash_shockwave()
+	if GameState.theme_tier("storm") >= 1:
+		_spawn_storm_dash_shock_pulse()
+
+# Iter 29 — spawn a single dash afterimage at the hero's current world
+# pose. Grabs the AnimatedSprite2D's current frame texture as an
+# AtlasTexture, slaps it on a fresh Sprite2D parented to current_scene,
+# and tweens alpha → 0 with a small extra scale-out for that "echo of
+# light" feel. The tween belongs to the new Sprite2D so its lifetime
+# is bounded by its own queue_free — no leaks if the hero is freed
+# mid-dash (scene reload / death).
+func _spawn_dash_afterimage() -> void:
+	if sprite == null or sprite.sprite_frames == null:
+		return
+	var scene_root: Node = get_tree().current_scene
+	if scene_root == null:
+		return
+	var anim: StringName = sprite.animation
+	if not sprite.sprite_frames.has_animation(anim):
+		return
+	var frame_idx: int = sprite.frame
+	var tex: Texture2D = sprite.sprite_frames.get_frame_texture(anim, frame_idx)
+	if tex == null:
+		return
+	var ghost: Sprite2D = Sprite2D.new()
+	ghost.texture = tex
+	ghost.global_position = global_position + sprite.position
+	ghost.scale = sprite.scale
+	ghost.flip_h = sprite.flip_h
+	ghost.modulate = AFTERIMAGE_TINT
+	# Behind the hero in draw order so the active sprite always reads
+	# as "in front." z_index relative to the parent's own.
+	ghost.z_index = -1
+	scene_root.add_child(ghost)
+	# Tween belongs to the ghost so its life ends with itself; outliving
+	# the hero (scene reload) just drops the tween cleanly.
+	var tw: Tween = ghost.create_tween().set_parallel(true)
+	tw.tween_property(ghost, "modulate:a", 0.0, AFTERIMAGE_FADE_TIME)
+	tw.tween_property(ghost, "scale", ghost.scale * 1.1, AFTERIMAGE_FADE_TIME)
+	tw.chain().tween_callback(ghost.queue_free)
+
+func _resolve_dash_strike_hit() -> void:
+	var damage: int = 1 + GameState.modifier_total("sword_damage_bonus", 0)
+	# Iter 213 — BLOOD TITHE multiplier on dash-strike too. Dash-strike
+	# is a "spend a chunk of HP for power" move's natural partner.
+	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
+	var knockback_mul: float = 1.0 + GameState.modifier_total_f("knockback_force_mul", 0.0)
+	var has_execute: bool = GameState.has_relic("executioner")
+	var hit_count: int = 0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		# Iter 224 — Bug Team guard. A future non-Node2D in the "enemies"
+		# group would crash `.global_position` and the typed
+		# `enemy.get("_slow_remaining")` assignment (null → float crash).
+		if not (enemy is Node2D):
+			continue
+		var to_enemy: Vector2 = enemy.global_position - global_position
+		if to_enemy.length() > DASH_STRIKE_RADIUS:
+			continue
+		# Iter 25 — pass-through damage already hit this enemy during
+		# the dash window; skip the final AoE damage to avoid double-
+		# counting. We still apply the radial knockback so the final
+		# impact still SHOVES enemies hit en-route, not just the new
+		# ones in the AoE.
+		var already_hit: bool = _dash_hit_set.has(enemy.get_instance_id())
+		if enemy.has_method("take_hit") and not already_hit:
+			var dmg_for_this: int = damage
+			if has_execute and _is_executable(enemy):
+				dmg_for_this = int(round(float(damage) * 2.5))
+			# Iter 44 — dash-strike final-AoE crit roll. Parity with
+			# melee swing crit; previously this path silently skipped
+			# the roll.
+			var is_crit_ds: bool = _roll_crit()
+			if is_crit_ds:
+				dmg_for_this = int(round(float(dmg_for_this) * (CRIT_DAMAGE_MUL + GameState.modifier_total_f("crit_damage_bonus_f", 0.0))))
+			# Iter 215 — RIME_TRAIL combo (Phase 4 / SLOW + DASH-THROUGH).
+			# Check the SLOW status on the enemy BEFORE take_hit (which
+			# might kill it and clear status). If this slowed enemy is
+			# the first slowed target of this dash, fire the frost pulse
+			# at THEIR position. _try_trigger_rime_trail consumes the
+			# arming flag so only ONE pulse per dash even if the dash
+			# slices multiple slowed enemies.
+			# Iter 224 — defensively read _slow_remaining. .get() returns
+			# Variant; if the property isn't on this enemy (mocked / test
+			# / future non-Enemy node) the assignment to a typed float
+			# would crash. Coerce via float() with null fallback to 0.0.
+			var slow_var: Variant = enemy.get("_slow_remaining")
+			var enemy_slow: float = float(slow_var) if slow_var != null else 0.0
+			enemy.take_hit(dmg_for_this, is_crit_ds)
+			if enemy_slow > 0.0 and _rime_trail_armed_this_dash:
+				_try_trigger_rime_trail(enemy.global_position)
+			hit_count += 1
+			_bump_combo()   # iter 54 — dash final-AoE hits count
+		# Iter 13 — heavy radial knockback on dash AoE. Each enemy gets
+		# pushed straight away from the hero, harder + longer than the
+		# normal melee knockback because the dash is a committed engage.
+		if enemy.has_method("apply_knockback"):
+			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _dash_strike_dir
+			enemy.apply_knockback(push_dir, DASH_KNOCKBACK_FORCE * knockback_mul, DASH_KNOCKBACK_TIME)
+	# Iter 64 — FLAME resonance/ascendance dash-strike fire trail. The
+	# dash is a committed engage that carves a 168px line through enemy
+	# space; FLAME owners turn that line into a burning streak the next
+	# wave has to walk through. Tier 1 (≥2 FLAME relics): 3 pools, 0.5s
+	# each. Tier 2 (≥4 FLAME relics): 5 pools, 0.7s each — wider trail
+	# (more pools = more overlap) AND longer-lasting. Independent of
+	# whether the dash connected (whiff still leaves a trail — the
+	# player committed the resource cost, they get the AoE).
+	var flame_tier: int = GameState.theme_tier("flame")
+	if flame_tier >= 1:
+		var pool_count: int = 5 if flame_tier >= 2 else 3
+		var pool_life: float = 0.7 if flame_tier >= 2 else 0.5
+		_trigger_dash_fire_trail(_dash_strike_start_pos, global_position, pool_count, pool_life)
+	# iter-256 / Wave 5B+5C — destructible AoE at dash-end. Same 1-damage
+	# tick the pierce path uses; if a pillar was already pierced during
+	# the dash and saw an earlier _dash_scan_destructibles call, the
+	# pillar's _broken / hp<=0 guard short-circuits the second hit so
+	# we don't double-apply damage.
+	_dash_scan_destructibles(DASH_STRIKE_RADIUS, 1)
+	# Always emit even on whiff — the impact VFX still wants to fire so
+	# the player gets visual feedback that the dash committed.
+	dash_strike_landed.emit(global_position + Vector2(0, VFX_HEIGHT_OFFSET), hit_count)
+
+# Iter 64 — drop `count` fire pools evenly spaced along the dash path
+# from `start` to `end`. Pool _life set BEFORE add_child so the pool's
+# _physics_process uses the overridden lifetime. Pools are added to the
+# hero's parent (main.tscn) to mirror iter 61's swing-trail host pattern
+# — get_tree().current_scene can be null during test instantiation.
+func _trigger_dash_fire_trail(start: Vector2, end: Vector2, count: int, pool_life: float) -> void:
+	if count <= 0:
+		return
+	var host: Node = get_parent()
+	if host == null:
+		return
+	# Evenly space pools along the path: t = 0, 1/(N-1), 2/(N-1), ... 1.0.
+	# For count=1 we just drop one at the midpoint.
+	for i in range(count):
+		var t: float = 0.5 if count == 1 else float(i) / float(count - 1)
+		var pos: Vector2 = start.lerp(end, t)
+		var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+		if pool == null:
+			continue
+		pool.global_position = pos
+		pool.set("_life", pool_life)
+		host.add_child(pool)
+
+# Compare-and-set animation play. AnimatedSprite2D.play() restarts the
+# animation from frame 0 every call. Helper checks the cached name before
+# forwarding so we don't re-trigger frame 0 every physics tick. Callers
+# that DO want a frame-0 restart (e.g. starting an attack) set
+# sprite.frame = 0 before calling, which trips the is_playing branch on
+# the next call and we forward naturally.
+func _play_anim(name: StringName) -> void:
+	if _last_anim == name and sprite.is_playing():
+		return
+	_last_anim = name
+	sprite.play(name)

@@ -1,5 +1,64 @@
 // Combat-feel FX — damage numbers, sword slashes, and a global hit-stop timer.
 // All pooled / freelisted; runs beside the particle system in main.js.
+import { camera } from './camera.js';
+
+// ─── SOUL TETHER ─────────────────────────────────────────────────────────────
+// Curved colored line from one world point to another, fading over a short
+// life. Used by Iron Revenant's life-drain to visualize "your HP is being
+// pulled into the boss." Generic enough that any future boss/relic can
+// emit one — it's just a transient curved line + glow.
+const _tethers = [];
+
+/**
+ * @param {number} fromX  source world coord
+ * @param {number} fromY
+ * @param {number} toX    target world coord
+ * @param {number} toY
+ * @param {object} [opts] { color, life }
+ */
+export function spawnSoulTether(fromX, fromY, toX, toY, opts = {}) {
+  _tethers.push({
+    fromX, fromY, toX, toY,
+    color: opts.color || 'rgba(220, 60, 80, 1)',
+    life: opts.life || 0.55,
+    totalLife: opts.life || 0.55,
+  });
+}
+
+export function updateSoulTethers(dt) {
+  for (let i = _tethers.length - 1; i >= 0; i--) {
+    _tethers[i].life -= dt;
+    if (_tethers[i].life <= 0) _tethers.splice(i, 1);
+  }
+}
+
+// Drawn in WORLD space (inside camera transform), AFTER enemies + hero so
+// the line sits visually on top.
+export function drawSoulTethers(ctx) {
+  if (_tethers.length === 0) return;
+  ctx.save();
+  for (const t of _tethers) {
+    const a = t.life / t.totalLife;
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = t.color;
+    ctx.lineWidth = 3 * a + 1;
+    ctx.shadowColor = t.color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    // Slight upward curve for an organic "soul being pulled" feel.
+    const mx = (t.fromX + t.toX) / 2;
+    const my = (t.fromY + t.toY) / 2 - 14;
+    ctx.moveTo(t.fromX, t.fromY);
+    ctx.quadraticCurveTo(mx, my, t.toX, t.toY);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+export function clearSoulTethers() {
+  _tethers.length = 0;
+}
 
 // ============================================================================
 // RELIC ICON RENDERING — draw a relic's base sprite with a hue-shift tint +
@@ -435,8 +494,14 @@ let _hitStop = 0;
 // but can trigger vestibular discomfort when they compound with shake.
 let _hitStopScale = 1.0;
 export function setHitStopScale(v) { _hitStopScale = Math.max(0, Math.min(1.5, v)); }
+// Aggregate cap on hit-stop — keep total freeze under ~0.18s per hit
+// regardless of how many sources fire. Hammer counter (0.18) + Mountain
+// Strike (0.10) + charged (0.09) was stacking via Math.max into "stutter,
+// not punch" territory; the cap keeps the punchiness without losing
+// the feel of a heavy hit.
+const HIT_STOP_CAP = 0.18;
 export function triggerHitStop(seconds = 0.05) {
-  _hitStop = Math.max(_hitStop, seconds * _hitStopScale);
+  _hitStop = Math.min(HIT_STOP_CAP, Math.max(_hitStop, seconds * _hitStopScale));
 }
 export function consumeHitStop(dt) {
   if (_hitStop > 0) {
@@ -455,10 +520,15 @@ let _perfectFlash = 0;
 let _counterWindow = 0;
 const COUNTER_WINDOW = 2.0;
 
-export function triggerPerfectDodge() {
+// Optional windowMul scales the COUNTER_WINDOW for relics that extend
+// the perfect-dodge window (e.g. dagger's Flicker Step doubles it). The
+// perfect-dodge slowmo + flash always run at the base duration —
+// they're presentation, not gameplay reward — so windowMul only
+// affects the counter-attack arming time.
+export function triggerPerfectDodge(windowMul = 1) {
   _perfectDodge = PERFECT_DODGE_DUR;
   _perfectFlash = 0.3;
-  _counterWindow = COUNTER_WINDOW;
+  _counterWindow = COUNTER_WINDOW * windowMul;
 }
 
 export function hasCounterAttack() { return _counterWindow > 0; }
@@ -468,14 +538,54 @@ export function consumeCounterAttack() {
   return had;
 }
 export function counterWindowRemaining() { return _counterWindow; }
+// Grants a counter-attack window without playing the perfect-dodge
+// presentation (slowmo, flash, screen pulse). Used by Sworn Reply to
+// have Vow Eternal's opening crit also arm the counter-attack hook.
+export function grantCounterAttack(windowMul = 1) {
+  _counterWindow = Math.max(_counterWindow, COUNTER_WINDOW * windowMul);
+}
 
-// Time-dilation factor applied to gameplay dt. 0.25 during perfect dodge,
-// ramping back up over the last 150ms so it doesn't snap.
+// ---------- Kill-cam (room-clear final-blow slowmo) ----------
+// Hades / Sekiro / Dead Cells all use a brief time-dilation on the final
+// blow that ends a room. Gives the player a beat to register "I won that
+// fight" before the loot/transition kicks in. We use a SEPARATE timer
+// from the perfect-dodge slowmo so the two effects can stack cleanly
+// (you can perfect-dodge into a kill-cam) and so kill-cam can use a
+// gentler slowdown (0.45 vs 0.25 — softer "savor the moment" instead
+// of the sharper "you read the strike" of perfect-dodge).
+let _killCam = 0;                    // seconds remaining
+const KILL_CAM_DUR = 0.45;
+const KILL_CAM_SCALE = 0.45;         // 45% time-speed at peak
+export function triggerKillCam() {
+  // Don't override a perfect-dodge already in flight — that's the
+  // skill-expression effect and shouldn't get clobbered. Last-kill
+  // hit-stop (called separately) provides the punch in that case.
+  if (_perfectDodge > 0) return;
+  _killCam = Math.max(_killCam, KILL_CAM_DUR);
+}
+export function isKillCam() { return _killCam > 0; }
+
+// Time-dilation factor applied to gameplay dt. Layered:
+// - Perfect dodge: 0.25 during the active window (skill reward)
+// - Kill cam: 0.45 ramping back to 1.0 (room-clear savor)
+// - Both ramp out over their last 150ms / 200ms respectively
+// Whichever is more dilating (lower scale) wins when both are active.
 export function getTimeScale() {
-  if (_perfectDodge <= 0) return 1;
-  const r = _perfectDodge / PERFECT_DODGE_DUR;
-  if (r > 0.4) return 0.25;
-  return 0.25 + (1 - 0.25) * (1 - r / 0.4);
+  let scale = 1;
+  if (_perfectDodge > 0) {
+    const r = _perfectDodge / PERFECT_DODGE_DUR;
+    const pdScale = r > 0.4 ? 0.25 : 0.25 + (1 - 0.25) * (1 - r / 0.4);
+    scale = Math.min(scale, pdScale);
+  }
+  if (_killCam > 0) {
+    const r = _killCam / KILL_CAM_DUR;
+    // Hold the dilation for the first 60% of the window, then ramp
+    // back to 1.0 over the last 40%. Smoother re-acceleration than a
+    // hard cliff so combat doesn't feel like it lurches forward.
+    const kcScale = r > 0.4 ? KILL_CAM_SCALE : KILL_CAM_SCALE + (1 - KILL_CAM_SCALE) * (1 - r / 0.4);
+    scale = Math.min(scale, kcScale);
+  }
+  return scale;
 }
 
 export function updatePerfectDodge(realDt) {
@@ -483,6 +593,7 @@ export function updatePerfectDodge(realDt) {
   if (_perfectDodge > 0) _perfectDodge -= realDt;
   if (_perfectFlash > 0) _perfectFlash -= realDt * 3;
   if (_counterWindow > 0) _counterWindow -= realDt;
+  if (_killCam > 0) _killCam -= realDt;
 }
 
 export function isPerfectDodge() { return _perfectDodge > 0; }
@@ -508,7 +619,7 @@ export function drawPerfectDodgeOverlay(ctx, w, h) {
     ctx.save();
     const a = Math.min(1, (r - 0.55) / 0.3 + 0.3);
     ctx.globalAlpha = a;
-    ctx.font = 'bold 44px system-ui, sans-serif';
+    ctx.font = 'bold 44px Georgia, serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#1a2a3a';
@@ -553,7 +664,27 @@ const dmgLive = [];
 // Rendered at a fixed offset above the number's start, with a drop-shadow + scale-pop.
 export function spawnDamageNumber(x, y, amount, opts = {}) {
   const p = dmgPool.pop() || {};
-  p.x = x; p.y = y;
+  // Noise-floor reduction: vertical stagger when multiple numbers spawn
+  // at nearly the same point in rapid succession (multi-hit relics like
+  // Chain Lightning + Pyromancer + Echoing Strike all hitting one
+  // enemy). Without stagger they pile vertically into an unreadable
+  // blur. Scan recent live numbers within a small horizontal window;
+  // count "young" ones (just-spawned, life > 70% of maxLife) and offset
+  // y upward 14px per match, capped at 4 stacks. After 4 the new
+  // number ignores stagger so the column doesn't run forever.
+  let _stack = 0;
+  for (let i = dmgLive.length - 1; i >= 0; i--) {
+    const o = dmgLive[i];
+    if (!o || o.life <= 0) continue;
+    if (o.life < o.maxLife * 0.65) continue;     // not "young"
+    if (Math.abs(o.x - x) > 28) continue;
+    if (Math.abs((o._spawnY != null ? o._spawnY : o.y) - y) > 14) continue;
+    _stack++;
+    if (_stack >= 4) break;
+  }
+  const _stagger = _stack * 14;
+  p._spawnY = y;            // remember pre-stagger spawn y for future stack checks
+  p.x = x; p.y = y - _stagger;
   // Directional arc if dir provided, else random. Counter hits fly opposite of hit vector for drama.
   const dir = opts.dir;
   if (dir) {
@@ -565,7 +696,9 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   }
   p.life = opts.counter || opts.exec ? 1.1 : (opts.charged || opts.finisher) ? 0.95 : 0.85;
   p.maxLife = p.life;
-  p.text = String(amount | 0);
+  // `opts.text` lets non-damage callers (sanctuary heal, gold pickup, etc.)
+  // pass an explicit label like "+3 HP" instead of the number-only render.
+  p.text = opts.text || String(amount | 0);
   // HUD LEGIBILITY PASS (review #2): size/color/badge priority picks the
   // SINGLE most informative tag to show, in player-intent order:
   //   counter > exec > charge > finisher > crit
@@ -573,8 +706,20 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   // and finisher outrank crit so the player sees WHY the hit was big
   // (their action, not RNG).
   const sizeBoost = opts.counter ? 6 : opts.exec ? 5 : opts.charged ? 4 : opts.finisher ? 3 : opts.crit ? 2 : 0;
-  p.size = (amount >= 50 ? 20 : amount >= 30 ? 17 : 14) + sizeBoost;
-  p.color = opts.counter ? '#ffeb99'
+  // Logarithmic damage scale — game-feel audit P1. Old bucketed
+  // formula (≥50→20px, ≥30→17px, else 14px) collapsed big hits into
+  // the same size: a 100-dmg hit and a 50-dmg hit rendered identical
+  // (both 20px), and a counter at 12 dmg + boost 6 = 20px matched a
+  // non-special 50-dmg hit. Now scales smoothly: 1dmg≈12px,
+  // 10dmg≈22px, 100dmg≈32px. Cap at 32 so massive damage doesn't
+  // eat the screen.
+  const _logSize = 12 + Math.log2(Math.max(1, amount)) * 3;
+  p.size = Math.min(32, _logSize + sizeBoost);
+  // Explicit `opts.color` wins over the per-attribute palette below — used
+  // by non-damage callers (heal, pickups) to opt out of the damage colorway.
+  p.color = opts.color
+          ? opts.color
+          : opts.counter ? '#ffeb99'
           : opts.exec ? '#ff7a55'
           : opts.charged ? '#ffea80'
           : opts.finisher ? '#c8a8ff'
@@ -602,18 +747,52 @@ export function spawnDamageNumber(x, y, amount, opts = {}) {
   // VFX SUBTRACTION PASS: per-hit flash alpha halved — these fire multiple
   // times per second in intense combat and were stacking with bloom+shake
   // into illegibility. Durations unchanged so the moments still register.
+  //
+  // Round-7-audit POLISH: per-crit flash is now rate-limited to once per
+  // 250ms. Round-6 already cut alpha to 0.06, but during a Ringing Steel
+  // chain (3+ crits per second) the flash still strobed. Counter and
+  // exec stay un-throttled — they fire less often (counter requires a
+  // perfect dodge, exec requires the target below 40% HP) and their
+  // moments deserve to land every time.
   if (opts.counter) triggerScreenFlash('rgba(255, 230, 150, 0.14)', 0.28);
   else if (opts.exec) triggerScreenFlash('rgba(255, 90, 70, 0.11)', 0.22);
-  else if (opts.crit) triggerScreenFlash('rgba(255, 210, 120, 0.06)', 0.15);
+  else if (opts.crit) {
+    const _now = performance.now();
+    if (!_lastCritFlashAt || _now - _lastCritFlashAt >= 250) {
+      triggerScreenFlash('rgba(255, 210, 120, 0.06)', 0.15);
+      _lastCritFlashAt = _now;
+    }
+  }
 }
+let _lastCritFlashAt = 0;
 
 // Screen flash — brief colored overlay for big hits
 let _screenFlashColor = null;
 let _screenFlashTime = 0;
 let _screenFlashDur = 0;
+// Color-priority table — higher priority flashes can replace a longer
+// in-flight lower-priority flash. Without this, a fresh red hurt-flash
+// would silently no-op when a 0.4s gold theme flash is mid-play (the
+// `dur > _screenFlashTime` guard rejected anything shorter), dropping
+// low-HP feedback exactly when the player needs it most.
+function _flashPriority(color) {
+  if (!color) return 0;
+  // Lower-cased substring match — the colors throughout the code are
+  // rgba() strings; we just look for the dominant channel.
+  const c = String(color).toLowerCase();
+  // Red / crimson — hurt, enrage, danger
+  if (/rgba\(\s*(2[0-9]{2}|1[8-9][0-9])\s*,\s*([0-9]|[1-9][0-9])\s*,/.test(c)) return 3;
+  // Gold / yellow — counter, finisher, theme cue
+  if (/rgba\(\s*255\s*,\s*(2[0-3][0-9]|2[0-9]{2})\s*,\s*[01]?[0-9]{1,2}\s*,/.test(c)) return 2;
+  return 1;
+}
 export function triggerScreenFlash(color, dur = 0.2) {
-  // Accumulate: take the longer, stronger effect rather than reset
-  if (dur > _screenFlashTime) {
+  // Replace if (a) the new flash is longer than what's left, OR (b) the
+  // new flash is a higher-priority color (red beats gold beats other).
+  // The duration check still wins for same-priority ties.
+  const newPri = _flashPriority(color);
+  const curPri = _flashPriority(_screenFlashColor);
+  if (newPri > curPri || dur > _screenFlashTime) {
     _screenFlashColor = color;
     _screenFlashTime = dur;
     _screenFlashDur = dur;
@@ -649,36 +828,54 @@ export function updateFx(dt) {
   }
 }
 
+// HUD top-band clamp — minimum screen-Y a damage number can reach
+// before the world→screen transform stops carrying it any higher.
+// Audit T2.9: damage numbers fly upward in world space and used to
+// paint OVER the HUD when the hero was near the top of a room (the
+// rising number's screen-Y crossed the hearts/relics band). Now the
+// rendered world-Y is clamped so the result lands at or below this
+// screen-Y. The number visually pauses at the band rather than
+// floating into the HUD. Tuned to 64 px — clears the HUD top zone
+// (hearts at ~14, ability pips at ~30, top of relic strip at ~58)
+// with a small margin.
+const DMG_NUMBER_MIN_SCREEN_Y = 64;
 export function drawDamageNumbers(ctx) {
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  // Compute the world-Y floor that maps to MIN_SCREEN_Y under the
+  // current camera. Damage numbers with world-Y below this floor get
+  // rendered AT this floor instead, so they never paint over the HUD.
+  const z = camera.zoom || 1;
+  const minWorldY = (DMG_NUMBER_MIN_SCREEN_Y - camera.viewH / 2) / z + camera.y - camera.offsetY;
   for (const p of dmgLive) {
     const t = p.life / p.maxLife;
     ctx.globalAlpha = Math.min(1, t * 1.6);
     // Pop scale for crits/execs/counters in first 100ms
     const pop = p.badge ? 1 + Math.max(0, 1 - (p.maxLife - p.life) * 10) * 0.4 : 1;
     ctx.font = 'bold ' + (p.size * pop) + 'px Georgia, "Cormorant Garamond", serif';
+    // Clamp render-Y to minWorldY so the number can't paint over HUD.
+    const ry = Math.max(p.y, minWorldY);
     // Thick dark outline for readability against any floor color
     ctx.lineWidth = 4;
     ctx.strokeStyle = p.outline;
     ctx.lineJoin = 'round';
-    ctx.strokeText(p.text, p.x, p.y);
+    ctx.strokeText(p.text, p.x, ry);
     // Inner fill
     ctx.fillStyle = p.color;
-    ctx.fillText(p.text, p.x, p.y);
+    ctx.fillText(p.text, p.x, ry);
     // Tiny highlight on top-left for depth
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fillText(p.text, p.x - 1, p.y - 1);
+    ctx.fillText(p.text, p.x - 1, ry - 1);
     // Badge text above the number
     if (p.badge) {
       const badgePop = 1 + Math.max(0, 1 - (p.maxLife - p.life) * 7) * 0.6;
       ctx.font = 'bold ' + (11 * badgePop) + 'px Georgia, serif';
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(10, 5, 10, 0.95)';
-      ctx.strokeText(p.badge, p.x, p.y - p.size * pop - 2);
+      ctx.strokeText(p.badge, p.x, ry - p.size * pop - 2);
       ctx.fillStyle = p.badgeColor;
-      ctx.fillText(p.badge, p.x, p.y - p.size * pop - 2);
+      ctx.fillText(p.badge, p.x, ry - p.size * pop - 2);
     }
     // Element weakness/resist tag — to the right of the number
     if (p.elementTag) {
@@ -686,9 +883,9 @@ export function drawDamageNumbers(ctx) {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = 'rgba(10, 5, 10, 0.95)';
       const tx = p.x + p.size * pop * 0.7;
-      ctx.strokeText(p.elementTag, tx, p.y + 2);
+      ctx.strokeText(p.elementTag, tx, ry + 2);
       ctx.fillStyle = p.elementColor;
-      ctx.fillText(p.elementTag, tx, p.y + 2);
+      ctx.fillText(p.elementTag, tx, ry + 2);
     }
   }
   ctx.restore();

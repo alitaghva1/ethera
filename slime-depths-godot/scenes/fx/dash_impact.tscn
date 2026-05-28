@@ -1,0 +1,165 @@
+[gd_scene load_steps=7 format=3 uid="uid://b3dashimpact001"]
+
+[ext_resource type="Script" path="res://scripts/dash_impact.gd" id="1_script"]
+
+; iter-98 recolor — sparks ramp now cream-gold → tan → fade-earth so
+; the impact debris reads as kicked-up STONE FLOOR DUST and embers,
+; not arcane energy. Was magenta-pink; matches the new dash_trail
+; gold/tan palette as ONE coherent dust event rather than competing
+; energy bursts.
+[sub_resource type="Gradient" id="sparks_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.98, 0.88, 0.62, 1, 0.78, 0.65, 0.45, 0.9, 0.55, 0.42, 0.28, 0)
+
+; iter-99 NEW — DustCloud gradient. Slow ground-level dust that puffs
+; outward from the impact and SETTLES (no gravity, high damping) within
+; the ring radius. Cream-gold → warm tan → fade-earth, slightly cooler
+; and dimmer than the sparks so the two emitters read as distinct
+; layers (sparks = quick embers, dustcloud = lingering haze).
+[sub_resource type="Gradient" id="dustcloud_grad"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(0.85, 0.78, 0.60, 0.85, 0.65, 0.55, 0.40, 0.55, 0.42, 0.34, 0.24, 0)
+
+; Debris ramp — brown-cream chunks darkening + fading. Reads as
+; physical floor matter knocked loose rather than energy. Distinct
+; palette from the magenta-pink sparks so the eye separates the two
+; layers (energy + matter).
+[sub_resource type="Gradient" id="debris_grad"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(0.62, 0.50, 0.35, 1, 0.45, 0.36, 0.24, 0.85, 0.30, 0.24, 0.18, 0)
+
+[sub_resource type="Curve" id="ring_halo_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="ring_core_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.7), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="DashImpact" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Two concentric expanding rings — same trick as slash_arc ──────────
+; Halo (wide, magenta bloom) under Core (narrow, bright cream edge).
+; Both expand from radius 22 → ~60 over the impact lifetime via
+; dash_impact.gd's _process tween.
+;
+; Points form a 12-segment polygon approximating a circle at radius 22.
+; closed = true wraps the last segment back to the first. Pre-computed
+; to keep the .tscn declarative — no init code needed for geometry.
+
+[node name="Halo" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 14.0
+width_curve = SubResource("ring_halo_width")
+; iter-98 recolor: warm dust-haze gold replaces the magenta-pink halo.
+; Reads as a heat-shimmer / dust expansion from the slam, matching the
+; new gold/tan dash trail + sparks. Pre-iter-98 the magenta halo was the
+; brightest single element of the impact and read as "magic pulse."
+default_color = Color(0.95, 0.80, 0.50, 0.60)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="Core" type="Line2D" parent="."]
+points = PackedVector2Array(22, 0, 19.05, 11, 11, 19.05, 0, 22, -11, 19.05, -19.05, 11, -22, 0, -19.05, -11, -11, -19.05, 0, -22, 11, -19.05, 19.05, -11)
+closed = true
+width = 4.5
+width_curve = SubResource("ring_core_width")
+default_color = Color(1, 0.98, 0.95, 1)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; Radial spark burst — 14 particles fired outward in all directions.
+; explosiveness = 1.0 so they all leave at the same instant; the
+; lifetime curve + damping pulls them to a halt before they fly off
+; screen. local_coords = false so they stay anchored to where the
+; impact happened, even though this Node2D might be inside a moving
+; transform tree.
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 14
+lifetime = 0.4
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 140.0
+initial_velocity_max = 220.0
+damping_min = 7.0
+damping_max = 10.0
+scale_amount_min = 2.5
+scale_amount_max = 4.5
+color_ramp = SubResource("sparks_grad")
+
+; Debris burst — iter 75. Brown-cream chunks fired in all directions
+; with gravity, settling on the ground. Reads as physical floor matter
+; knocked loose by the slam. Distinct visual layer from the energy
+; sparks above — sparks fly fast and damp out, debris arcs and falls.
+;
+; amount tuned for visual density without overwhelming the rings;
+; gravity gives the parabolic settle that sells "chunks falling back
+; down" rather than "more energy radiating out." local_coords = false
+; so debris stays anchored where it spawned even as parent scales.
+;
+; z_index = 1 — above rings (z=0), below central flash (z=3) and
+; streaks (z=2). Order chosen so the bright flash + streaks read on
+; top of the dirtier debris layer.
+[node name="Debris" type="CPUParticles2D" parent="."]
+z_index = 1
+amount = 24
+lifetime = 0.45
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 240)
+initial_velocity_min = 80.0
+initial_velocity_max = 180.0
+damping_min = 1.5
+damping_max = 3.0
+scale_amount_min = 1.6
+scale_amount_max = 3.2
+color_ramp = SubResource("debris_grad")
+
+; iter-99 NEW — DustCloud. Replaces the 5 radial ground cracks that
+; read as a spider web at peak parent scale. This is a SLOW ground-
+; level dust burst:
+;   • 28 particles, lifetime 0.55s (longer than sparks, shorter than
+;     ring fade) → fills the visual hole left by the cracks
+;   • spread 180° + low velocity 30–90 px/s → particles puff outward
+;     to roughly the ring radius, not flying off
+;   • NO gravity → stays at floor level, simulating dust that hangs
+;     briefly before settling
+;   • High damping 4-7 → spreads then halts rather than streaking
+;   • Chunky scale 4–8 → reads as visible dust puffs, not tiny embers
+;   • Warm earth ramp via dustcloud_grad
+;   • z_index = 1, alongside debris (above the rings, below the
+;     hero in the world stack)
+[node name="DustCloud" type="CPUParticles2D" parent="."]
+z_index = 1
+amount = 28
+lifetime = 0.55
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 30.0
+initial_velocity_max = 90.0
+damping_min = 4.0
+damping_max = 7.0
+scale_amount_min = 4.0
+scale_amount_max = 8.0
+color_ramp = SubResource("dustcloud_grad")

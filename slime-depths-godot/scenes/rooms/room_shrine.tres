@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(180, 200), Vector2(180, 560), Vector2(1100, 200), Vector2(1100, 560), Vector2(440, 130), Vector2(640, 130), Vector2(840, 130)])
+spawn_points = Array[Vector2]([])
+waves = []
+pillar_positions = Array[Vector2]([])
+chest_positions = Array[Vector2]([])
+is_last_room = false
+display_name = "ALTAR OF VOWS"
+ambient_tint = Color(0.20, 0.24, 0.32, 1)
+decor_density = 16
+wall_rects = []
+hazard_positions = Array[Vector2]([])
+hazard_kind = ""
+hazards = []
+branches = []
+room_kind = "shrine"
+shrine_positions = Array[Vector2]([Vector2(440, 360), Vector2(640, 360), Vector2(840, 360)])
+biome = "sanctuary"

@@ -1,0 +1,114 @@
+{
+  "scene_dimensions": {
+    "w": 1376,
+    "h": 768
+  },
+  "halos": {
+    "shrine": {
+      "x": 702,
+      "y": 207,
+      "feature_bbox": [
+        648,
+        196,
+        728,
+        220
+      ],
+      "evidence": "altar candles cluster of 11 fire pixels in NW altar zone"
+    },
+    "firepit": {
+      "x": 778,
+      "y": 356,
+      "feature_bbox": [
+        764,
+        340,
+        792,
+        376
+      ],
+      "evidence": "plaza firepit cluster of 26 fire pixels at central plaza"
+    },
+    "portal": {
+      "x": 685,
+      "y": 367,
+      "feature_bbox": [
+        644,
+        332,
+        732,
+        408
+      ],
+      "evidence": "portal-blue cluster of 203 pixels (R<<B and G<<B)"
+    }
+  },
+  "npcs": {
+    "keeper": {
+      "x": 778,
+      "y": 412,
+      "feature_bbox": [
+        764,
+        340,
+        792,
+        376
+      ],
+      "rationale": "stands south of the central plaza firepit (hub merchant), on walkable cell (mask + tree-darkness validated)"
+    },
+    "smith": {
+      "x": 992,
+      "y": 308,
+      "feature_bbox": [
+        992,
+        252,
+        996,
+        260
+      ],
+      "rationale": "stands south of the smith forge / anvil brazier, on walkable cell (mask + tree-darkness validated)"
+    },
+    "archivist": {
+      "x": 380,
+      "y": 464,
+      "feature_bbox": [
+        344,
+        392,
+        360,
+        432
+      ],
+      "rationale": "stands south of the bookcase + scrolls nook, on walkable cell (mask + tree-darkness validated)"
+    },
+    "gravekeeper": {
+      "x": 519,
+      "y": 288,
+      "feature_bbox": [
+        504,
+        216,
+        532,
+        248
+      ],
+      "rationale": "stands south of the graveyard headstones, on walkable cell (mask + tree-darkness validated)"
+    },
+    "oracle": {
+      "x": 702,
+      "y": 276,
+      "feature_bbox": [
+        648,
+        196,
+        728,
+        220
+      ],
+      "rationale": "stands south of the altar shrine candles, on walkable cell (mask + tree-darkness validated)"
+    },
+    "wanderer": {
+      "x": 809,
+      "y": 484,
+      "feature_bbox": [
+        780,
+        348,
+        832,
+        432
+      ],
+      "rationale": "stands south of the canvas tent + bedroll camp, on walkable cell (mask + tree-darkness validated)"
+    }
+  },
+  "spawn": {
+    "x": 688,
+    "y": 687,
+    "rationale": "south entry path, ~80px inside the compound from the south wall gap (walkable validated)"
+  }
+}

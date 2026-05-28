@@ -1,0 +1,69 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_hurt.png" id="6_hurt"]
+[ext_resource type="Texture2D" path="res://assets/enemies/elite_orc_death.png" id="5_death"]
+
+; Iron Revenant — floor 1 boss. iter-106 sprite upgrade: pre-iter-106
+; reused armored_skeleton sheets at sprite_scale 4.0 — the comment in
+; the old .tres explicitly said "Real boss sprites are queued for
+; later; this gets the systemic piece in place first." Now uses the
+; dedicated elite_orc_*.png sheets — heavily-armored knight at 100-px
+; cells with a red-eye glow, sitting unused on disk in
+; slime-depths/public/assets/enemies/ until iter-106.
+;
+; Sheet layout (verified): 8-row × N-col grids at 100-px cells.
+; enemy.gd reads the top row only (single-facing + flip_h pattern).
+;   idle:   400/100 = 4 cols  → frames_idle = 4
+;   walk:   900/100 = 9 cols  → frames_walk = 8 (cap one frame short)
+;   attack: 1100/100 = 11 cols → frames_attack = 8
+;   death:  900/100 = 9 cols  → frames_death = 4
+;
+; sprite_scale dropped 4.0 → 2.0 because the new sheet IS already at
+; boss-target resolution. Same in-world footprint (~200 px tall) with
+; no upscale bilinear smearing. Visual hierarchy "this is a boss" now
+; reads from the silhouette + armor detail, not from blurry pixels.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Iron Revenant"
+is_boss = true
+behavior = "telegraphed_melee"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+hurt_sheet = ExtResource("6_hurt")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.0
+sprite_y_offset = -32.0
+collision_radius = 26.0
+frames_idle = 4
+frames_walk = 8
+frames_attack = 8
+frames_hurt = 4
+frames_death = 4
+fps_idle = 5.0
+fps_walk = 7.0
+fps_attack = 14.0
+fps_death = 7.0
+max_hp = 12
+move_speed = 70.0
+death_duration = 1.4
+melee_reach = 90.0
+melee_windup = 1.0
+melee_swing = 0.5
+melee_cooldown = 1.5
+melee_damage = 2
+melee_cone = 1.6
+phase2_overrides = {"melee_windup": 0.55, "melee_cooldown": 0.85, "melee_damage": 3, "move_speed": 95.0}
+phase2_hp_threshold = 0.5
+phase3_overrides = {"melee_windup": 0.35, "melee_cooldown": 0.55, "melee_damage": 3, "move_speed": 125.0, "melee_reach": 110.0}
+phase3_hp_threshold = 0.25
+phase2_summon_type = "skel"
+phase2_summon_count = 2
+phase3_summon_type = "armored_skeleton"
+phase3_summon_count = 2

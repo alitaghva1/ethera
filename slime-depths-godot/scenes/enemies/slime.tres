@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_attack.png" id="6_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/slime_death.png" id="4_death"]
+
+; iter-106: wired slime_attack.png (copied from slime_cast.png in the
+; JS reference, 400×100 = 4 frames at 100-px cells). Pre-iter-106 the
+; slime had frames_attack=0 and no attack_sheet — so the slime body-
+; bumped you while gliding in its walk animation ("ate me without
+; animating"). The attack sheet shows the slime rearing back with a
+; shock ring; combined with iter-106's _tick_chase_contact attack-
+; play wiring (enemy.gd), the slime now visibly attacks on contact.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Slime"
+behavior = "chase_contact"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("6_attack")
+death_sheet = ExtResource("4_death")
+cell_size = 100
+sprite_scale = 0.45
+sprite_y_offset = -18.0
+collision_radius = 22.0
+frames_idle = 4
+frames_walk = 4
+frames_attack = 4
+frames_death = 4
+fps_idle = 6.0
+fps_walk = 8.0
+fps_attack = 12.0
+fps_death = 8.0
+max_hp = 1
+move_speed = 95.0
+death_duration = 0.7
+contact_damage = 1
+contact_cooldown = 0.6
+contact_range = 36.0
+contact_attack = "bounce"

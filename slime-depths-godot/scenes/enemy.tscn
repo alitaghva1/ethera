@@ -1,0 +1,35 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3enemyGeneric1"]
+
+; Generic Enemy scene — ONE .tscn for the whole roster. The script
+; (enemy.gd) reads its `enemy_type: EnemyType` exported property at
+; _ready and builds SpriteFrames programmatically from the type's
+; sheets. Sprite scale, Y offset, and collision radius are also applied
+; from the type, overriding the defaults below.
+;
+; Spawner contract (main.gd):
+;   var e := ENEMY_SCENE.instantiate()
+;   e.enemy_type = ENEMY_TYPES["slime"]
+;   e.global_position = ...
+;   add_child(e)
+;
+; The defaults here (scale 0.6, y=-10, radius 16) are fine for an
+; uninitialized spawn; the type overrides them in _ready. They exist
+; only so the scene previews sanely in the editor before a type is
+; assigned.
+
+[ext_resource type="Script" path="res://scripts/enemy.gd" id="1_script"]
+
+[sub_resource type="CircleShape2D" id="enemy_collision"]
+radius = 16.0
+
+[node name="Enemy" type="CharacterBody2D"]
+collision_layer = 4
+collision_mask = 1
+script = ExtResource("1_script")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -10)
+scale = Vector2(0.6, 0.6)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("enemy_collision")

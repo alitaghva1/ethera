@@ -1,0 +1,100 @@
+[gd_scene load_steps=9 format=3 uid="uid://b3hero1234567"]
+
+; Hero scene — pruned dramatically in iter 12 (no per-state AtlasTexture
+; sub-resources here). hero.gd builds the full SpriteFrames programmatically
+; from 5 sheets × 8 directions in _ready(); doing it in code lets us
+; share a single per-state table of (sheet, frames, fps, loop) rather
+; than declaring ~290 sub-resources by hand.
+;
+; The drop shadow Sprite2D is intentionally a sibling drawn BEFORE the
+; AnimatedSprite2D so it renders underneath at the same z_index — same
+; trick we use for the hamlet decor drop shadows (now gone, but the
+; mechanic stays).
+
+[ext_resource type="Script" path="res://scripts/hero.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/decor/shadow_ellipse.png" id="2_shadow"]
+[ext_resource type="Shader" path="res://assets/shaders/sprite_outline.gdshader" id="3_outline"]
+
+[sub_resource type="CircleShape2D" id="hero_collision"]
+radius = 14.0
+
+; ── iter-116: Hero rim light. A subtle cream-white radial pool centered
+; on the hero so the player is INSTANTLY findable in dark rooms. This is
+; not a spotlight — energy is intentionally low (0.55) and the texture
+; scale is small (~120 px diameter pool) so it adds findability without
+; spotlighting nearby enemies or overlapping torch warmth. Color leans
+; warm cream so the hero ground reads "torchlit" rather than fluorescent.
+; shadow_enabled = false because the rim light's purpose is FINDABILITY,
+; not lighting the world — letting it cast shadows would create
+; conflicting double shadows around pillars from the hero side.
+[sub_resource type="Gradient" id="hero_rim_gradient"]
+offsets = PackedFloat32Array(0, 0.4, 1)
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0.5, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="hero_rim_tex"]
+gradient = SubResource("hero_rim_gradient")
+width = 192
+height = 192
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+; iter-117: Sprite outline material. ShaderMaterial wraps the
+; sprite_outline shader and sets a near-black outline at width 1.0 px
+; (in underlying texture pixel space — ~1/128 of the sprite cell at the
+; mage's 128 px cell size, so the outline reads as 1-2 in-world pixels).
+; outline_color leans very-dark blue (matching CHROME_WALL_STONE_COLOR
+; from iter-115) so the player silhouette pops out as DEEPER than the
+; ambient floor without reading as a stark black halo.
+; iter-134: 64px cells at scale 1.0 — outline_width 1.0 now reads as 1px.
+[sub_resource type="ShaderMaterial" id="hero_outline_mat"]
+shader = ExtResource("3_outline")
+shader_parameter/outline_color = Color(0.04, 0.04, 0.08, 0.85)
+shader_parameter/outline_width = 1.0
+
+[node name="Hero" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 1
+script = ExtResource("1_script")
+
+; Iter 192 batch 1 — REMOVED Shadow Sprite2D entirely. User direction:
+; "if contact shadows still look wrong, remove them entirely." Hero
+; matches enemy grounding language (enemy.gd ground shadow also
+; removed iter-192). Top-down 2D doesn't need ellipse contact shadows
+; when the actor's own pixel-art bottom edge sits on the dim floor.
+
+; iter-116: subtle hero rim light. Pool the player into instant
+; findability without becoming a spotlight on adjacent enemies.
+; iter-243 / Director Phase 1 — bumped energy 0.55 → 0.6, color to
+; warmer cream (1.0, 0.92, 0.82), texture scale 1.0 → 1.5 so the rim
+; pool reads as ~96 px effective radius. The hero should now be the
+; brightest small object on screen in dark rooms — pre-iter-243 the
+; rim was so subtle it disappeared under torch warmth, leaving the
+; hero hard to find during cluttered fights. z-index stays under the
+; sprite (the PointLight2D sits in the parent tree but does not
+; render UNDER the sprite — Godot's PointLight2D paints the floor,
+; not the actor itself, which is the intended behavior).
+; iter-255 / Wave 4 — atmospheric density + contrast push. The
+; BIOME_DARKNESS_MULTIPLIER drops the ambient ~22%, so the hero rim
+; light needs to keep up with the darker baseline. Energy bumped
+; 0.6 → 0.85 (+42%) so the hero retains its "brightest small object
+; on screen" status. texture_scale bumped 1.5 → 1.85 (~120 px
+; effective radius) so the pool reads as a real findability halo
+; against the deeper darkness.
+[node name="RimLight" type="PointLight2D" parent="."]
+position = Vector2(0, -8)
+color = Color(1.0, 0.92, 0.82, 1)
+energy = 0.85
+texture = SubResource("hero_rim_tex")
+texture_scale = 1.85
+shadow_enabled = false
+range_z_min = -1024
+range_z_max = 1024
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -29)
+scale = Vector2(1.0, 1.0)
+material = SubResource("hero_outline_mat")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("hero_collision")

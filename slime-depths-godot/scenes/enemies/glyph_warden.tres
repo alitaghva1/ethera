@@ -1,0 +1,72 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/wiz_death.png" id="5_death"]
+
+; Iter 72 — Glyph Warden. Conjurer / trap-layer support enemy. Kites
+; the hero at ~220 px and on a 3.5s cycle plants a STATIONARY glyph
+; hazard at its OWN feet (0.7s windup with a gold-amber tint + a
+; spinning rune mark inscribed on the ground as telegraph). The glyph
+; arms 0.6s after placement then sits as floor damage for up to 6.0s;
+; a hero stepping into its radius detonates it for 1 damage + 1.2s
+; slow.
+;
+; The novel beat: glyphs OUTLIVE the warden. Killing the warden does
+; NOT clear its previously-laid traps — the player must remember where
+; the warden was standing seconds ago and avoid those tiles while
+; focusing other threats. None of the existing 19 enemies create
+; persistent ground hazards that survive their author.
+;
+; Tunables (GLYPH_INTERVAL, GLYPH_WINDUP, GLYPH_COOLDOWN, etc.) live
+; in enemy.gd's glyph_warden block as consts — same author-once-on-
+; the-script convention used for healer / summoner / wraith.
+;
+; Reuses the wiz sprite slot (third reuse: wiz.tres = caster, rogue_
+; wraith.tres = phasing assassin, glyph_warden = trap-layer). The
+; hooded-mage silhouette fits the "rune inscriber" aesthetic; the
+; gold-amber sprite_modulate distinguishes it from the wiz's neutral
+; coloring and the wraith's pale violet. The wiz uses ranged
+; behavior, so the visual + behavior aren't shared in-game between
+; the three.
+;
+; HP: 5 (squishier than bone_summoner's 6, tankier than spectral_
+; priest's / rogue_wraith's 4). The warden has no direct attack of
+; its own — only the glyph plant — so it CAN be focus-killed, but
+; the legacy glyphs it dropped before dying continue to ticking.
+; Move speed 65 = barely faster than spectral_priest, slower than
+; bone_summoner, much slower than the rogue_wraith — same kite
+; archetype as the other support casters.
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Glyph Warden"
+behavior = "glyph_warden"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 2.0
+sprite_y_offset = -17.0
+collision_radius = 16.0
+; Iter 72 — strong gold-amber tint so the warden reads visually as
+; "rune inscriber" and is unmistakable next to the wiz (neutral
+; coloring) and rogue_wraith (pale violet, slight alpha) that share
+; the wiz_*.png slot. R 1.45 / G 1.20 / B 0.55 = warm gold; alpha 1.0
+; (the wraith owns the partial-alpha "phasing" look, the warden is
+; solid and grounded).
+sprite_modulate = Color(1.45, 1.20, 0.55, 1.0)
+frames_idle = 6
+frames_walk = 8
+frames_attack = 6
+frames_death = 4
+fps_idle = 6.0
+fps_walk = 9.0
+fps_attack = 10.0
+fps_death = 7.0
+max_hp = 5
+move_speed = 65.0
+death_duration = 1.0

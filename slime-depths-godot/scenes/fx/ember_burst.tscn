@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3emberburst0072"]
+
+[ext_resource type="Script" path="res://scripts/ember_burst.gd" id="1_script"]
+
+; Iter 72 — IRON FANG redesign FX. Thin scene wrapper around
+; ember_burst.gd, which builds the two concentric Line2D rings + applies
+; the snapshot AoE damage at spawn. Same minimal-scene pattern as
+; shock_pulse.tscn (iter 68) and chain_arc.tscn (iter 67) — the
+; geometry depends on radius_target which only setup() knows.
+;
+; IRON FANG: every 6th sword hit triggers this burst at the impact
+; point — radius 40, damage 1, FLAME-themed orange/red palette.
+
+[node name="EmberBurst" type="Node2D"]
+script = ExtResource("1_script")

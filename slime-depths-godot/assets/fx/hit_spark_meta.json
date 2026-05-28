@@ -1,0 +1,14 @@
+{
+  "name": "hit_spark",
+  "frames": 4,
+  "fps": 32,
+  "cell_size": 64,
+  "sheet_width": 256,
+  "sheet_height": 64,
+  "generated_at": "2026-05-12T18:01:09.021Z",
+  "prompt": {
+    "base_description": "small white and cream impact spark burst with sharp radiating spikes, painterly pixel art, dark fantasy combat, isolated on transparent background, no scenery",
+    "action": "spark burst exploding outward in all directions with eight short spikes, peaking at frame 2, then quickly fading",
+    "negative": "character, person, weapon, blood, ground, floor, background, scenery"
+  }
+}

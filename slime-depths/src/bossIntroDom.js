@@ -54,8 +54,10 @@ let _showingBossType = null;
  * @param {object|null} bossIntroBoss  The boss object (or null). Has
  *   `.type` (string key into BOSS_INTRO_IMG), `.def.displayName`,
  *   `.def.flavor`, and `._enraged` (boolean for phase-2 "AWAKENED" tag).
+ * @param {boolean} [fast]  When true, plays the shortened ~1.3s repeat-
+ *   sighting animation instead of the 2.2s first-time theatre treatment.
  */
-export function updateBossIntro(bossIntroTime, bossIntroBoss) {
+export function updateBossIntro(bossIntroTime, bossIntroBoss, fast = false) {
   const shouldShow = bossIntroTime > 0 && bossIntroBoss;
   const bossType = shouldShow ? bossIntroBoss.type : null;
 
@@ -70,10 +72,10 @@ export function updateBossIntro(bossIntroTime, bossIntroBoss) {
   // let the CSS animation keep playing. Only act on transitions.
   if (_showingBossType === bossType) return;
 
-  _show(bossIntroBoss, bossType);
+  _show(bossIntroBoss, bossType, fast);
 }
 
-function _show(bossIntroBoss, bossType) {
+function _show(bossIntroBoss, bossType, fast) {
   const sceneKey = BOSS_INTRO_IMG[bossType];
   if (!sceneKey) {
     // Unmapped boss type — no backdrop to show. Canvas version drew a
@@ -89,16 +91,20 @@ function _show(bossIntroBoss, bossType) {
 
   // Remove-then-add the class forces the animation to restart cleanly
   // (browsers won't re-run a CSS animation if the class just stays on).
+  // Clear both potential variants so a stale class from a prior intro
+  // doesn't fight the new one.
   overlay.classList.remove('playing');
+  overlay.classList.remove('playing-fast');
   // Force layout flush so the next class add is a real transition, not
   // a batched no-op. offsetWidth access is the canonical forcing idiom.
   void overlay.offsetWidth;
-  overlay.classList.add('playing');
+  overlay.classList.add(fast ? 'playing-fast' : 'playing');
 
   _showingBossType = bossType;
 }
 
 function _hide() {
   overlay.classList.remove('playing');
+  overlay.classList.remove('playing-fast');
   _showingBossType = null;
 }

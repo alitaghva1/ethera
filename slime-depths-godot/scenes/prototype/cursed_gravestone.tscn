@@ -1,0 +1,78 @@
+[gd_scene load_steps=3 format=3 uid="uid://b3gravestone01"]
+
+; CursedGravestone — RigidBody2D weapon. Layer 8 (hero_attack), masks
+; 1+4 = 5 (world + enemies). NOT in hero mask, so the player walks
+; through it freely; the tether spring handles positioning instead of
+; physics push.
+;
+; Iter — readability pass:
+;   • Bigger silhouette (40×52 collider, was 34×44).
+;   • Elliptical ground SHADOW at the base — gives the stone visual
+;     weight + reads as "sitting on the floor."
+;   • DANGER GLOW Polygon2D rendered BEHIND the body. Alpha is driven
+;     by the script every physics tick: 0 when below MIN_DAMAGE_VEL,
+;     ramping to 0.7 as velocity overshoots. Tells the player at a
+;     glance "this swing will hurt."
+;   • Slight rim highlight on the body so the stone reads as 3D-ish
+;     against the dark floor.
+;
+; Mass 5.0, gravity_scale 0, contact_monitor true.
+
+[ext_resource type="Script" path="res://scripts/prototype/cursed_gravestone.gd" id="1_script"]
+
+[sub_resource type="RectangleShape2D" id="grav_shape"]
+size = Vector2(40, 52)
+
+[node name="CursedGravestone" type="RigidBody2D"]
+collision_layer = 8
+collision_mask = 5
+mass = 5.0
+gravity_scale = 0.0
+linear_damp = 0.0
+contact_monitor = true
+max_contacts_reported = 6
+script = ExtResource("1_script")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("grav_shape")
+
+; ── Ground shadow at the base (z_index = -3 so it renders below
+; everything else on the gravestone). Elliptical, dark. ─────────────
+[node name="GroundShadow" type="Polygon2D" parent="."]
+position = Vector2(0, 28)
+z_index = -3
+polygon = PackedVector2Array(22, 0, 20.3, 4.7, 15.6, 8.1, 8.4, 10.2, 0, 11, -8.4, 10.2, -15.6, 8.1, -20.3, 4.7, -22, 0, -20.3, -4.7, -15.6, -8.1, -8.4, -10.2, 0, -11, 8.4, -10.2, 15.6, -8.1, 20.3, -4.7)
+color = Color(0, 0, 0, 0.45)
+
+; ── Danger glow — red HDR-ish overlay rendered BEHIND the body
+; (z_index = -2). Slightly larger than body so the glow extends past
+; the silhouette edge as a halo. Alpha is set by cursed_gravestone.gd
+; each physics tick based on linear_velocity overshoot. ─────────────
+[node name="DangerGlow" type="Polygon2D" parent="."]
+z_index = -2
+polygon = PackedVector2Array(-26, -30, -22, -36, -14, -42, 0, -44, 14, -42, 22, -36, 26, -30, 26, 28, 0, 36, -26, 28)
+color = Color(1.0, 0.32, 0.22, 0.0)
+
+; ── Gravestone body. Slate grey + dark outline. ─────────────────────
+[node name="Body" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-20, -26, -20, -12, -16, -20, -10, -24, 0, -26, 10, -24, 16, -20, 20, -12, 20, 26, -20, 26)
+color = Color(0.36, 0.35, 0.40, 1.0)
+
+; ── Highlight strip across the top arch (suggests 3D form). ─────────
+[node name="Highlight" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-17, -19, -12, -22, -6, -23, 0, -24, 6, -23, 12, -22, 17, -19, 17, -16, -17, -16)
+color = Color(0.55, 0.54, 0.60, 1.0)
+
+; ── Cross etching in the center. ────────────────────────────────────
+[node name="Cross" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(-3, -14, 3, -14, 3, -3, 10, -3, 10, 3, 3, 3, 3, 16, -3, 16, -3, 3, -10, 3, -10, -3, -3, -3)
+color = Color(0.16, 0.14, 0.18, 1.0)
+
+; ── Dark outline. Line2D tracing the body silhouette so the stone
+; pops against the floor color. Drawn LAST so it sits on top. ───────
+[node name="Outline" type="Line2D" parent="."]
+points = PackedVector2Array(-20, -26, -20, -12, -16, -20, -10, -24, 0, -26, 10, -24, 16, -20, 20, -12, 20, 26, -20, 26, -20, -26)
+width = 1.5
+default_color = Color(0.08, 0.06, 0.10, 1.0)
+joint_mode = 2
+antialiased = true

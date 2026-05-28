@@ -1,0 +1,130 @@
+[gd_scene format=3 uid="uid://bachpop1212"]
+
+[ext_resource type="Script" path="res://scripts/achievement_popup.gd" id="1_script"]
+
+; Iter — achievement popup toast. Top-right corner inset (offset_left=-340,
+; offset_top=20) so a 320×~90 toast sits inside the screen edge. Layer=46
+; — above HUD (~10-40), well below pause (150) and death (200) overlays.
+; Slide-in + fade-in 0.3s, hold 4.0s, slide-out + fade-out 0.5s. Uses the
+; iter-67 pedestal autowrap pattern for the description: pin DescLabel
+; custom_minimum_size.x = 290, double await process_frame for layout
+; settling, then grow Panel offset_bottom to fit.
+;
+; Multi-toast handling: a static queue in achievement_popup.gd serializes
+; spawn() calls so boss-clear can trigger 3 unlocks back-to-back without
+; overlapping toasts.
+
+; Panel border + background. Cream-gold 2px border, dark navy semi-
+; transparent fill. Slight rounded corners + shadow gives the toast
+; lift over the busy combat backdrop.
+[sub_resource type="StyleBoxFlat" id="popup_style"]
+bg_color = Color(0.05, 0.045, 0.07, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.92, 0.84, 0.62, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_size = 5
+shadow_offset = Vector2(0, 2)
+
+[node name="AchievementPopup" type="CanvasLayer"]
+layer = 46
+script = ExtResource("1_script")
+
+; Root Control — FULL_RECT so child Panel anchors against the viewport.
+[node name="Root" type="Control" parent="."]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+
+; Toast panel — anchored top-right (anchor_left=anchor_right=1.0). The
+; offset_left/right pulls inward 340px so the 320-wide toast sits 20px
+; inset from the right edge. offset_top=20 keeps it just below the HUD top.
+; offset_bottom is grown in code after the description autowrap settles.
+[node name="Panel" type="Panel" parent="Root"]
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -340.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 110.0
+theme_override_styles/panel = SubResource("popup_style")
+mouse_filter = 2
+
+; Top hairline — subtle 1-px gold line just under the panel top edge,
+; gives the toast a "letterhead" feel. ColorRect docked across the top
+; of the Panel via FULL_RECT-style anchors + offset_bottom=1.
+[node name="Hairline" type="ColorRect" parent="Root/Panel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = 6.0
+offset_top = 3.0
+offset_right = -6.0
+offset_bottom = 4.0
+color = Color(0.92, 0.84, 0.62, 0.55)
+mouse_filter = 2
+
+; Content column. HEADER (12 letterspaced) → NAME (18 letterspaced bold-
+; feel) → DESC (12 dim cream, autowrap). 2px separators keep it tight
+; in the 70-90px target height.
+[node name="Content" type="VBoxContainer" parent="Root/Panel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+theme_override_constants/separation = 3
+mouse_filter = 2
+
+[node name="HeaderLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.92, 0.84, 0.62, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "A C H I E V E M E N T   U N L O C K E D"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="NameLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(0.97, 0.92, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+text = "ACHIEVEMENT NAME"
+horizontal_alignment = 1
+mouse_filter = 2
+
+[node name="DescLabel" type="Label" parent="Root/Panel/Content"]
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.82, 0.78, 0.68, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+custom_minimum_size = Vector2(290, 0)
+text = "Description text goes here. May wrap to multiple lines for longer achievements."
+horizontal_alignment = 1
+vertical_alignment = 0
+autowrap_mode = 3
+clip_text = false
+mouse_filter = 2

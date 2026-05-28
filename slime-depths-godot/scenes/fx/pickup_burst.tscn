@@ -1,0 +1,82 @@
+[gd_scene load_steps=5 format=3 uid="uid://b3pickupbst001"]
+
+[ext_resource type="Script" path="res://scripts/pickup_burst.gd" id="1_script"]
+
+; Gold spark ramp — bright cream core fading through gold to transparent
+; amber. Matches the hit_spark family (cream → gold) but with a slightly
+; deeper amber midtone so the pickup burst reads as a "relic-tier" event
+; rather than a generic gold sparkle. Same semantic ("you gained
+; something") with elevated chunkiness.
+[sub_resource type="Gradient" id="pickup_grad"]
+offsets = PackedFloat32Array(0, 0.45, 1)
+colors = PackedColorArray(1.0, 0.94, 0.62, 1.0, 0.95, 0.72, 0.18, 1.0, 0.62, 0.36, 0.05, 0.0)
+
+[sub_resource type="Curve" id="ring_halo_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.5), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="ring_core_width"]
+min_value = 0.0
+max_value = 1.0
+_data = [Vector2(0, 0.8), 0.0, 0.0, 0, 0, Vector2(0.5, 1.0), 0.0, 0.0, 0, 0, Vector2(1.0, 0.6), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[node name="PickupBurst" type="Node2D"]
+script = ExtResource("1_script")
+
+; ── Two concentric expanding rings — same architecture as dash_impact
+;     and death_pulse. Halo (wide, deep amber) under Core (narrow,
+;     bright cream-gold). Both expand from radius 16 → ~44 over
+;     DURATION via pickup_burst.gd's _process tween.
+;
+; 12-segment polygon approximating a circle at radius 16 (half the
+; death_pulse base, ~73% of dash_impact's 22). Points pre-computed at
+; 30° intervals; closed = true wraps the last segment back to the
+; first.
+
+[node name="Halo" type="Line2D" parent="."]
+points = PackedVector2Array(16, 0, 13.86, 8, 8, 13.86, 0, 16, -8, 13.86, -13.86, 8, -16, 0, -13.86, -8, -8, -13.86, 0, -16, 8, -13.86, 13.86, -8)
+closed = true
+width = 14.0
+width_curve = SubResource("ring_halo_width")
+default_color = Color(0.95, 0.72, 0.18, 0.7)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+[node name="Core" type="Line2D" parent="."]
+points = PackedVector2Array(16, 0, 13.86, 8, 8, 13.86, 0, 16, -8, 13.86, -13.86, 8, -16, 0, -13.86, -8, -8, -13.86, 0, -16, 8, -13.86, 13.86, -8)
+closed = true
+width = 4.5
+width_curve = SubResource("ring_core_width")
+default_color = Color(1.0, 0.94, 0.62, 1.0)
+joint_mode = 2
+begin_cap_mode = 2
+end_cap_mode = 2
+antialiased = true
+
+; Radial gold spark spray — 14 sparks fired outward in all directions.
+; Slightly more chunkiness than hit_spark (8) but less than death_pulse
+; (22) — pickups are celebratory not violent. local_coords = false
+; anchors sparks to the spawn point even if the parent transform moves.
+; No gravity — pickup sparks don't fall like blood spray; they radiate
+; and fade in place (the bright damping pulls them to a halt fast).
+[node name="CPUParticles2D" type="CPUParticles2D" parent="."]
+amount = 14
+lifetime = 0.55
+one_shot = true
+emitting = true
+explosiveness = 1.0
+local_coords = false
+spread = 180.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 90.0
+initial_velocity_max = 200.0
+damping_min = 6.0
+damping_max = 9.0
+scale_amount_min = 2.5
+scale_amount_max = 4.0
+color_ramp = SubResource("pickup_grad")

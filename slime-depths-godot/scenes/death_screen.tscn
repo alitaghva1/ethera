@@ -1,0 +1,383 @@
+[gd_scene load_steps=11 format=3 uid="uid://b3death123456"]
+
+[ext_resource type="Script" path="res://scripts/death_screen.gd" id="1_script"]
+
+; Iter 188 batch 3 — match menu / HUD typography. Pre-iter-188 the death
+; screen used Godot default Noto Sans → "arcade/mobile UI" reading (user
+; critique). Cinzel/Cormorant Garamond pulls the death screen into the
+; same dark-fantasy typography family as the menu + HUD.
+[sub_resource type="SystemFont" id="death_title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+[sub_resource type="SystemFont" id="death_body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
+
+; Death-screen overlay. CanvasLayer at layer = 200 so it sits above all
+; in-game HUDs (the dialogue autoload is layer 100). Initially hidden;
+; the main scene calls show_death(kills) on hero_died and listens for
+; the retry / hamlet signals to decide what to do next.
+;
+; Visual treatment: panel reads as a "scroll" — thick top/bottom borders,
+; thinner sides — with a top-down crimson→black gradient inside. Stats
+; rank kills as a giant gold number with a small "kills" sub-label.
+
+; ── Panel background gradient (crimson → black, top→bottom) ───────────
+[sub_resource type="Gradient" id="panel_gradient"]
+offsets = PackedFloat32Array(0, 0.35, 1)
+colors = PackedColorArray(0.117647, 0.039215, 0.058823, 0.96, 0.058823, 0.027450, 0.043137, 0.97, 0.019607, 0.011764, 0.027450, 0.98)
+
+[sub_resource type="GradientTexture2D" id="panel_gradient_tex"]
+gradient = SubResource("panel_gradient")
+fill = 0
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+width = 32
+height = 256
+
+; ── Scroll-style panel border (thick top/bottom, thin sides). ─────────
+; StyleBoxFlat handles the border + corner radii; the gradient TextureRect
+; layered inside the Panel paints the actual fill, so the border colors
+; visually frame the gradient.
+;
+; iter-121: pre-iter-121 the border was 4 px crimson at alpha 0.95 with
+; a 14 px crimson shadow — playtest read as "garish neon-red frame
+; that fights the rest of the dark-fantasy palette." Pulled to a uniform
+; 2 px gold-tinted border at alpha 0.40 + warmer ember shadow (alpha
+; 0.55, 18 px reach). The panel now reads as "ancient scroll with a
+; subtle warm glow" instead of "warning siren."
+[sub_resource type="StyleBoxFlat" id="panel_style"]
+bg_color = Color(0.04, 0.03, 0.06, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.55, 0.35, 0.45)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+content_margin_left = 32.0
+content_margin_top = 26.0
+content_margin_right = 32.0
+content_margin_bottom = 26.0
+shadow_color = Color(0.85, 0.45, 0.18, 0.40)
+shadow_size = 18
+shadow_offset = Vector2(0, 0)
+
+; ── Button styles ───────────────────────────────────────────────────────
+[sub_resource type="StyleBoxFlat" id="button_normal"]
+bg_color = Color(0.06, 0.04, 0.08, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.78, 0.65, 0.41, 0.85)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="button_hover"]
+bg_color = Color(0.10, 0.06, 0.12, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.96, 0.85, 0.63, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 22.0
+content_margin_top = 10.0
+content_margin_right = 22.0
+content_margin_bottom = 10.0
+
+[sub_resource type="StyleBoxFlat" id="button_focus"]
+bg_color = Color(0.12, 0.07, 0.14, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(1, 0.92, 0.72, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 21.0
+content_margin_top = 9.0
+content_margin_right = 21.0
+content_margin_bottom = 9.0
+shadow_color = Color(0.96, 0.85, 0.63, 0.40)
+shadow_size = 6
+shadow_offset = Vector2(0, 0)
+
+; A short horizontal gold rule between the title and the stats block.
+[sub_resource type="StyleBoxFlat" id="hairline_style"]
+bg_color = Color(0.78, 0.65, 0.41, 0.7)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+
+[node name="DeathScreen" type="CanvasLayer"]
+layer = 200
+visible = false
+script = ExtResource("1_script")
+
+; Semi-transparent dim of the dungeon underneath.
+[node name="Dimmer" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.7)
+mouse_filter = 0
+
+; Centered scroll-style panel.
+[node name="Panel" type="Panel" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -290.0
+offset_top = -260.0
+offset_right = 290.0
+offset_bottom = 260.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("panel_style")
+
+; Gradient fill TextureRect — sits behind the contents, inside the Panel
+; border. Anchored full-rect so the gradient runs from the inside of the
+; top border to the inside of the bottom border.
+[node name="PanelGradient" type="TextureRect" parent="Panel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_left = 4.0
+offset_top = 5.0
+offset_right = -4.0
+offset_bottom = -5.0
+texture = SubResource("panel_gradient_tex")
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+[node name="Stack" type="VBoxContainer" parent="Panel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+offset_left = 16.0
+offset_top = 12.0
+offset_right = -16.0
+offset_bottom = -12.0
+theme_override_constants/separation = 8
+
+; ── Title — "YOU DIED" with back-glow Label trick, 96pt. ──────────────
+; Min-height generous enough to give the 108pt glow Label headroom.
+[node name="TitleBlock" type="Control" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 140)
+mouse_filter = 2
+
+; iter-121: pre-iter-121 the TitleGlow was 108 pt and the Title 96 pt
+; — the 12 pt size differential made the dim-red glow letters peek
+; ABOVE AND BELOW the bright-red foreground, reading as a stamped
+; "double image" (playtest screenshot shows it clearly). Matched both
+; labels to 96 pt; the glow now contributes only its outline halo
+; (18 px wide vs the foreground's 5 px) so the bloom reads as a halo
+; on the SAME letterforms, not a second letterform behind. Same fix
+; pattern iter-93 used on the main menu title.
+; Iter 188 batch 3 — palette shift to blood/ember. Pre-iter-188 the
+; YOU DIED title was (0.96, 0.42, 0.36) — a bright PINK-red with high
+; green+blue that read as arcade-mobile UI. New: (0.82, 0.20, 0.18) —
+; dried-blood crimson with low green+blue for pure red. The halo
+; outline shifts from (0.95, 0.45, 0.30) salmon-ember toward
+; (0.85, 0.32, 0.16) deeper amber-ember, harmonizing with the panel
+; shadow's warm ember tone.
+[node name="TitleGlow" type="Label" parent="Panel/Stack/TitleBlock"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_fonts/font = SubResource("death_title_font")
+theme_override_font_sizes/font_size = 96
+theme_override_colors/font_color = Color(0.92, 0.30, 0.30, 0)
+theme_override_colors/font_outline_color = Color(0.85, 0.32, 0.16, 0.60)
+theme_override_constants/outline_size = 18
+text = "YOU DIED"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Panel/Stack/TitleBlock"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_fonts/font = SubResource("death_title_font")
+theme_override_font_sizes/font_size = 96
+theme_override_colors/font_color = Color(0.82, 0.20, 0.18, 1)
+theme_override_colors/font_outline_color = Color(0.14, 0.03, 0.03, 1)
+theme_override_constants/outline_size = 6
+text = "YOU DIED"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+; Hairline under the title. Width-fills via VBox default; height 1px.
+[node name="DividerTop" type="Panel" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 1)
+theme_override_styles/panel = SubResource("hairline_style")
+
+[node name="DividerTopSpacer" type="Control" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 4)
+
+; ── Stats — two-column HBox. Left: huge gold KILLS number + "kills"
+; sub-label. Right: same for RUNS. ────────────────────────────────────
+[node name="StatsRow" type="HBoxContainer" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 78)
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="KillsBlock" type="VBoxContainer" parent="Panel/Stack/StatsRow"]
+custom_minimum_size = Vector2(180, 0)
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="KillsNumber" type="Label" parent="Panel/Stack/StatsRow/KillsBlock"]
+custom_minimum_size = Vector2(0, 56)
+theme_override_font_sizes/font_size = 48
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="KillsCaption" type="Label" parent="Panel/Stack/StatsRow/KillsBlock"]
+custom_minimum_size = Vector2(0, 18)
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.72, 0.62, 1)
+text = "kills"
+horizontal_alignment = 1
+
+[node name="RunsBlock" type="VBoxContainer" parent="Panel/Stack/StatsRow"]
+custom_minimum_size = Vector2(180, 0)
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="RunsNumber" type="Label" parent="Panel/Stack/StatsRow/RunsBlock"]
+custom_minimum_size = Vector2(0, 56)
+theme_override_font_sizes/font_size = 48
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="RunsCaption" type="Label" parent="Panel/Stack/StatsRow/RunsBlock"]
+custom_minimum_size = Vector2(0, 18)
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.72, 0.62, 1)
+text = "runs"
+horizontal_alignment = 1
+
+; Iter 159 — TimeBlock alongside Kills + Runs. Surfaces last_run_time
+; from GameState (snapshot taken at hero-death in iter-158). When this
+; run BEAT the previous best, the caption text reads "best!" in warm
+; gold instead of "time" — same payoff pattern as the iter-49 NEW BEST
+; callout for kills.
+[node name="TimeBlock" type="VBoxContainer" parent="Panel/Stack/StatsRow"]
+custom_minimum_size = Vector2(180, 0)
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="TimeNumber" type="Label" parent="Panel/Stack/StatsRow/TimeBlock"]
+custom_minimum_size = Vector2(0, 56)
+theme_override_font_sizes/font_size = 44
+theme_override_colors/font_color = Color(0.92, 0.94, 1.0, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "0:00"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="TimeCaption" type="Label" parent="Panel/Stack/StatsRow/TimeBlock"]
+custom_minimum_size = Vector2(0, 18)
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.72, 0.62, 1)
+text = "time"
+horizontal_alignment = 1
+
+; Hairline divider under stats.
+[node name="DividerBottomSpacer" type="Control" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 4)
+
+[node name="DividerBottom" type="Panel" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 1)
+theme_override_styles/panel = SubResource("hairline_style")
+
+; ── Relics carried ──────────────────────────────────────────────────────
+[node name="RelicsTitle" type="Label" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 24)
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.78, 0.65, 0.41, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 2
+text = "RELICS CARRIED"
+horizontal_alignment = 1
+
+[node name="RelicsList" type="VBoxContainer" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 80)
+theme_override_constants/separation = 2
+
+[node name="ButtonRow" type="HBoxContainer" parent="Panel/Stack"]
+custom_minimum_size = Vector2(0, 50)
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="RetryButton" type="Button" parent="Panel/Stack/ButtonRow"]
+custom_minimum_size = Vector2(180, 48)
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "RETRY"
+
+[node name="MenuButton" type="Button" parent="Panel/Stack/ButtonRow"]
+custom_minimum_size = Vector2(180, 48)
+focus_mode = 2
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.96, 0.85, 0.63, 1)
+theme_override_colors/font_hover_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_focus_color = Color(1, 0.95, 0.78, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 3
+theme_override_styles/normal = SubResource("button_normal")
+theme_override_styles/hover = SubResource("button_hover")
+theme_override_styles/pressed = SubResource("button_hover")
+theme_override_styles/focus = SubResource("button_focus")
+text = "MAIN MENU"

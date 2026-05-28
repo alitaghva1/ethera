@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3stoneshard0072"]
+
+[ext_resource type="Script" path="res://scripts/stone_shard_burst.gd" id="1_script"]
+
+; Iter 72 — IRON SKIN redesign FX. Thin scene wrapper around
+; stone_shard_burst.gd, which builds the 6 small grey-cream polygon
+; shards in code and tweens them outward over the lifetime. No setup
+; needed — fully self-contained.
+;
+; IRON SKIN: every time the relic absorbs damage from an incoming hit
+; (the hit's damage was reduced by damage_taken_reduction), this burst
+; fires at the hero so the deflection beat is visible. The blood_drop
+; cue still fires for the wound itself — they layer cleanly.
+
+[node name="StoneShardBurst" type="Node2D"]
+script = ExtResource("1_script")

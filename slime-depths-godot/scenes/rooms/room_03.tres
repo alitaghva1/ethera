@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="RoomConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/room_config.gd" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+hero_spawn = Vector2(192, 384)
+torch_positions = Array[Vector2]([Vector2(220, 220), Vector2(220, 540), Vector2(1060, 220), Vector2(1060, 540), Vector2(640, 200), Vector2(640, 560)])
+spawn_points = Array[Vector2]([Vector2(1088, 160), Vector2(1088, 608), Vector2(1088, 384), Vector2(640, 160), Vector2(640, 608), Vector2(900, 384)])
+waves = [[["armored_skeleton", 2], ["crypt_spider", 2]], [["lancer", 2], ["dreadmage", 1], ["bonecap", 1]], [["iron_revenant", 1], ["crypt_spider", 2]]]
+pillar_positions = Array[Vector2]([Vector2(380, 280), Vector2(380, 488), Vector2(540, 280), Vector2(540, 488), Vector2(760, 280), Vector2(760, 488)])
+chest_positions = Array[Vector2]([Vector2(1040, 280)])
+is_last_room = false
+display_name = "INNER SANCTUM"
+ambient_tint = Color(0.30, 0.18, 0.16, 1)
+decor_density = 20
+wall_rects = [Rect2(280, 200, 40, 100), Rect2(280, 468, 40, 100), Rect2(960, 200, 40, 100), Rect2(960, 468, 40, 100)]
+hazard_positions = Array[Vector2]([Vector2(640, 220), Vector2(640, 548)])
+hazard_kind = "spike_pit"
+hazards = [{"kind": "lightning_rod", "position": Vector2(640, 384), "interval": 4.0, "phase": 0.0}]
+biome = "ember"
+wave_events = [{"wave": 1, "kind": "announce", "text": "The flames awaken"}, {"wave": 1, "kind": "activate_hazard", "kind_hint": "fire", "hazard_kind": "fire_jet", "position": Vector2(440, 384), "phase": 0.0}, {"wave": 1, "kind": "activate_hazard", "hazard_kind": "fire_jet", "position": Vector2(840, 384), "phase": 0.5}, {"wave": 2, "kind": "announce", "text": "The light fades"}, {"wave": 2, "kind": "dim_lights", "energy_mul": 0.45}]
+room_type = "gauntlet"

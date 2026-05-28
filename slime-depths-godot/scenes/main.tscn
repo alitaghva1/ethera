@@ -1,0 +1,456 @@
+[gd_scene load_steps=8 format=3 uid="uid://b3main123456"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Texture2D" path="res://assets/rooms/procedural_dungeon.png" id="2_room"]
+[ext_resource type="PackedScene" path="res://scenes/hero.tscn" id="3_hero"]
+
+; Boundary walls inside the procedural dungeon's 3-tile border.
+; Playable area: (96, 96)..(1184, 672).
+[sub_resource type="RectangleShape2D" id="wall_v"] size = Vector2(40, 768)
+[sub_resource type="RectangleShape2D" id="wall_h"] size = Vector2(1280, 40)
+
+; ── Iter 186 batch 3 — HUD typography parity ─────────────────────────
+; Pre-iter-186 the HUD used Godot's default Noto Sans (a modern sans-
+; serif) while the main menu used Cinzel/Cormorant Garamond (carved-
+; stone serif). Cross-screen TYPOGRAPHY MISMATCH — menu reads as
+; "dark fantasy," HUD reads as "developer overlay." Directive critique
+; #6: "HUD still feels somewhat like a development overlay."
+; Same SystemFont chain as main_menu.tscn so the OS falls back through
+; Cinzel → Cinzel Decorative → Trajan → Georgia → serif. Worst case
+; is Georgia (every OS ships it), which is FAR more dark-fantasy than
+; Noto Sans.
+[sub_resource type="SystemFont" id="hud_title_font"]
+font_names = PackedStringArray("Cinzel", "Cinzel Decorative", "Trajan Pro", "Trajan", "Georgia", "Times New Roman", "serif")
+font_weight = 700
+
+[sub_resource type="SystemFont" id="hud_body_font"]
+font_names = PackedStringArray("Cinzel", "Cormorant Garamond", "Garamond", "Georgia", "Times New Roman", "serif")
+font_weight = 400
+
+; iter-123: All iter-119/121/122 HUD chassis sub_resources removed.
+; The new HUD design is minimal floating text — no panels, no borders,
+; no trim, no slot backings. Skyrim/Hades-style restraint: only show
+; what the player needs, with low visual weight, never as a "menu bar."
+;
+; Readability against the play area is handled by:
+;   1. The iter-51 vignette CanvasLayer (existing) which darkens the
+;      top 160 px of the viewport — text contrast comes for free.
+;   2. Per-label outline_size (1-2 px) for clean edge against bright
+;      flame pixels or hit-spark VFX that might pass under HUD text.
+;   3. Lower alpha on every label (0.55-0.85 range) so the HUD reads as
+;      "overlay diegetic info," not "control panel."
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+; CanvasModulate — multiplies the entire 2D world by this color. Makes
+; the room dark so the torches do the actual lighting. Slight blue
+; tint = "cold dungeon" ambient. Without this, PointLight2D energy just
+; adds on top of fully-lit floors and torches look like flat decals.
+; Iter 183 — shifted from muddy purple (0.32, 0.30, 0.38) to cooler
+; dungeon stone (0.26, 0.27, 0.32). The old tone read warm-brown-red
+; which made everything in the scene live in the same color band
+; (ChatGPT critique #5: "palette too uniformly brown-red"). New cooler
+; ambient creates room for warm torch pools to actually punch through.
+[node name="CanvasModulate" type="CanvasModulate" parent="."]
+color = Color(0.26, 0.27, 0.32, 1)
+
+; Iter 183 — BaseFloor replaces the iter-? procedural_dungeon.png
+; Sprite2D. The 1280×768 prerendered tile texture had ~50 same-size
+; square tiles each at random brightness — read as "tiled prototype
+; noise" (ChatGPT critique #1: "every square is trying to be
+; interesting"). The texture sat at z=0 which buried all the iter-115
+; center-floor-mute / wall-AO chrome at z=-1 underneath it (none of
+; the compositional darkening reached the surface). Replacing with a
+; solid Polygon2D at z=-3 means:
+;   • The floor is a single quiet dark-stone color (no tile noise)
+;   • Existing chrome at z=-1 (center mute, inner AO, corner AO) and
+;     biome wash at z=-2 NOW RENDERS correctly above the base floor —
+;     hundreds of iters of compositional work that was buried becomes
+;     visible in one swap.
+; Color: warm-cool dark stone, tuned to harmonize with the iter-30
+; perimeter wall mass (0.10, 0.08, 0.13) — floor is slightly lighter
+; so wall edges read as deeper than floor center.
+[node name="BaseFloor" type="Polygon2D" parent="."]
+polygon = PackedVector2Array(0, 0, 1280, 0, 1280, 768, 0, 768)
+color = Color(0.14, 0.13, 0.17, 1)
+z_index = -3
+
+[node name="Walls" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="WallLeft" type="CollisionShape2D" parent="Walls"]
+position = Vector2(96, 384)
+shape = SubResource("wall_v")
+
+[node name="WallRight" type="CollisionShape2D" parent="Walls"]
+position = Vector2(1184, 384)
+shape = SubResource("wall_v")
+
+; iter-123: pulled WallTop back to y=96. iter-122 had pushed it to
+; y=128 to make room for a dedicated opaque HUD shelf, but iter-123
+; reverses that design — the HUD is now minimal floating text with no
+; backing panel, so the dungeon can extend all the way up to its
+; natural top boundary again. The dim HUD labels sit OVER the
+; perimeter wall art at y=0..96, which is the intended "Skyrim-style
+; restraint" overlay.
+[node name="WallTop" type="CollisionShape2D" parent="Walls"]
+position = Vector2(640, 96)
+shape = SubResource("wall_h")
+
+[node name="WallBottom" type="CollisionShape2D" parent="Walls"]
+position = Vector2(640, 672)
+shape = SubResource("wall_h")
+
+; Torches are NO LONGER instanced here — main.gd spawns them from
+; Floor.current_room_config.torch_positions at _ready, so per-room
+; layouts can vary the lighting without scene-file edits.
+
+[node name="Hero" parent="." instance=ExtResource("3_hero")]
+position = Vector2(192, 384)
+
+[node name="Camera2D" type="Camera2D" parent="Hero"]
+limit_left = 0
+limit_top = 0
+limit_right = 1280
+limit_bottom = 768
+limit_smoothed = true
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+; ── iter-123 minimal floating HUD ────────────────────────────────────
+;
+; No backing panel. No trim line. No relic slot box. Every visible
+; label sits as light text directly over the dungeon, leaning on the
+; iter-51 vignette's edge darkening for contrast.
+;
+; Layout philosophy: corners only. The center of the screen stays
+; CLEAR for gameplay. Room title is the one centered element, and even
+; it sits at low alpha so the dungeon name reads as a quiet caption.
+;
+; Padding: 20 px from screen edges for left/right groups so labels
+; never touch the absolute edge.
+;
+; All labels have outline_size = 1 — just enough to keep the text
+; legible against bright flame pixels or hit-spark VFX that might
+; pass under the HUD.
+
+; ── LEFT — Hearts (iter-125 custom polygon pips) ────────────────────
+; Pre-iter-125 the HP display was a row of Unicode ♥ / ♡ glyphs at
+; 22 pt — playtest read: "hearts are hard to see against the dungeon
+; floor." Iter-125 replaces them with custom Polygon2D heart pips built
+; in main.gd at room load. The HBoxContainer here is the mount point;
+; main.gd._update_hp populates it with one pip per max_hp slot. The
+; legacy HPLabel node is kept as an empty hidden placeholder so any
+; future code that walks the UI tree by name doesn't null-crash.
+[node name="HPLabel" type="Label" parent="UI"]
+visible = false
+text = ""
+
+[node name="HeartRow" type="HBoxContainer" parent="UI"]
+offset_left = 20.0
+offset_top = 12.0
+offset_right = 240.0
+offset_bottom = 58.0
+theme_override_constants/separation = 6
+mouse_filter = 2
+
+; Iter 161 — persistent room progress indicator. Top-left under the
+; heart row. The animated room banner (room_label, top-center) only
+; appears briefly on room entry then fades; this label is always-on
+; reference for "where am I in the run." Dim baseline color so it
+; doesn't compete with the hearts.
+; Iter 184 batch 3 — alpha 0.72 → 0.50, font 13 → 11, outline 2 → 1.
+; Same restraint pass as the run timer — this is reference info you
+; glance at, not gameplay-critical info you need lit constantly.
+[node name="RoomProgressLabel" type="Label" parent="UI"]
+offset_left = 20.0
+offset_top = 56.0
+offset_right = 240.0
+offset_bottom = 78.0
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.62, 0.66, 0.72, 0.50)
+theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
+theme_override_constants/outline_size = 1
+text = "ROOM 1 / 6"
+
+; ── Status — exists but starts BLANK + auto-hides ───────────────────
+; main.gd sets a transient hint on first room entry; iter-119's
+; _process_status_fade now drives it all the way to alpha 0.0 (gone)
+; after HINT_FADE_DELAY, instead of staying at 0.30 dim-but-visible.
+; Position kept just below HP so when the rare gameplay event sets
+; it ("Choose a relic · walk near and press [E]"), it appears in a
+; predictable spot.
+; Iter 175 — StatusLabel was at y=46..70 which OVERLAPS the iter-161
+; RoomProgressLabel at y=50..72. When wave-events fire announces
+; ("The floor shifts · take cover") they rendered on top of
+; "ROOM 1 / 6" — text on text. Now anchored at y=78..102 — directly
+; below the room progress with a 6 px gap so the HUD column reads
+; HEARTS → ROOM → STATUS clean top-to-bottom.
+[node name="StatusLabel" type="Label" parent="UI"]
+offset_left = 20.0
+offset_top = 84.0
+offset_right = 520.0
+offset_bottom = 108.0
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.86, 0.74, 0.50, 0.80)
+theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.02, 0.85)
+theme_override_constants/outline_size = 1
+text = ""
+autowrap_mode = 0
+clip_text = false
+vertical_alignment = 1
+
+; ── CENTER — Room title only, low alpha ─────────────────────────────
+; The one centered HUD element. Small (16 pt), pale, soft outline.
+; main.gd._animate_room_entry tweens scale + alpha on each room load
+; — the scale-back pulse is now the only attention-grabbing moment
+; for this label; afterwards it sits as a quiet caption.
+; Iter 184 batch 3 — font 16 → 14, alpha 0.75 → 0.66. Still has the
+; entry pulse + fade-out cycle so it's only visible briefly; smaller
+; size keeps the "quiet caption" feel during the show without losing
+; legibility at the title moment.
+[node name="RoomLabel" type="Label" parent="UI"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -220.0
+offset_top = 14.0
+offset_right = 220.0
+offset_bottom = 38.0
+grow_horizontal = 2
+theme_override_fonts/font = SubResource("hud_title_font")
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.96, 0.86, 0.62, 0.72)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
+theme_override_constants/outline_size = 1
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+; ── KillsLabel: ON THE SAME ROW as hearts (iter-245 Director Phase 3) ──
+;
+; History: iter-124 hid this chip (felt like visual noise). iter-242 / Loop
+; Tightening flipped it back on at top-LEFT under the room banner. iter-245
+; / Director Phase 3 follow-up: the audit flagged that hearts + skull
+; counter + room label + relic strip + reaction web all stacked vertically
+; in the LEFT scan zone made the left HUD a wall of stamped info and the
+; right side empty (asymmetric clutter). The fix is to put the kill counter
+; INLINE with the hearts on a single tight row — hearts (now +20% larger
+; per iter-245 #1) at x=20, then an 8px gap, then "☠ N". The HBoxContainer
+; nature of HeartRow + this label's anchor offset puts them visually on
+; the same horizontal beat without a structural .tscn rewrite (we just
+; bump KillsLabel's y so it lines up with the heart row's vertical center
+; and shift its x so it begins right after the heart row's right edge).
+;
+; Concretely: HeartRow starts at x=20 y=12. With HEART_PIP_SIZE now 36 and
+; up to 8 hearts visible at 6 px separation, the row extends to roughly
+; x=20 + (36*8) + (6*7) ≈ x=350 at max. Most runs cap at 5 hearts (basal
+; HP=5), so the typical row ends around x=20 + (36*5) + (6*4) ≈ x=224.
+; We anchor the kill label at x=240 (start of the safe "after hearts"
+; zone) and let it grow rightward. The font_size bump from 14 → 16 keeps
+; the chip readable next to the larger pips. Color unchanged (mauve so the
+; soul-gem flow theme reads), outline unchanged.
+[node name="KillsLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 0.0
+anchor_right = 0.0
+offset_left = 240.0
+offset_top = 18.0
+offset_right = 380.0
+offset_bottom = 50.0
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.86, 0.78, 1.0, 0.92)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.10, 0.92)
+theme_override_constants/outline_size = 1
+text = "☠ 0"
+horizontal_alignment = 0
+vertical_alignment = 1
+
+; Wave indicator. Iter-124: now transient — _process_wave_fade polls
+; the text and tweens alpha 1.0 → 0 after WAVE_HOLD_DURATION. Sits at
+; the natural top-right slot (where KillsLabel used to be before
+; iter-124 hid it). Starts invisible (modulate alpha 0) so the
+; first-frame "" doesn't trigger the fade poll into a flash.
+; Iter 184 batch 3 — font 13 → 11 (parity with run timer below), keeps
+; color/alpha unchanged since this is a transient banner that
+; auto-fades, so when it IS visible it should pop briefly.
+[node name="WaveLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 14.0
+offset_right = -20.0
+offset_bottom = 38.0
+grow_horizontal = 0
+modulate = Color(1, 1, 1, 0)
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.92, 0.80, 0.52, 0.85)
+theme_override_colors/font_outline_color = Color(0.06, 0.04, 0.02, 0.85)
+theme_override_constants/outline_size = 1
+text = ""
+horizontal_alignment = 2
+vertical_alignment = 1
+
+; Iter 158 — run timer. Top-right corner, just under the wave label.
+; Updated each frame by main.gd from RunState.run_elapsed_seconds()
+; formatted as m:ss. Dim baseline color so it doesn't compete with
+; combat reads, but bright enough to glance at between waves.
+; Iter 184 batch 3 — HUD restraint pass. The persistent run timer was
+; the only ALWAYS-VISIBLE non-essential HUD element (Hades / Dead Cells /
+; Hyper Light Drifter all hide run time during combat — it's a
+; speedrun / completionist stat, not gameplay info). Drastically dimmed:
+;   font_size  14   → 11   (smaller stamp)
+;   alpha      0.78 → 0.34 (barely visible at a glance)
+;   color cool-blue → stone-grey so it dissolves into the new dark
+;          ambient palette instead of contrasting with it
+;   outline    2    → 1    (less "UI stamp" feel)
+; Result: timer still ticks and is readable if you LOOK for it, but it
+; doesn't compete with combat reads.
+[node name="RunTimerLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 38.0
+offset_right = -20.0
+offset_bottom = 60.0
+grow_horizontal = 0
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 11
+theme_override_colors/font_color = Color(0.55, 0.55, 0.62, 0.34)
+theme_override_colors/font_outline_color = Color(0.04, 0.05, 0.08, 0.85)
+theme_override_constants/outline_size = 1
+text = "0:00"
+horizontal_alignment = 2
+vertical_alignment = 1
+
+; Iter 160 — first-run tutorial prompt. Hidden by default; main.gd
+; activates only when GameState.has_completed_tutorial is false AND
+; we're in room 0. Bottom-center, big enough to read at a glance,
+; warm-cream color matching the title family. Prompts cycle through
+; MOVE → ATTACK → DASH → PICK UP, advancing on detected input.
+; Starts modulate.a = 0 so the fade-in tween from main.gd has a
+; clean ramp.
+; Iter 171 — tutorial prompt subdued. Pre-iter-171 the 26 pt warm-
+; gold "DASH — SHIFT" dominated the bottom of the screen
+; (user-reported "tutorial feels a bit too in your face"). Now:
+;   • Font 26 → 16 (60% smaller — readable but not commanding)
+;   • Color cream (1.0, 0.92, 0.72) at full alpha → dimmer cream
+;     (0.78, 0.72, 0.58) at 0.80 alpha — quiet annotation
+;   • Outline 4 → 2 (subtle definition vs heavy block-outline)
+; Iter 179 — back to BOTTOM-center. The top-center position from
+; iter-171 placed the label at y=96..124 — INSIDE the playfield
+; (room inner starts at y~60). On a fresh boot you saw "MOVE - WASD"
+; floating over the floor mid-action. Bottom dead-strip (y=688..708,
+; 6 px above viewport bottom, the space below the room frame) is the
+; canonical "control hint" zone Hades/Isaac both use. Subtle by
+; alpha + font size, but out of the play area.
+[node name="TutorialLabel" type="Label" parent="UI"]
+anchors_preset = 0
+anchor_left = 0.5
+anchor_right = 0.5
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = -200.0
+offset_top = -32.0
+offset_right = 200.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 0
+modulate = Color(1, 1, 1, 0)
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.74, 0.68, 0.55, 0.78)
+theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.0, 0.85)
+theme_override_constants/outline_size = 2
+text = ""
+horizontal_alignment = 1
+vertical_alignment = 1
+
+; ── Relics: small unobtrusive row top-left under HP ─────────────────
+; No backing panel — the badges have their own per-icon styling and
+; sit floating in the corner. When the player owns no relics (most of
+; floor 1), the strip is literally empty space — invisible.
+[node name="RelicStrip" type="HBoxContainer" parent="UI"]
+offset_left = 20.0
+offset_top = 82.0
+offset_right = 480.0
+offset_bottom = 122.0
+theme_override_constants/separation = 4
+mouse_filter = 1
+
+; Iter 204 — Active-relic cooldown chip. iter-245 / Director Phase 3 —
+; RELOCATED to the top-RIGHT cluster (was top-LEFT under relic strip).
+; The director audit flagged the left side as overloaded (hearts + skull +
+; room + relic strip + reaction web all stacked there) while the right
+; side was empty. Active relic + ability cooldowns + reaction web now
+; form a clean top-right vertical stack with 6 px separation between
+; groups, mirroring Hades' boon display pattern. Right-edge alignment at
+; viewport-right - 24 px (offset_right = -24, offset_left = -244).
+;
+; visibility = true by default — iter-245 #4 changes the no-active-owned
+; render from "hidden" to "[R] —" placeholder at 0.45 alpha so the player
+; learns the keybind exists even before they pick up their first active.
+[node name="ActiveRelicLabel" type="Label" parent="UI"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -244.0
+offset_top = 64.0
+offset_right = -24.0
+offset_bottom = 86.0
+grow_horizontal = 0
+theme_override_fonts/font = SubResource("hud_body_font")
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.78, 0.62, 1.0, 0.86)
+theme_override_colors/font_outline_color = Color(0.04, 0.02, 0.05, 0.92)
+theme_override_constants/outline_size = 1
+text = "[R] —"
+horizontal_alignment = 2
+
+; Iter 17 — boss HP bar. Hidden by default; main.gd makes it visible
+; when an EnemyType with is_boss=true spawns and binds the bar value
+; to the live enemy's hp each frame. Container is a VBoxContainer
+; centered horizontally just below the RoomLabel so it doesn't fight
+; with the corner HUD.
+; iter-122: shifted below the HUD shelf (was offset_top=50, which
+; collided with the new room title at y=20..58 + relic slot at
+; y=70..116). Boss bar now floats over the room interior at y=140..200,
+; just below the HUD trim line so it reads as combat info coming
+; FROM the dungeon, not from the HUD shelf above.
+[node name="BossBar" type="VBoxContainer" parent="UI"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -200.0
+offset_top = 140.0
+offset_right = 200.0
+offset_bottom = 200.0
+grow_horizontal = 2
+
+[node name="Name" type="Label" parent="UI/BossBar"]
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.55, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 0.95)
+theme_override_constants/outline_size = 4
+text = "BOSS"
+horizontal_alignment = 1
+
+[node name="Bar" type="ProgressBar" parent="UI/BossBar"]
+custom_minimum_size = Vector2(0, 14)
+show_percentage = false
+max_value = 100.0
+value = 100.0

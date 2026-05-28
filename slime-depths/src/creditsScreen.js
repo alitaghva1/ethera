@@ -80,7 +80,7 @@ export const CREDITS_SCREEN_HTML = `
   ${cornerOrnament('bl')}
   ${cornerOrnament('br')}
 
-  <div style="position:relative;z-index:1;max-width:640px;width:86vw;display:flex;flex-direction:column;align-items:center;max-height:86vh;overflow:hidden;">
+  <div style="position:relative;z-index:1;max-width:640px;width:100%;display:flex;flex-direction:column;align-items:center;max-height:86%;overflow:hidden;">
     <!-- Ornamental frame above the title — shared grammar with other overlays. -->
     <div style="display:flex;align-items:center;gap:22px;margin-bottom:10px;opacity:0.75;animation:winFadeIn 0.6s ease-out;">
       <div style="width:100px;height:1px;background:linear-gradient(90deg,transparent,#c9a86a,transparent);"></div>

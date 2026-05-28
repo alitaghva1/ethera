@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/enemy_type.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/enemies/lancer_idle.png" id="2_idle"]
+[ext_resource type="Texture2D" path="res://assets/enemies/lancer_walk.png" id="3_walk"]
+[ext_resource type="Texture2D" path="res://assets/enemies/lancer_attack.png" id="4_attack"]
+[ext_resource type="Texture2D" path="res://assets/enemies/lancer_death.png" id="5_death"]
+
+[resource]
+script = ExtResource("1_script")
+display_name = "Lancer"
+behavior = "telegraphed_melee"
+idle_sheet = ExtResource("2_idle")
+walk_sheet = ExtResource("3_walk")
+attack_sheet = ExtResource("4_attack")
+death_sheet = ExtResource("5_death")
+cell_size = 100
+sprite_scale = 1.514
+sprite_y_offset = -10.6
+collision_radius = 18.0
+frames_idle = 6
+frames_walk = 8
+frames_attack = 6
+frames_death = 4
+fps_idle = 6.0
+fps_walk = 10.0
+fps_attack = 14.0
+fps_death = 8.0
+max_hp = 2
+move_speed = 100.0
+death_duration = 0.9
+melee_reach = 72.0
+melee_windup = 0.7
+melee_swing = 0.3
+melee_cooldown = 1.1
+melee_damage = 1
+melee_cone = 0.9
