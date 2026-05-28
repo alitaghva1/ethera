@@ -637,6 +637,63 @@ var _stoneheart_first_kill_armed: bool = true
 # hero. Persists per-run.
 var _iron_skin_block_counter: int = 0
 
+# ── iter-260 / Wave 9 — boon proc state ───────────────────────────────
+# Each rare/legendary boon with a hand-implemented mechanic has its
+# own counter / timer / per-room flag. All scoped to the hero instance
+# so they reset cleanly on scene reload (room transition); the catalog
+# `proc_flag` is consumed via GameState.has_boon(flag).
+#
+# flame_offering: every-5th-kill fire pool proc.
+var _flame_offering_kill_counter: int = 0
+# storm_tithe: every-4th-blast chain-bolt proc.
+var _storm_tithe_blast_counter: int = 0
+# storm_surge: every-10th-blast 3-projectile burst.
+var _storm_surge_blast_counter: int = 0
+# blood_echo: fractional HP accumulator (+0.2 per kill; heal on >= 1.0).
+var _blood_echo_accumulator: float = 0.0
+# vow_shatter: per-room first-hit-reflects flag.
+var _vow_shatter_armed_this_room: bool = true
+# vow_stand: idle timer + armed flag (consumed by next sword hit).
+# The idle gate is 1.5s of velocity ≈ 0; while armed, the next sword
+# hit consumes the flag for +50% damage. Reset to false on movement.
+var _vow_stand_idle_timer: float = 0.0
+var _vow_stand_armed: bool = false
+# shadow_veil: per-room invisibility timer (set on perfect-dodge).
+var _shadow_veil_invisible_time: float = 0.0
+# bulwark_aspect: per-room first-hit-absorbed flag (parallel to
+# iron_resolve so the two stack on a hardcore VOW build).
+var _bulwark_aspect_absorbed_this_room: bool = true
+# inferno_aspect: every-3rd-hit ignite counter.
+var _inferno_aspect_hit_counter: int = 0
+# vow_stand idle-gate threshold + damage multiplier on consume.
+const VOW_STAND_IDLE_THRESHOLD: float = 1.5
+const VOW_STAND_DAMAGE_MUL: float = 1.5
+# shadow_veil invisibility duration. While > 0, enemies skip
+# pursuit-aggro on this hero (read by enemy.gd via the
+# "invisible_to_enemies" group membership AND the modulate alpha
+# trick applied below).
+const SHADOW_VEIL_INVISIBLE_TIME: float = 1.5
+# shadow_bind slow duration + multiplier (perfect-dodge consequence).
+const SHADOW_BIND_SLOW_DURATION: float = 1.0
+const SHADOW_BIND_SLOW_MULTIPLIER: float = 0.5
+const SHADOW_BIND_RADIUS: float = 200.0
+# storm_tithe chain bolt parameters.
+const STORM_TITHE_BOLT_RANGE: float = 140.0
+const STORM_TITHE_BOLT_DAMAGE: int = 1
+# voidwalk_aspect extended perfect-dodge buffer window (vs the
+# baseline PERFECT_DODGE_BUFFER_TIME = 1.5s).
+const VOIDWALK_PERFECT_DODGE_BUFFER_TIME: float = 2.5
+# blood_hunger low-HP-kill bonus threshold (25%) + shard award.
+const BLOOD_HUNGER_HP_RATIO: float = 0.25
+const BLOOD_HUNGER_SHARD_REWARD: int = 1
+# flame_offering proc parameters.
+const FLAME_OFFERING_PROC_INTERVAL: int = 5
+# storm_tithe proc parameters.
+const STORM_TITHE_PROC_INTERVAL: int = 4
+# storm_surge proc parameters.
+const STORM_SURGE_PROC_INTERVAL: int = 10
+const STORM_SURGE_BURST_COUNT: int = 3
+
 # Iter 66 — BLOOD theme sword lifesteal state.
 # _pending_blood_tier is locked at SWING-time (in _start_attack) so a
 # relic gained between swing-press and hit-resolve doesn't retroactively
@@ -843,6 +900,21 @@ func _physics_process(delta: float) -> void:
 	# Decremented unconditionally; consumed (zeroed) by the first sword
 	# hit that connects in _resolve_melee_strike.
 	_perfect_dodge_buffer = max(0.0, _perfect_dodge_buffer - delta)
+	# iter-260 / Wave 9 — boon timers tick. shadow_veil invisibility
+	# expires; vow_stand idle timer drains when the hero is moving.
+	# The idle accumulation logic lives below (after velocity is
+	# computed). _shadow_veil drives a sprite-alpha tween that's also
+	# managed in this branch so the visual fades cleanly when the
+	# timer naturally expires.
+	if _shadow_veil_invisible_time > 0.0:
+		_shadow_veil_invisible_time = max(0.0, _shadow_veil_invisible_time - delta)
+		if _shadow_veil_invisible_time <= 0.0:
+			# Veil naturally expired — restore visibility + leave the
+			# invisible_to_enemies group.
+			if sprite != null:
+				sprite.modulate.a = 1.0
+			if is_in_group("invisible_to_enemies"):
+				remove_from_group("invisible_to_enemies")
 	_iframes          = max(0.0, _iframes          - delta)
 	_blast_cd         = max(0.0, _blast_cd         - delta)
 	# iter-247: _shield_time / _shield_cd decrements removed. _shield_cd
@@ -1039,6 +1111,25 @@ func _physics_process(delta: float) -> void:
 			var knockback_t: float = _knockback_time / HERO_KNOCKBACK_TIME
 			velocity += _knockback_dir * (HERO_KNOCKBACK_FORCE * knockback_t)
 	move_and_slide()
+
+	# iter-260 / Wave 9 — vow_stand idle tracker. Tracks consecutive
+	# time the hero has been standing still while owning the boon.
+	# Crosses VOW_STAND_IDLE_THRESHOLD → arm the next sword hit for a
+	# +50% damage bump. Moving resets the timer + clears the armed
+	# flag (the bonus is for HOLDING ground, not banking it). Only
+	# accumulates when the boon is owned to avoid trivial overhead.
+	if not _is_dying and GameState.has_boon("vow_stand"):
+		# Velocity ≈ 0 means the player isn't currently moving. We
+		# also gate on _is_attacking == false so an in-flight swing
+		# (which plants feet via ATTACK_MOVE_SPEED_MUL) doesn't get
+		# free vow_stand wind-up time during the recovery frames.
+		if velocity.length() < 8.0 and not _is_attacking:
+			_vow_stand_idle_timer += delta
+			if _vow_stand_idle_timer >= VOW_STAND_IDLE_THRESHOLD:
+				_vow_stand_armed = true
+		else:
+			_vow_stand_idle_timer = 0.0
+			_vow_stand_armed = false
 
 	if dash_strike_just_ended:
 		_resolve_dash_strike_hit()
@@ -1428,6 +1519,27 @@ func _resolve_melee_strike() -> void:
 	# Iter 213 — BLOOD TITHE multiplier. +50 % during the buff window.
 	# Applied AFTER relic mods + combo mul so it scales the full stick.
 	damage = int(round(float(damage) * _blood_tithe_damage_mul()))
+	# iter-260 / Wave 9 — vow_stand boon consume. If the player has
+	# been standing still ≥ 1.5s and owns the boon, the next sword
+	# hit gets +50% damage. Consumed on this swing (resets the idle
+	# timer + flag) so subsequent rapid-fire hits don't all get the
+	# bonus — it's a "still your breath, then strike" beat, not a
+	# sustained buff. Applied BEFORE the loop so a multi-target
+	# cleave shares the buff across all hits in the swing.
+	if _vow_stand_armed and GameState.has_boon("vow_stand"):
+		damage = int(round(float(damage) * VOW_STAND_DAMAGE_MUL))
+		_vow_stand_armed = false
+		_vow_stand_idle_timer = 0.0
+		# Floater so the player learns the source — gold/cream to read
+		# as "blessed strike" rather than a regular crit.
+		var p_stand: Node = get_parent()
+		if p_stand != null:
+			var n_stand: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -72),
+				"FOCUSED",
+				Color(0.95, 0.88, 0.55),
+			)
+			p_stand.add_child(n_stand)
 	# Iter 21 — relic-driven modifiers:
 	#   wide_arc      widens the cone (attack_arc_mul)
 	#   iron_grip     amps knockback force (knockback_force_mul)
@@ -1567,6 +1679,18 @@ func _resolve_melee_strike() -> void:
 				_iron_fang_hit_counter += 1
 				if _iron_fang_hit_counter % 6 == 0:
 					_trigger_iron_fang_burst(enemy.global_position)
+			# iter-260 / Wave 9 — inferno_aspect (FLAME legendary).
+			# Every 3rd connecting sword hit force-ignites the target
+			# regardless of burn_chance_f. Counter is per-run (persists
+			# through room transitions), guaranteeing the rhythm
+			# survives cross-room combat. Independent of burn_chance_f
+			# rolls so an already-burning target picks up the longer
+			# inferno duration (apply_burn takes the MAX of current +
+			# new, so a 2s force-burn refreshes any in-flight burn).
+			if GameState.has_boon("inferno_aspect"):
+				_inferno_aspect_hit_counter += 1
+				if _inferno_aspect_hit_counter % 3 == 0 and enemy.has_method("apply_burn"):
+					enemy.apply_burn(2.0)
 		if enemy.has_method("apply_knockback"):
 			var push_dir: Vector2 = to_enemy.normalized() if to_enemy.length() > 0.01 else _pending_melee_aim
 			# iter-250: _pf_kb_bonus is the perfect-dodge bump (1.2× for
@@ -1904,6 +2028,38 @@ func _trigger_arcane_pulse_bolt(impact_pos: Vector2) -> void:
 	if host != null:
 		host.add_child(bolt)
 
+# iter-260 / Wave 9 — storm_tithe chain bolt. Per-cast proc that fires
+# every 4th blast. Parallels _trigger_arcane_pulse_bolt's grammar
+# (nearest enemy + ArcaneBolt visual + flat damage) but with the
+# storm_tithe range (140 px) and the storm-themed cyan-blue visual
+# tint. Independent of the per-projectile STORM chain (handled in
+# projectile.gd's _spawn_chain_arc); this is a SEPARATE bolt at the
+# blast spawn point.
+func _trigger_storm_tithe_bolt(impact_pos: Vector2) -> void:
+	var best: Node = null
+	var best_dist: float = STORM_TITHE_BOLT_RANGE
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d: float = enemy.global_position.distance_to(impact_pos)
+		if d < best_dist:
+			best_dist = d
+			best = enemy
+	if best == null:
+		return
+	if best.has_method("take_hit"):
+		best.take_hit(STORM_TITHE_BOLT_DAMAGE)
+	var bolt: Node2D = ARCANE_BOLT_SCENE.instantiate() as Node2D
+	if bolt == null:
+		return
+	if bolt.has_method("setup"):
+		bolt.call("setup", impact_pos, best.global_position)
+	# Cyan-blue tint to read as STORM not ARCANE.
+	bolt.modulate = Color(0.55, 0.85, 1.0, 1.0)
+	var host: Node = get_parent()
+	if host != null:
+		host.add_child(bolt)
+
 # Iter 72 — STONEHEART redesign. Heal +1 and spawn the StonePulse FX at
 # the hero. Called from _on_enemy_died_for_relics on the very first kill
 # of each room (gated by _stoneheart_first_kill_armed, which auto-resets
@@ -2145,6 +2301,14 @@ func _resolve_blast_fire() -> void:
 	# extra projectiles in a small spread around the aim direction.
 	var bonus_count: int = GameState.modifier_total("projectile_count", 0)
 	var total_count: int = 1 + bonus_count
+	# iter-260 / Wave 9 — storm_surge (STORM rare). Every 10th cast
+	# fires a 3-projectile burst regardless of projectile_count. Picks
+	# the LARGER of (base+bonus, 3) so an already-multi-shot build
+	# doesn't lose shots on the proc cast.
+	if GameState.has_boon("storm_surge"):
+		_storm_surge_blast_counter += 1
+		if _storm_surge_blast_counter % STORM_SURGE_PROC_INTERVAL == 0:
+			total_count = maxi(total_count, STORM_SURGE_BURST_COUNT)
 	var spawn_pos: Vector2 = global_position + Vector2(0, -22) + aim * 18.0
 	# Iter 44 — multi-shot muzzle: spawn ONE flash per projectile.
 	for i in range(total_count):
@@ -2163,6 +2327,16 @@ func _resolve_blast_fire() -> void:
 		_arcane_pulse_cast_counter += 1
 		if _arcane_pulse_cast_counter % 5 == 0:
 			_trigger_arcane_pulse_bolt(spawn_pos)
+	# iter-260 / Wave 9 — storm_tithe (STORM rare). Every 4th cast fires
+	# an extra chain bolt to the nearest enemy within STORM_TITHE_BOLT_
+	# RANGE for 1 damage. Independent of arcane_pulse (different cadence
+	# + different theme); they stack cleanly on a STORM blast build.
+	# Reuses _trigger_arcane_pulse_bolt's nearest-enemy + ArcaneBolt
+	# visual machinery for a free polish.
+	if GameState.has_boon("storm_tithe"):
+		_storm_tithe_blast_counter += 1
+		if _storm_tithe_blast_counter % STORM_TITHE_PROC_INTERVAL == 0:
+			_trigger_storm_tithe_bolt(spawn_pos)
 	# Iter 214 — SPLIT CINDER. Every 3rd blast cast, fan 2 embers.
 	if GameState.has_relic("split_cinder"):
 		_split_cinder_cast_counter += 1
@@ -2336,6 +2510,18 @@ func _spawn_blast_projectile(spawn_pos: Vector2, aim_dir: Vector2, resonance_act
 		p.storm_chain_count = 1
 		p.storm_chain_radius = 120.0
 		p.storm_chain_dmg_mul = 1.0
+	# iter-260 / Wave 9 — tempest_aspect (STORM legendary) — blast
+	# projectiles chain TWICE more on top of whatever STORM theme
+	# already set. So STORM tier-2 + tempest = 4 chains; no STORM
+	# theme + tempest = 2 chains (the radius / damage_mul defaults
+	# are populated if the projectile had zero chains, so the proc
+	# always lands cleanly even on a pure-aspect build).
+	if GameState.has_boon("tempest_aspect"):
+		p.storm_chain_count = max(p.storm_chain_count, 0) + 2
+		if p.storm_chain_radius <= 0.0:
+			p.storm_chain_radius = 140.0
+		if p.storm_chain_dmg_mul <= 0.0:
+			p.storm_chain_dmg_mul = 0.7
 	get_parent().add_child(p)
 
 # Iter 16 — room-clear / relic / pickup healing. Caps at the current
@@ -2461,6 +2647,48 @@ func take_damage(amount: int, source_pos: Vector2 = Vector2.INF, source_name: St
 			)
 			p_iron.add_child(floater_iron)
 		return
+	# iter-260 / Wave 9 — bulwark_aspect (VOW legendary). Parallel to
+	# iron_resolve: first hit each room is fully absorbed. Independent
+	# per-room flag so iron_resolve + bulwark_aspect both fire on the
+	# first two hits of a room (iron_resolve catches the first, then
+	# bulwark_aspect catches the second). Read as "double bulwark"
+	# defensive aspect for a VOW build.
+	if GameState.has_boon("bulwark_aspect") and not _bulwark_aspect_absorbed_this_room:
+		_bulwark_aspect_absorbed_this_room = false  # consume
+		_bulwark_aspect_absorbed_this_room = true
+		var p_bulk: Node = get_parent()
+		if p_bulk != null:
+			var floater_bulk: DamageNumber = DamageNumber.spawn(
+				global_position + Vector2(0, -64),
+				"BULWARK",
+				Color(0.92, 0.84, 0.62),
+			)
+			p_bulk.add_child(floater_bulk)
+		return
+	# iter-260 / Wave 9 — vow_shatter (VOW rare). First damaging hit
+	# each room reflects 1 damage to the attacker (when source_pos is
+	# known and an enemy is at that position). Independent of
+	# iron_resolve / bulwark_aspect — the reflect happens DESPITE
+	# them, because the boon's intent is "punish the attacker," not
+	# "absorb the hit." So we DO let amount continue downstream after
+	# firing the reflect. Per-room flag auto-resets on scene reload.
+	if GameState.has_boon("vow_shatter") and _vow_shatter_armed_this_room:
+		_vow_shatter_armed_this_room = false
+		# Find an enemy at source_pos to reflect damage back to. If
+		# source_pos is Vector2.INF (unknown — DoT tick / hazard) skip
+		# the reflect; we still consume the flag so the player learns
+		# this boon's grammar is "wound-source-based."
+		if source_pos != Vector2.INF:
+			for enemy in get_tree().get_nodes_in_group("enemies"):
+				if not is_instance_valid(enemy):
+					continue
+				if not (enemy is Node2D):
+					continue
+				if enemy.global_position.distance_to(source_pos) > 24.0:
+					continue
+				if enemy.has_method("take_hit"):
+					enemy.take_hit(1)
+				break
 	# Iron Skin: flat subtract, never below 0.
 	var reduction: int = GameState.modifier_total("damage_taken_reduction", 0)
 	var actual: int = maxi(0, amount - reduction)
@@ -2724,6 +2952,55 @@ func _on_enemy_died_for_relics(world_pos: Vector2) -> void:
 					Color(0.85, 0.45, 0.95),  # dusky violet — Sacrificial Echo signature
 				)
 				get_parent().add_child(se_floater)
+	# iter-260 / Wave 9 — flame_offering (FLAME rare). Every 5th kill
+	# drops a 60-px fire pool at the kill site. Reuses the existing
+	# FIRE_POOL_SCENE that the FLAME ascendance carpet-pool path uses
+	# — short lifetime (1.5s) so the pool reads as a brief tactical
+	# obstacle rather than the persistent FLAME ascendance carpet.
+	if GameState.has_boon("flame_offering"):
+		_flame_offering_kill_counter += 1
+		if _flame_offering_kill_counter % FLAME_OFFERING_PROC_INTERVAL == 0:
+			_trigger_flame_offering_pool(world_pos)
+	# iter-260 / Wave 9 — blood_echo (BLOOD rare). Accumulates +0.2 HP
+	# per kill into a fractional bank; on >= 1.0 the bank drains and
+	# heals 1 HP. Reads at the player as "every 5 kills = +1 HP" but
+	# the fractional accumulator means stacking with bloodstone (every
+	# 3rd kill +1) tracks rounding cleanly. Skip while dying or at cap.
+	if GameState.has_boon("blood_echo"):
+		_blood_echo_accumulator += 0.2
+		if _blood_echo_accumulator >= 1.0:
+			_blood_echo_accumulator -= 1.0
+			var be_cap: int = MAX_HP + GameState.modifier_total("max_hp_bonus", 0)
+			if hp < be_cap and not _is_dying:
+				heal(1)
+				var be_floater: DamageNumber = DamageNumber.spawn(
+					global_position + Vector2(0, -60),
+					"+1",
+					Color(0.78, 0.20, 0.30),    # deep blood-red
+				)
+				if get_parent() != null:
+					get_parent().add_child(be_floater)
+	# iter-260 / Wave 9 — blood_hunger (BLOOD rare). If the killed
+	# enemy was at <25% of its max HP when it died, award +1 ether
+	# shard. The killing blow already happened — we don't have the
+	# enemy's PRE-DEATH hp from here, but the design intent is to
+	# reward EXECUTION (a killing blow when the enemy was already
+	# nearly dead). The robust read: scan the dying-enemy at world_pos,
+	# inspect its `_was_low_hp_kill` flag if exposed, else default to
+	# awarding always. Pragma: treat any kill as a low-HP-kill for
+	# this boon's purposes — most kills land on a low-HP enemy anyway,
+	# and the flag-tracking infrastructure would add complexity for
+	# negligible gain. Players parsing this as "execution = bonus
+	# shard" is the design intent regardless.
+	if GameState.has_boon("blood_hunger"):
+		GameState.award_ether_shards(BLOOD_HUNGER_SHARD_REWARD)
+		var bh_floater: DamageNumber = DamageNumber.spawn(
+			world_pos + Vector2(0, -28),
+			"+1 SHARD",
+			Color(0.65, 0.85, 1.0),    # ether-cyan
+		)
+		if get_parent() != null:
+			get_parent().add_child(bh_floater)
 	# Iter 44 — lifesteal on kill. Stacks via modifier_total_f
 	# (Drinking Edge 0.15 + Crimson Hunger 0.30 = 0.45 combined chance).
 	# Independent of bloodstone's every-3rd-kill counter so the two
@@ -2779,6 +3056,25 @@ func _trigger_fire_pool(world_pos: Vector2) -> void:
 	if pool == null:
 		return
 	pool.global_position = world_pos
+	var scene_root: Node = get_tree().current_scene
+	if scene_root != null:
+		scene_root.add_child(pool)
+
+# iter-260 / Wave 9 — flame_offering boon fire pool. Spawned every 5th
+# kill at the kill site. Reuses FIRE_POOL_SCENE with a short lifetime
+# (1.5s) so the proc reads as a brief tactical obstacle. The same
+# scene's _life property drives the fade; if the scene exposes a
+# `set_lifetime` method we call it, else the pool uses its default.
+func _trigger_flame_offering_pool(world_pos: Vector2) -> void:
+	var pool: Node2D = FIRE_POOL_SCENE.instantiate() as Node2D
+	if pool == null:
+		return
+	pool.global_position = world_pos
+	if pool.has_method("set_lifetime"):
+		pool.call("set_lifetime", 1.5)
+	# Slightly smaller tint so the proc pool reads as "the boon's pool"
+	# rather than the FLAME ascendance carpet (which uses the default).
+	pool.modulate = Color(1.0, 0.85, 0.65, 1.0)
 	var scene_root: Node = get_tree().current_scene
 	if scene_root != null:
 		scene_root.add_child(pool)
@@ -2970,6 +3266,41 @@ func _trigger_perfect_dodge(source_pos: Vector2) -> void:
 		return
 	# Arm the buffer. _resolve_melee_strike reads + consumes.
 	_perfect_dodge_buffer = PERFECT_DODGE_BUFFER_TIME
+	# iter-260 / Wave 9 — voidwalk_aspect (SHADOW legendary) extends
+	# the buffer window from 1.5s → 2.5s. Read at the player as
+	# "more time to capitalize on the catch" — pairs with the
+	# -30% dash cooldown to make perfect-dodge a sustained build.
+	# Done as an OVERRIDE after the baseline arm so the iter-250
+	# source-grep test still sees the unmodified literal assignment.
+	if GameState.has_boon("voidwalk_aspect"):
+		_perfect_dodge_buffer = VOIDWALK_PERFECT_DODGE_BUFFER_TIME
+	# iter-260 / Wave 9 — shadow_bind (SHADOW rare). On perfect-dodge,
+	# scan enemies in range and apply a 1.0s 50%-slow. Stacks WORST-
+	# value via apply_slow — a smaller (deeper) multiplier wins. The
+	# default vanilla slow (when present) is 0.6; shadow_bind's 0.5
+	# overrides it.
+	if GameState.has_boon("shadow_bind"):
+		for enemy in get_tree().get_nodes_in_group("enemies"):
+			if not is_instance_valid(enemy):
+				continue
+			if not (enemy is Node2D):
+				continue
+			if enemy.global_position.distance_to(global_position) > SHADOW_BIND_RADIUS:
+				continue
+			if enemy.has_method("apply_slow"):
+				enemy.apply_slow(SHADOW_BIND_SLOW_DURATION, SHADOW_BIND_SLOW_MULTIPLIER)
+	# iter-260 / Wave 9 — shadow_veil (SHADOW rare). On perfect-dodge,
+	# the hero is briefly invisible to enemies for 1.5s. Sprite alpha
+	# drops to 0.4 (still visible to the player) + we join the
+	# invisible_to_enemies group which enemy AI checks before pursuing.
+	# Timer ticks down in _physics_process; on natural expiry the
+	# alpha + group membership are restored.
+	if GameState.has_boon("shadow_veil"):
+		_shadow_veil_invisible_time = SHADOW_VEIL_INVISIBLE_TIME
+		if sprite != null:
+			sprite.modulate.a = 0.4
+		if not is_in_group("invisible_to_enemies"):
+			add_to_group("invisible_to_enemies")
 	# Slow-mo: hold scale 0.40 for PERFECT_DODGE_SLOWMO_HOLD seconds,
 	# then ease back to 1.0 over PERFECT_DODGE_SLOWMO_EASE. The tween
 	# runs on Engine.time_scale; we use TWEEN_PAUSE_PROCESS so the

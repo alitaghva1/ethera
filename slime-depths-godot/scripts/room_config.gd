@@ -244,6 +244,27 @@ extends Resource
 # + tier so the variation is FLAVOR not difficulty swings.
 @export var waves_pool: Array = []
 
+# iter-260 / Wave 9 — room reward identity. A coarse label that
+# tells the player WHAT KIND of room they're in. Drives:
+#   • A small icon under the room banner (sword/chest/bowl/skull/crown).
+#   • Gameplay biases: gauntlet rooms award 1.5× XP and force
+#     pedestal offers to legendary+.
+#
+# Values:
+#   "standard"   default; combat room with no special reward identity.
+#   "gauntlet"   combat-heavy room; +50% XP, pedestal offers legendary+.
+#   "vault"      treasure room (auto-derived when room_kind == "treasure").
+#   "altar"      shrine room (auto-derived when room_kind == "shrine").
+#   "pact"       pact altar room (future expansion; reads identical to
+#                altar for now but marked separately for the icon).
+#   "boss"       boss room (auto-derived when is_last_room == true).
+#
+# main.gd::_ready resolves the EFFECTIVE type at room load: explicit
+# room_type wins over derived. So a room declaring room_type = "vault"
+# but room_kind = "combat" stays a vault (artistic override). Defaults
+# to "standard" so older rooms keep their behavior unchanged.
+@export var room_type: String = "standard"
+
 # Iter 38 — optional secret content. Lore stones are interactable
 # crystals tucked in hidden corners of a room. Walk near + press E
 # to read a flavor text + receive a small permanent (within-run)

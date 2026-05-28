@@ -918,6 +918,12 @@ func _ready() -> void:
 	_update_hp(hero.hp)
 	_update_kills()
 	_update_room_label()
+	# iter-260 / Wave 9 — room reward identity. Resolve the EFFECTIVE
+	# room_type (explicit declaration OR auto-derived from existing
+	# fields), then spawn a small icon under the room banner so the
+	# player reads what KIND of room this is. The icon fades in with
+	# the banner, persists for 2s, then fades out.
+	_spawn_room_type_icon()
 	_rebuild_relic_strip()
 	# iter-246 / Director Phase 4 — per-room XP bar build + reset. Each
 	# room scene runs its own _ready so this resets the bar to empty +
@@ -4717,6 +4723,21 @@ func _spawn_pedestal_offer(count: int) -> void:
 		)
 		if any_rare_or_better:
 			by_tier["common"] = []
+	# iter-260 / Wave 9 — GAUNTLET room reward bias. Gauntlet rooms
+	# (room_type = "gauntlet") force the offer to LEGENDARY+ pool.
+	# The increased combat difficulty earns the better payout. If
+	# every legendary is owned, gracefully degrade to rare-only.
+	# Applied AFTER the iter-246 first-3 bias so a gauntlet room within
+	# the first 3 offers gets the STRONGER bias (the gauntlet bias is
+	# itself rare-floor → it dominates the iter-246 mixed weights).
+	if _room != null and _resolve_effective_room_type() == "gauntlet":
+		if not (by_tier["legendary"] as Array).is_empty() or not (by_tier["mythic"] as Array).is_empty():
+			by_tier["common"] = []
+			by_tier["rare"] = []
+			weights = { "common": 0.0, "rare": 0.0, "legendary": 75.0, "mythic": 25.0 }
+		elif not (by_tier["rare"] as Array).is_empty():
+			by_tier["common"] = []
+			weights = { "common": 0.0, "rare": 100.0, "legendary": 0.0, "mythic": 0.0 }
 	# Roll up to `count` distinct relics, each from a tier-weighted draw.
 	var picks: Array[String] = []
 	for i in range(count):
@@ -6267,9 +6288,17 @@ func _build_xp_bar() -> void:
 # trigger the mid-room boon when the counter crosses 100%. `delta_xp`
 # is the awarded amount (1/3/8 for regular/elite/boss). Clamps the
 # total to ROOM_XP_CAP so a packed wave doesn't visually skip the bar.
+#
+# iter-260 / Wave 9 — GAUNTLET rooms award XP at 1.5× rate. Players
+# learn "gauntlet = harder fight = more XP" via the per-room icon.
 func _advance_room_xp(delta_xp: int) -> void:
 	if delta_xp <= 0:
 		return
+	# Gauntlet XP multiplier. Applied here (at the room-level XP grant
+	# call site) rather than at the kill site, so it composes with the
+	# elite / boss tier bumps that get computed in _on_enemy_died.
+	if _room != null and _resolve_effective_room_type() == "gauntlet":
+		delta_xp = int(round(float(delta_xp) * 1.5))
 	_build_xp_bar()
 	var prev_frac: float = clampf(float(_room_xp) / float(ROOM_XP_CAP), 0.0, 1.0)
 	_room_xp = mini(ROOM_XP_CAP, _room_xp + delta_xp)
@@ -6484,6 +6513,142 @@ func _update_room_label() -> void:
 		# one-line edit.
 		var _suppress_total: int = total  # silence unused-warning on `total`
 		room_progress_label.text = _to_roman(idx)
+
+# ── iter-260 / Wave 9 — room reward identity ─────────────────────────
+#
+# Resolve the EFFECTIVE room_type at load time. Priority order:
+#   1. Explicit `room_type` declaration on the RoomConfig (other than
+#      the default "standard").
+#   2. is_last_room == true → "boss".
+#   3. room_kind == "treasure" → "vault".
+#   4. room_kind == "shrine" → "altar".
+#   5. Default "standard".
+# This lets a room author override the derivation (e.g. label a
+# combat room as "gauntlet" — see room_03 retag in this commit)
+# while keeping legacy rooms working without modification.
+func _resolve_effective_room_type() -> String:
+	if _room == null:
+		return "standard"
+	var declared: String = str(_room.room_type)
+	# Explicit non-default declaration wins.
+	if declared != "" and declared != "standard":
+		return declared
+	# Auto-derive from existing fields.
+	if _room.is_last_room:
+		return "boss"
+	if _room.room_kind == "treasure":
+		return "vault"
+	if _room.room_kind == "shrine":
+		return "altar"
+	return "standard"
+
+# Spawn the room-type icon under the room banner. Built as a small
+# Polygon2D in a Control container so it inherits the UI layer's
+# scaling + anchoring. Fades in over 0.3s, holds for 2s, fades out.
+# Icon shape is picked from ROOM_TYPE_ICON_SHAPES (defined inline
+# here — keeps the visual taxonomy near the spawn site).
+const ROOM_TYPE_ICON_HOLD: float = 2.0
+const ROOM_TYPE_ICON_FADE_IN: float = 0.30
+const ROOM_TYPE_ICON_FADE_OUT: float = 0.45
+const ROOM_TYPE_ICON_SIZE: float = 16.0
+const ROOM_TYPE_ICON_COLORS: Dictionary = {
+	"standard": Color(0.78, 0.74, 0.62, 0.85),
+	"gauntlet": Color(1.00, 0.65, 0.35, 0.92),
+	"vault":    Color(1.00, 0.85, 0.45, 0.92),
+	"altar":    Color(0.65, 0.85, 1.00, 0.92),
+	"pact":     Color(0.85, 0.55, 0.95, 0.92),
+	"boss":     Color(1.00, 0.35, 0.45, 0.95),
+}
+
+func _spawn_room_type_icon() -> void:
+	var rtype: String = _resolve_effective_room_type()
+	# Free any prior icon (defensive — _ready runs once per scene
+	# load, but a hot-reload during dev could leave a stale node).
+	var ui_layer: CanvasLayer = $UI as CanvasLayer
+	if ui_layer == null:
+		return
+	var existing: Node = ui_layer.get_node_or_null("RoomTypeIcon")
+	if existing != null:
+		existing.queue_free()
+	var container: Control = Control.new()
+	container.name = "RoomTypeIcon"
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Anchor under the room banner — banner sits at top-center; the
+	# icon hangs 70 px below.
+	container.anchor_left = 0.5
+	container.anchor_right = 0.5
+	container.anchor_top = 0.0
+	container.anchor_bottom = 0.0
+	container.offset_left = -ROOM_TYPE_ICON_SIZE
+	container.offset_right = ROOM_TYPE_ICON_SIZE
+	container.offset_top = 84.0
+	container.offset_bottom = 84.0 + ROOM_TYPE_ICON_SIZE * 2
+	container.modulate.a = 0.0
+	ui_layer.add_child(container)
+	var color: Color = ROOM_TYPE_ICON_COLORS.get(rtype, Color(0.78, 0.74, 0.62, 0.85))
+	# Build the shape. Each type has a distinct silhouette so the
+	# player learns "crown = boss" at a glance.
+	var shape_pts: PackedVector2Array = _room_type_icon_points(rtype)
+	var poly: Polygon2D = Polygon2D.new()
+	poly.polygon = shape_pts
+	poly.color = color
+	poly.position = Vector2(ROOM_TYPE_ICON_SIZE, ROOM_TYPE_ICON_SIZE)
+	poly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	container.add_child(poly)
+	# Fade-in → hold → fade-out tween chain.
+	var tw: Tween = create_tween()
+	tw.tween_property(container, "modulate:a", 1.0, ROOM_TYPE_ICON_FADE_IN)
+	tw.tween_interval(ROOM_TYPE_ICON_HOLD)
+	tw.tween_property(container, "modulate:a", 0.0, ROOM_TYPE_ICON_FADE_OUT)
+	tw.tween_callback(container.queue_free)
+
+# Distinct shape per room_type. All scaled by ROOM_TYPE_ICON_SIZE.
+# Coords are in unit-cell space (-1..1).
+func _room_type_icon_points(rtype: String) -> PackedVector2Array:
+	var pts: PackedVector2Array = PackedVector2Array()
+	var s: float = ROOM_TYPE_ICON_SIZE
+	match rtype:
+		"gauntlet":
+			# 3-stacked-blade silhouette — single triangle-stack icon.
+			pts.append(Vector2(-0.5, -1.0) * s); pts.append(Vector2(0.5, -1.0) * s)
+			pts.append(Vector2(0.5, -0.4) * s);  pts.append(Vector2(0.7, -0.4) * s)
+			pts.append(Vector2(0.7, 0.2) * s);   pts.append(Vector2(0.5, 0.2) * s)
+			pts.append(Vector2(0.5, 1.0) * s);   pts.append(Vector2(-0.5, 1.0) * s)
+			pts.append(Vector2(-0.5, 0.2) * s);  pts.append(Vector2(-0.7, 0.2) * s)
+			pts.append(Vector2(-0.7, -0.4) * s); pts.append(Vector2(-0.5, -0.4) * s)
+		"vault":
+			# Chest silhouette — wide rectangle with rounded top.
+			pts.append(Vector2(-1.0, -0.5) * s); pts.append(Vector2(-0.7, -1.0) * s)
+			pts.append(Vector2(0.7, -1.0) * s);  pts.append(Vector2(1.0, -0.5) * s)
+			pts.append(Vector2(1.0, 0.9) * s);   pts.append(Vector2(-1.0, 0.9) * s)
+		"altar":
+			# Bowl silhouette — wide arc.
+			pts.append(Vector2(-1.0, -0.3) * s); pts.append(Vector2(1.0, -0.3) * s)
+			pts.append(Vector2(0.85, 0.5) * s);  pts.append(Vector2(0.5, 0.95) * s)
+			pts.append(Vector2(-0.5, 0.95) * s); pts.append(Vector2(-0.85, 0.5) * s)
+		"pact":
+			# Skull silhouette — round top + jaw.
+			pts.append(Vector2(-0.85, -0.3) * s); pts.append(Vector2(-0.6, -0.95) * s)
+			pts.append(Vector2(0.6, -0.95) * s);  pts.append(Vector2(0.85, -0.3) * s)
+			pts.append(Vector2(0.85, 0.4) * s);   pts.append(Vector2(0.55, 0.4) * s)
+			pts.append(Vector2(0.55, 0.95) * s);  pts.append(Vector2(-0.55, 0.95) * s)
+			pts.append(Vector2(-0.55, 0.4) * s);  pts.append(Vector2(-0.85, 0.4) * s)
+		"boss":
+			# Crown silhouette — three points + base.
+			pts.append(Vector2(-1.0, 0.4) * s);  pts.append(Vector2(-0.7, -0.9) * s)
+			pts.append(Vector2(-0.4, 0.05) * s); pts.append(Vector2(0.0, -1.0) * s)
+			pts.append(Vector2(0.4, 0.05) * s);  pts.append(Vector2(0.7, -0.9) * s)
+			pts.append(Vector2(1.0, 0.4) * s);   pts.append(Vector2(1.0, 0.9) * s)
+			pts.append(Vector2(-1.0, 0.9) * s)
+		_:
+			# Standard: small sword silhouette (dot+downward line).
+			pts.append(Vector2(-0.2, -1.0) * s); pts.append(Vector2(0.2, -1.0) * s)
+			pts.append(Vector2(0.2, 0.4) * s);   pts.append(Vector2(0.5, 0.4) * s)
+			pts.append(Vector2(0.5, 0.6) * s);   pts.append(Vector2(0.2, 0.6) * s)
+			pts.append(Vector2(0.0, 1.0) * s);   pts.append(Vector2(-0.2, 0.6) * s)
+			pts.append(Vector2(-0.5, 0.6) * s);  pts.append(Vector2(-0.5, 0.4) * s)
+			pts.append(Vector2(-0.2, 0.4) * s)
+	return pts
 
 # Iter 193 batch 3 — roman numeral helper for the room chip.
 # Standard greedy conversion. Capped at MMM (3000) which is far more

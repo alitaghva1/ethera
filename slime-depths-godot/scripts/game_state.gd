@@ -1103,6 +1103,45 @@ func grant_shrine_bonus(key: String, value) -> void:
 	var current = shrine_bonuses.get(key, 0)
 	shrine_bonuses[key] = current + value
 
+# ── iter-260 / Wave 9 — Boon registry ─────────────────────────────────
+# Companion to shrine_bonuses. shrine_bonuses tracks the cumulative
+# additive modifier values (max_hp_bonus = +3 etc.); owned_boons tracks
+# the SET of boon ids the player picked this run. The set is needed for
+# proc-flagged boons (rare + legendary tiers in iter-260) whose
+# mechanics are hand-implemented in hero.gd and gated by
+# has_boon(proc_flag), not by a modifier-fold.
+#
+# Mirrors the iter-259 contract:
+#   • Run-local — cleared in start_dungeon_run alongside shrine_bonuses.
+#   • Not persisted across runs (intentional — boons are intra-run).
+#   • De-duplicated by treating it as a set (Dictionary keyed by id
+#     with `true` values).
+var owned_boons: Dictionary = {}
+
+# iter-260 — level-up ordinal for this run. BoonCatalog.roll_boon_offers
+# reads this to walk the TIER_WEIGHT_RAMP: first level-up uses entry 0
+# (70% common bias), subsequent level-ups walk further into the ramp.
+# Bumped in record_boon_pick on every selection. Reset to 0 in
+# start_dungeon_run.
+var level_ups_this_run: int = 0
+
+# Idempotent on re-call. Returns true if THIS call actually claimed the
+# boon (false if it was already owned — proc handlers should rely on
+# has_boon() for the lookup, not this return value).
+func record_boon_pick(id: String) -> bool:
+	if id == "" or owned_boons.has(id):
+		return false
+	owned_boons[id] = true
+	level_ups_this_run += 1
+	return true
+
+# Cheap proc-handler check. The 10 rare + 5 legendary proc handlers in
+# hero.gd call this with the proc_flag string from the boon definition.
+# Pre-iter-260 the function didn't exist; defensively returns false for
+# any id not in owned_boons.
+func has_boon(id: String) -> bool:
+	return owned_boons.has(id)
+
 # Iter 57 — achievements. Persistent across runs (save_to_dict
 # includes unlocked_achievements). Tracks milestones that the player
 # accomplishes across all play sessions, giving long-term goals
@@ -1562,6 +1601,11 @@ func start_dungeon_run() -> void:
 	# a separate field.
 	owned_relics = []
 	shrine_bonuses = {}            # iter 33 — clear stat grants from prior run
+	# iter-260 / Wave 9 — clear the run-local boon roster + level-up
+	# counter so each fresh run starts with a clean slate (matches the
+	# shrine_bonuses contract — boons are intra-run, no cross-run carry).
+	owned_boons = {}
+	level_ups_this_run = 0
 	persisted_hp = -1
 	# iter-105: phoenix_feather true once-per-run reset.
 	phoenix_feather_used = false

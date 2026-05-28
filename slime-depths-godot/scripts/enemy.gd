@@ -641,6 +641,14 @@ func _trigger_shatter_combo() -> void:
 # downstream tick + audio + tint stack happens for free.
 func _trigger_kindle_spread() -> void:
 	var hit_count: int = 0
+	# iter-260 / Wave 9 — flame_chain (FLAME rare) bumps KINDLE_SPREAD
+	# radius by +25%. Read the GameState boon flag once at the top of
+	# the spread loop; if owned, scale the effective radius. No effect
+	# on the burn duration — just how far the chain reaches.
+	var effective_radius: float = KINDLE_RADIUS
+	var gs_node: Node = Engine.get_main_loop().root.get_node_or_null("/root/GameState")
+	if gs_node != null and gs_node.has_method("has_boon") and gs_node.call("has_boon", "flame_chain"):
+		effective_radius = KINDLE_RADIUS * 1.25
 	for node in get_tree().get_nodes_in_group("enemies"):
 		if node == self or not is_instance_valid(node):
 			continue
@@ -651,7 +659,7 @@ func _trigger_kindle_spread() -> void:
 		if not (node is Node2D):
 			continue
 		var dist: float = global_position.distance_to((node as Node2D).global_position)
-		if dist > KINDLE_RADIUS:
+		if dist > effective_radius:
 			continue
 		if node.has_method("apply_burn"):
 			node.call("apply_burn", KINDLE_BURN_DURATION)
@@ -1274,6 +1282,19 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		move_and_slide()
 		return
+	# iter-260 / Wave 9 — shadow_veil (SHADOW rare boon). When the
+	# hero is in the invisible_to_enemies group, this enemy stands
+	# down — no pursuit, no projectile cast. Sets velocity to zero
+	# + plays idle. Same shape as the _petrify_remaining gate above.
+	# Bosses ignore the gate (telegraphed mechanics should not be
+	# bypassed by a 1.5s window). Boss check via enemy_type.is_boss.
+	if _hero != null and is_instance_valid(_hero) and _hero.is_in_group("invisible_to_enemies"):
+		if enemy_type == null or not enemy_type.is_boss:
+			velocity = Vector2.ZERO
+			move_and_slide()
+			if sprite != null:
+				sprite.play(&"idle")
+			return
 	# Behavior dispatch — one branch per supported tag. Unknown tags fall
 	# through to chase_contact (the most forgiving default).
 	match enemy_type.behavior:

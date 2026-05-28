@@ -39,19 +39,68 @@ extends CanvasLayer
 # scripts in the project use.
 const BoonCatalog: Script = preload("res://scripts/boon_catalog.gd")
 
-# Card geometry — three 280×360 panels in a horizontal row, 32 px
-# spacing. Total content width = 3×280 + 2×32 = 904 px, centered in
-# 1280 px viewport (left edge at 188 px).
-const CARD_WIDTH: float = 280.0
-const CARD_HEIGHT: float = 360.0
+# Card geometry — iter-260 / Wave 9 — bumped 280×360 → 300×400 to give
+# the new tier label + theme glyph space to breathe. 3 × 300 + 2 × 32 =
+# 964 px total content width, centered in 1280 px viewport (left edge
+# at (1280-964)/2 = 158 px).
+const CARD_WIDTH: float = 300.0
+const CARD_HEIGHT: float = 400.0
 const CARD_GAP: float = 32.0
-const CARD_HOVER_SCALE: float = 1.05
+# iter-260 — hover pop bumped from 1.05 → 1.08 so the difference reads
+# more clearly on the larger card.
+const CARD_HOVER_SCALE: float = 1.08
 const CARD_HOVER_TWEEN_TIME: float = 0.14
 
 # Card border alpha when not hovered / on hover. Stronger contrast on
 # hover so the active pick reads instantly.
 const CARD_BORDER_ALPHA_IDLE: float = 0.50
 const CARD_BORDER_ALPHA_HOVER: float = 1.00
+
+# iter-260 / Wave 9 — build-match halo. When the rolled boon's theme
+# matches a theme the player owns ≥ 2 relics in, the card gets a
+# warm-gold outer halo signaling "fits your build." Same threshold
+# the catalog roll uses for theme bias.
+const BUILD_MATCH_THRESHOLD: int = 2
+const BUILD_MATCH_HALO_COLOR: Color = Color(1.0, 0.85, 0.55, 0.40)
+
+# iter-260 / Wave 9 — theme glyph as a stylized Polygon2D rather than
+# a single ASCII character. Reads clearer at 32 px and gives each
+# theme a distinct silhouette. THEME_GLYPH_SHAPES maps theme id →
+# array of Vector2 points (closed polygon, scaled at draw time).
+const THEME_GLYPH_SIZE: float = 14.0  # half-extent; final glyph is 28×28 px
+const THEME_GLYPH_SHAPES: Dictionary = {
+	# STORM: square (electric crystalline node)
+	"storm": [
+		Vector2(-1.0, -1.0), Vector2(1.0, -1.0),
+		Vector2(1.0, 1.0),   Vector2(-1.0, 1.0),
+	],
+	# FLAME: flame teardrop (tip up)
+	"flame": [
+		Vector2(0.0, -1.2),  Vector2(0.7, -0.2),
+		Vector2(0.5, 0.6),   Vector2(0.0, 1.0),
+		Vector2(-0.5, 0.6),  Vector2(-0.7, -0.2),
+	],
+	# BLOOD: drop (rounded bottom, pointed top)
+	"blood": [
+		Vector2(0.0, -1.1),  Vector2(0.55, 0.0),
+		Vector2(0.7, 0.7),   Vector2(0.0, 1.0),
+		Vector2(-0.7, 0.7),  Vector2(-0.55, 0.0),
+	],
+	# VOW: shield (top-rounded, base-tapered)
+	"vow": [
+		Vector2(-0.85, -0.9), Vector2(0.85, -0.9),
+		Vector2(0.85, 0.15),  Vector2(0.0, 1.0),
+		Vector2(-0.85, 0.15),
+	],
+	# SHADOW: crescent (waning moon)
+	"shadow": [
+		Vector2(0.85, -0.6),  Vector2(0.30, -1.0),
+		Vector2(-0.50, -0.85), Vector2(-0.80, 0.0),
+		Vector2(-0.50, 0.85),  Vector2(0.30, 1.0),
+		Vector2(0.85, 0.6),    Vector2(0.10, 0.45),
+		Vector2(-0.25, 0.0),   Vector2(0.10, -0.45),
+	],
+}
 
 # Camera punch — slightly less than the boss-death zoom (1.06 vs 1.08)
 # because level-up fires more often (every room when the bar fills) and
@@ -87,13 +136,14 @@ func _ready() -> void:
 	# (set by boon_modal.tscn) keeps the overlay alive past this flip.
 	get_tree().paused = true
 
-	# Determine the theme-bias seed. GameState.theme_count() tallies
-	# owned relics in a theme; the strongest theme wins the 70% bias.
-	# Ties broken by THEME_PRIORITY (alphabetical-ish but reads as
-	# "flame > storm > blood > vow > shadow" — matches the iter-245
-	# HUD chip strip order).
-	var strongest: String = _resolve_strongest_theme()
-	_boon_ids = BoonCatalog.roll_three(strongest)
+	# iter-260 / Wave 9 — switch to the new tier-weighted +
+	# theme-biased roll. roll_boon_offers reads
+	# GameState.level_ups_this_run (for the tier weight ramp) and
+	# GameState.theme_count() (for the theme bias multiplier) so the
+	# call is parameterless. Falls back to roll_three for any caller
+	# that still passes a strongest_theme arg.
+	var _strongest_unused: String = _resolve_strongest_theme()
+	_boon_ids = BoonCatalog.roll_boon_offers(3)
 
 	# Audio swell — broad brass-feel sweep. Plays at hero position
 	# (or modal-center fallback) so positional audio reads as
@@ -232,17 +282,32 @@ func _build_ui() -> void:
 func _build_card(boon_id: String, slot_index: int) -> Control:
 	var boon: Dictionary = BoonCatalog.get_boon(boon_id)
 	var theme_id: String = str(boon.get("theme", "vow"))
+	var tier_id: String = str(boon.get("tier", "common"))
 	var accent: Color = BoonCatalog.THEME_COLORS.get(theme_id, Color(0.85, 0.78, 0.55))
-	var glyph: String = str(BoonCatalog.THEME_GLYPHS.get(theme_id, "*"))
+	# iter-260 / Wave 9 — tier color drives the BORDER. Theme color
+	# drives the accent strip + glyph + name color. This split lets a
+	# RARE STORM card read as RARE (cool blue border) AND STORM (cyan
+	# accents) without conflating the two dimensions.
+	var tier_color: Color = BoonCatalog.TIER_COLORS.get(tier_id, Color(0.55, 0.50, 0.45))
+	var tier_label_text: String = str(BoonCatalog.TIER_LABELS.get(tier_id, "COMMON"))
 	var boon_name: String = str(boon.get("name", "BOON"))
 	var boon_desc: String = str(boon.get("desc", ""))
+	# iter-260 — determine if this boon's theme matches a theme the
+	# player has ≥ 2 relics in (build-match). If so, the card gets a
+	# warm-gold outer halo signaling "fits your build."
+	var build_match: bool = false
+	if GameState != null and GameState.has_method("theme_count"):
+		var n: int = int(GameState.theme_count(theme_id))
+		if n >= BUILD_MATCH_THRESHOLD:
+			build_match = true
 
-	# Root Panel. Custom theme — opaque charcoal fill, themed border.
+	# Root Panel. Border color = tier color (iter-260). Theme color
+	# survives as the accent strip + glyph + shadow tint.
 	var panel: Panel = Panel.new()
 	panel.custom_minimum_size = Vector2(CARD_WIDTH, CARD_HEIGHT)
 	panel.size = Vector2(CARD_WIDTH, CARD_HEIGHT)
 	panel.pivot_offset = panel.size * 0.5
-	var sb_idle: StyleBoxFlat = _build_card_style(accent, CARD_BORDER_ALPHA_IDLE)
+	var sb_idle: StyleBoxFlat = _build_card_style(tier_color, accent, CARD_BORDER_ALPHA_IDLE, build_match)
 	panel.add_theme_stylebox_override("panel", sb_idle)
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	# Wire input + hover. bind(slot_index) carries which card was hit
@@ -271,10 +336,51 @@ func _build_card(boon_id: String, slot_index: int) -> Control:
 	slot_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(slot_label)
 
-	# Glyph centerpiece. 96 px theme-colored character. Sits at the
-	# upper-middle of the card so name + desc have room below.
+	# iter-260 / Wave 9 — theme glyph as a stylized Polygon2D in the
+	# top-right corner. Replaces the iter-259 single-character glyph
+	# (which sat in the center). The new geometric mark reads cleaner
+	# at 28×28 px and gives each theme a distinct silhouette.
+	var glyph_poly: Polygon2D = Polygon2D.new()
+	var glyph_pts: PackedVector2Array = PackedVector2Array()
+	var shape_pts: Array = THEME_GLYPH_SHAPES.get(theme_id, [])
+	for pt in shape_pts:
+		glyph_pts.append((pt as Vector2) * THEME_GLYPH_SIZE)
+	glyph_poly.polygon = glyph_pts
+	glyph_poly.color = accent
+	glyph_poly.position = Vector2(CARD_WIDTH - 22.0, 22.0)
+	glyph_poly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(glyph_poly)
+
+	# iter-260 / Wave 9 — tier label ABOVE the boon name, smaller +
+	# tier-tinted so the player learns "blue = rare, gold = legendary"
+	# without reading the catalog. Anchored 0.40 (above the name's
+	# 0.62 anchor) so the typographic stack reads tier → name → desc.
+	var tier_label: Label = Label.new()
+	tier_label.text = tier_label_text
+	tier_label.add_theme_font_size_override("font_size", 13)
+	tier_label.add_theme_color_override("font_color", tier_color)
+	tier_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	tier_label.add_theme_constant_override("outline_size", 2)
+	tier_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tier_label.anchor_left = 0.0
+	tier_label.anchor_right = 1.0
+	tier_label.anchor_top = 0.52
+	tier_label.anchor_bottom = 0.52
+	tier_label.offset_left = 8
+	tier_label.offset_right = -8
+	tier_label.offset_top = -10
+	tier_label.offset_bottom = 10
+	tier_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(tier_label)
+
+	# Large central theme symbol (the old iter-259 centerpiece). Kept
+	# but anchored higher in the larger card so the tier label +
+	# name + desc all fit. Glyph still uses the simple ASCII char
+	# from THEME_GLYPHS for the central read — the new Polygon2D
+	# top-right glyph is the secondary "small badge" mark.
+	var central_glyph: String = str(BoonCatalog.THEME_GLYPHS.get(theme_id, "*"))
 	var glyph_label: Label = Label.new()
-	glyph_label.text = glyph
+	glyph_label.text = central_glyph
 	glyph_label.add_theme_font_size_override("font_size", 96)
 	glyph_label.add_theme_color_override("font_color", accent)
 	glyph_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
@@ -287,8 +393,8 @@ func _build_card(boon_id: String, slot_index: int) -> Control:
 	glyph_label.anchor_bottom = 0.0
 	glyph_label.offset_left = -80
 	glyph_label.offset_right = 80
-	glyph_label.offset_top = 40
-	glyph_label.offset_bottom = 180
+	glyph_label.offset_top = 48
+	glyph_label.offset_bottom = 184
 	glyph_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(glyph_label)
 
@@ -333,20 +439,50 @@ func _build_card(boon_id: String, slot_index: int) -> Control:
 	desc_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(desc_label)
 
+	# iter-260 / Wave 9 — build-match indicator. When the card's theme
+	# matches the player's owned-relic spread (≥ 2 of theme), spawn a
+	# small "BUILD MATCH" label at the bottom of the card. The halo
+	# itself lives in the stylebox via the shadow color; the label
+	# tells the player WHY the card is haloed.
+	if build_match:
+		var build_label: Label = Label.new()
+		build_label.text = "BUILD MATCH"
+		build_label.add_theme_font_size_override("font_size", 11)
+		build_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.55, 0.95))
+		build_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		build_label.add_theme_constant_override("outline_size", 2)
+		build_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		build_label.anchor_left = 0.0
+		build_label.anchor_right = 1.0
+		build_label.anchor_top = 0.92
+		build_label.anchor_bottom = 0.92
+		build_label.offset_left = 8
+		build_label.offset_right = -8
+		build_label.offset_top = -10
+		build_label.offset_bottom = 10
+		build_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(build_label)
+
 	return panel
 
 
-# Build the themed Panel stylebox. Charcoal interior + themed border.
-# `border_alpha` is the alpha applied to the themed border color —
-# IDLE = 0.50, HOVER = 1.00, so a hovered card pops in saturation.
-func _build_card_style(accent: Color, border_alpha: float) -> StyleBoxFlat:
+# Build the themed Panel stylebox.
+#
+# iter-260 / Wave 9 — split the styling axes:
+#   • border color = TIER color (grey/blue/gold)
+#   • shadow color = ACCENT (theme) color, used as the tier color
+#     glow under the card. Build-match cards layer a SECOND warm-gold
+#     halo via a deeper shadow_size + warm shadow_color override.
+# border_alpha is the alpha applied to the border — IDLE = 0.50,
+# HOVER = 1.00, so a hovered card pops in saturation.
+func _build_card_style(tier_color: Color, accent: Color, border_alpha: float, build_match: bool = false) -> StyleBoxFlat:
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
 	sb.bg_color = Color(0.06, 0.05, 0.08, 0.92)
 	sb.border_width_left = 2
 	sb.border_width_top = 2
 	sb.border_width_right = 2
 	sb.border_width_bottom = 2
-	var border: Color = accent
+	var border: Color = tier_color
 	border.a = border_alpha
 	sb.border_color = border
 	sb.corner_radius_top_left = 4
@@ -357,12 +493,25 @@ func _build_card_style(accent: Color, border_alpha: float) -> StyleBoxFlat:
 	sb.content_margin_top = 12.0
 	sb.content_margin_right = 12.0
 	sb.content_margin_bottom = 12.0
-	# Subtle outward glow on hover — matches the pause hover style's
-	# shadow recipe.
-	if border_alpha >= 1.0:
-		sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.30)
-		sb.shadow_size = 12
-		sb.shadow_offset = Vector2(0, 0)
+	# Theme-color halo under the card. Acts as the subtle "PointLight2D"
+	# the spec calls for — using stylebox shadow because it composes
+	# cleanly with the Panel border without requiring a separate node
+	# (PointLight2D works on Node2D, not Control).
+	# Idle: light theme glow at 0.20 alpha.
+	# Hover: stronger theme glow at 0.35.
+	# Build-match: stack a second warmer halo on top.
+	var glow_alpha: float = 0.20 if border_alpha < 1.0 else 0.35
+	var glow: Color = accent
+	glow.a = glow_alpha
+	sb.shadow_color = glow
+	sb.shadow_size = 10 if border_alpha < 1.0 else 14
+	sb.shadow_offset = Vector2(0, 0)
+	# Build-match halo: warm-gold outer ring — done by widening the
+	# shadow + tinting it. Overrides the theme glow for the hover beat
+	# so the player learns the "this fits my build" cue at a glance.
+	if build_match:
+		sb.shadow_color = BUILD_MATCH_HALO_COLOR
+		sb.shadow_size = sb.shadow_size + 6
 	return sb
 
 
@@ -372,18 +521,24 @@ func _on_card_hover_enter(idx: int) -> void:
 	if _selected:
 		return
 	var card: Control = _card_panels[idx]
-	# Pop scale 1.05× — same hover-grow the pause menu uses.
+	# Pop scale 1.08× — bumped from iter-259's 1.05 for the larger card.
 	var tw: Tween = create_tween()
 	tw.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
 	tw.tween_property(card, "scale", Vector2(CARD_HOVER_SCALE, CARD_HOVER_SCALE),
 		CARD_HOVER_TWEEN_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Brighten the border.
+	# Brighten the border. iter-260: stylebox call requires tier_color
+	# + accent + build_match args.
 	var boon: Dictionary = BoonCatalog.get_boon(_boon_ids[idx])
 	var theme_id: String = str(boon.get("theme", "vow"))
+	var tier_id: String = str(boon.get("tier", "common"))
 	var accent: Color = BoonCatalog.THEME_COLORS.get(theme_id, Color(0.85, 0.78, 0.55))
+	var tier_color: Color = BoonCatalog.TIER_COLORS.get(tier_id, Color(0.55, 0.50, 0.45))
+	var build_match: bool = false
+	if GameState != null and GameState.has_method("theme_count"):
+		build_match = int(GameState.theme_count(theme_id)) >= BUILD_MATCH_THRESHOLD
 	var panel: Panel = card as Panel
 	if panel != null:
-		panel.add_theme_stylebox_override("panel", _build_card_style(accent, CARD_BORDER_ALPHA_HOVER))
+		panel.add_theme_stylebox_override("panel", _build_card_style(tier_color, accent, CARD_BORDER_ALPHA_HOVER, build_match))
 	# UI hover audio at low gain (matches pause-menu hover ambience).
 	if Audio != null and Audio.has_method("play_ui_cue"):
 		Audio.play_ui_cue("ui_hover", -8.0)
@@ -399,10 +554,15 @@ func _on_card_hover_exit(idx: int) -> void:
 		CARD_HOVER_TWEEN_TIME).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	var boon: Dictionary = BoonCatalog.get_boon(_boon_ids[idx])
 	var theme_id: String = str(boon.get("theme", "vow"))
+	var tier_id: String = str(boon.get("tier", "common"))
 	var accent: Color = BoonCatalog.THEME_COLORS.get(theme_id, Color(0.85, 0.78, 0.55))
+	var tier_color: Color = BoonCatalog.TIER_COLORS.get(tier_id, Color(0.55, 0.50, 0.45))
+	var build_match: bool = false
+	if GameState != null and GameState.has_method("theme_count"):
+		build_match = int(GameState.theme_count(theme_id)) >= BUILD_MATCH_THRESHOLD
 	var panel: Panel = card as Panel
 	if panel != null:
-		panel.add_theme_stylebox_override("panel", _build_card_style(accent, CARD_BORDER_ALPHA_IDLE))
+		panel.add_theme_stylebox_override("panel", _build_card_style(tier_color, accent, CARD_BORDER_ALPHA_IDLE, build_match))
 
 
 # ── Input handlers ─────────────────────────────────────────────────────
@@ -471,6 +631,12 @@ func _select_card(idx: int) -> void:
 	for key in mods:
 		var val: Variant = mods[key]
 		GameState.grant_shrine_bonus(str(key), val)
+	# iter-260 / Wave 9 — record the boon pick in the run-local roster.
+	# Used by proc handlers (has_boon checks in hero.gd) AND by
+	# roll_boon_offers' filter-out-already-owned logic. record_boon_pick
+	# bumps level_ups_this_run so the next roll walks further into the
+	# TIER_WEIGHT_RAMP (more rare/legendary on subsequent picks).
+	GameState.record_boon_pick(boon_id)
 
 	# Pickup chime layered on the selection beat.
 	if Audio != null and Audio.has_method("_play"):
@@ -480,12 +646,14 @@ func _select_card(idx: int) -> void:
 	# whole modal fades out and unpauses.
 	var card: Control = _card_panels[idx]
 	var theme_id: String = str(boon.get("theme", "vow"))
+	var tier_id: String = str(boon.get("tier", "common"))
 	var accent: Color = BoonCatalog.THEME_COLORS.get(theme_id, Color(0.85, 0.78, 0.55))
+	var tier_color: Color = BoonCatalog.TIER_COLORS.get(tier_id, Color(0.55, 0.50, 0.45))
 	var panel: Panel = card as Panel
 	if panel != null:
 		# Push the border to fully-saturated white-ish then fade out
 		# alongside the rest of the modal.
-		var glow_sb: StyleBoxFlat = _build_card_style(accent, 1.0)
+		var glow_sb: StyleBoxFlat = _build_card_style(tier_color, accent, 1.0, false)
 		glow_sb.border_color = Color(1.0, 0.96, 0.78, 1.0)
 		glow_sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.55)
 		glow_sb.shadow_size = 20

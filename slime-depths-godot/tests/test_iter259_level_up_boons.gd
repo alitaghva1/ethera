@@ -2,14 +2,19 @@ extends SceneTree
 
 # iter-259 / Wave 8 — VS-style level-up boon-choice smoke test.
 #
+# iter-260 update: catalog expanded from 15 → 30 entries (15 common +
+# 10 rare + 5 legendary). Per-theme count is now 6 (3 common + 2 rare +
+# 1 legendary). The new tier dimension is verified separately by
+# test_iter260_unified_rewards.
+#
 # Replaces the silent mid-room pedestal spawn from iter-246 with a
 # full pause-the-game, pick-one-of-three boon picker. This test verifies
 # the contract:
 #
-#   A. boon_catalog.gd loads as a Script and exposes BOONS with 15
+#   A. boon_catalog.gd loads as a Script and exposes BOONS with 30
 #      entries.
 #   B. All 5 themes (flame/storm/blood/vow/shadow) are represented with
-#      exactly 3 boons each.
+#      exactly 6 boons each.
 #   C. get_boon(id) returns the matching entry; missing ids return {}.
 #   D. Every boon's `mods` dict (where non-empty) uses keys that match
 #      modifier names used elsewhere in the codebase — caught by a
@@ -46,11 +51,11 @@ func _initialize() -> void:
 		quit(1)
 		return
 	var boons: Dictionary = const_map["BOONS"]
-	if boons.size() != 15:
-		printerr("FAIL: BOONS has %d entries, expected 15" % boons.size())
+	if boons.size() != 30:
+		printerr("FAIL: BOONS has %d entries, expected 30" % boons.size())
 		ok = false
 	else:
-		print("[iter259boons] A OK — BOONS has 15 entries")
+		print("[iter259boons] A OK — BOONS has 30 entries")
 
 	# ═══ B. 5 themes × 3 boons each ════════════════════════════════════
 	var theme_counts: Dictionary = {}
@@ -61,14 +66,14 @@ func _initialize() -> void:
 	var expected_themes: Array[String] = ["flame", "storm", "blood", "vow", "shadow"]
 	for theme in expected_themes:
 		var n: int = int(theme_counts.get(theme, 0))
-		if n != 3:
-			printerr("FAIL: theme '%s' has %d boons, expected 3" % [theme, n])
+		if n != 6:
+			printerr("FAIL: theme '%s' has %d boons, expected 6" % [theme, n])
 			ok = false
 	if theme_counts.size() != expected_themes.size():
 		printerr("FAIL: theme set is %s, expected exactly %s" % [theme_counts.keys(), expected_themes])
 		ok = false
 	if ok:
-		print("[iter259boons] B OK — all 5 themes have exactly 3 boons each")
+		print("[iter259boons] B OK — all 5 themes have exactly 6 boons each")
 
 	# ═══ C. get_boon(id) returns expected entry / empty on miss ════════
 	# Pick a known id from each theme + a bogus id and verify behavior

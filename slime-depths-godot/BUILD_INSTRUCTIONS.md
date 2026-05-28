@@ -15,11 +15,13 @@ For the user when ready to ship to Steam / itch.io.
 godot --headless --script tests/check_main_loads.gd
 godot --headless --script tests/check_all_scenes_load.gd
 
-# Full audit (45 tests — 35 baseline + 3 added by iter-248..250
+# Full audit (46 tests — 35 baseline + 3 added by iter-248..250
 # combat redesign + 1 added by iter-254 room shape variety + 1 added by
 # iter-255 atmospheric density push + 1 added by iter-256 destructibles
 # / secret walls + 1 added by iter-257 enemy death decals + 1 added by
-# iter-258 music dynamics + 1 added by iter-259 VS-style level-up boons.
+# iter-258 music dynamics + 1 added by iter-259 VS-style level-up boons
+# + 1 added by iter-260 unified reward economy (30-boon catalog +
+# tier-weighted roll + room reward identity).
 # Combat redesign removes parry input, adds sword 3-hit combo, blast
 # windup commitment, and perfect-dodge mechanic. See
 # ETHERA_COMBAT_DESIGN.md. Wave 5A iter-254 re-authors room_04 as RING
@@ -35,7 +37,14 @@ godot --headless --script tests/check_all_scenes_load.gd
 # — single biome OGG feels calm between waves and intense during combat
 # via volume + low-pass cutoff modulation on a dedicated Music bus.
 # Wave 8 iter-259 REPLACES the iter-246 silent mid-room pedestal spawn
-# with a VS-style pause-the-game, pick-one-of-three boon modal.)
+# with a VS-style pause-the-game, pick-one-of-three boon modal. Wave 9
+# iter-260 GRADUATES the boon catalog from 15 flat stat sticks into a
+# 30-entry roster across 3 tiers (15 common + 10 rare proc-mechanics +
+# 5 legendary mechanic-shifter aspects), wires has_boon/proc hooks for
+# the 10 rare + 5 legendary mechanics, adds modal polish (tier border
+# color, tier label, theme glyph, build-match halo), introduces a
+# room_type field + visible icon, retags room_03 as gauntlet, and
+# implements theme-biased + tier-ramped roll logic.)
 for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter213_actives test_iter214_modifiers test_iter215_combos \
          test_iter216_dag test_iter218_save_migration \
@@ -57,12 +66,12 @@ for t in check_main_loads check_all_scenes_load test_iter212_kindle \
          test_iter250_perfect_dodge test_iter254_room_shapes \
          test_iter255_atmospheric_density test_iter256_destructibles \
          test_iter257_death_decals test_iter258_music_dynamics \
-         test_iter259_level_up_boons; do
+         test_iter259_level_up_boons test_iter260_unified_rewards; do
     godot --headless --script "tests/$t.gd"
 done
 ```
 
-All 45 should print PASS / OK. (The 40th test for "BACKDRAFT migration"
+All 46 should print PASS / OK. (The 40th test for "BACKDRAFT migration"
 is folded into test_iter250_perfect_dodge's `BACKDRAFT trigger wired
 from perfect-dodge` assertion — no separate file needed since the
 function is unchanged; only the caller moved.)
