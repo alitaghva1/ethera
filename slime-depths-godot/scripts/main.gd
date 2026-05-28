@@ -6593,7 +6593,9 @@ func _spawn_room_type_icon() -> void:
 	poly.polygon = shape_pts
 	poly.color = color
 	poly.position = Vector2(ROOM_TYPE_ICON_SIZE, ROOM_TYPE_ICON_SIZE)
-	poly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Iter 261 — Wave 9 hotfix: mouse_filter is a Control property; Polygon2D
+	# extends Node2D and has no such field. Removing the stray assignment
+	# that crashed _spawn_room_type_icon on every dungeon entry.
 	container.add_child(poly)
 	# Fade-in → hold → fade-out tween chain.
 	var tw: Tween = create_tween()
