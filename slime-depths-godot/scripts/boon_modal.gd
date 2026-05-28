@@ -348,7 +348,10 @@ func _build_card(boon_id: String, slot_index: int) -> Control:
 	glyph_poly.polygon = glyph_pts
 	glyph_poly.color = accent
 	glyph_poly.position = Vector2(CARD_WIDTH - 22.0, 22.0)
-	glyph_poly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Iter 262 — same fix as iter-261. mouse_filter is a Control field;
+	# Polygon2D extends Node2D and has no such property. Polygon2D
+	# doesn't intercept mouse events anyway, so removing the line is
+	# semantically a no-op + makes the crash go away.
 	panel.add_child(glyph_poly)
 
 	# iter-260 / Wave 9 — tier label ABOVE the boon name, smaller +
